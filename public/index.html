@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orçamento de Pessoal · Âmbar</title>
+  <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/login.css">
+</head>
+<body>
+  <main class="login">
+    <section class="login-arte" aria-hidden="true">
+      <div class="pontilhado"></div>
+      <small>ORÇAMENTO DE PESSOAL</small>
+      <h2>Planeje, simule e valide o custo de pessoal de cada regional.</h2>
+      <ul>
+        <li><b>Premissas por filial</b> · periculosidade, horas extras, convênios e benefícios</li>
+        <li><b>Dissídio mês a mês</b> · veja o impacto no mês e no ano</li>
+        <li><b>Conferência dos coordenadores</b> · pedidos de ajuste direto para o admin</li>
+      </ul>
+    </section>
+    <form class="cartao login-cartao" id="form-login">
+      <span class="logo"><b>Âmbar</b><small>ENERGIA</small></span>
+      <h1>Orçamento de Pessoal</h1>
+      <p>Entre com o seu usuário. Coordenadores recebem o acesso do time de orçamento.</p>
+      <label for="login">Usuário</label>
+      <input id="login" class="campo" autocomplete="username" required placeholder="ex.: admin ou seu login">
+      <label for="senha">Senha</label>
+      <input id="senha" type="password" class="campo" autocomplete="current-password" required>
+      <button class="btn btn-laranja" type="submit">Entrar</button>
+      <p class="erro" id="erro" role="alert" hidden></p>
+    </form>
+  </main>
+  <script src="js/comum.js"></script>
+  <script>
+    api('/api/eu').then(() => location.replace('app.html')).catch(() => {});
+    document.getElementById('form-login').addEventListener('submit', async e => {
+      e.preventDefault();
+      const erro = document.getElementById('erro');
+      const btn = e.target.querySelector('button');
+      btn.disabled = true; erro.hidden = true;
+      try {
+        await api('/api/login', { method: 'POST', body: { login: document.getElementById('login').value, senha: document.getElementById('senha').value } });
+        location.replace('app.html');
+      } catch (err) {
+        erro.textContent = err.message; erro.hidden = false;
+      } finally { btn.disabled = false; }
+    });
+  </script>
+</body>
+</html>

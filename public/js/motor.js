@@ -1,0 +1,287 @@
+// Motor de cálculo do orçamento de pessoal · Âmbar Energia
+// O mesmo arquivo roda no navegador (simulação instantânea) e no servidor (Node).
+//
+// Entrada:
+//   colaboradores: [{ id, matricula, nome, regional, filial, cargo, cc_cod, cc_nome, salario, mes_inicio, mes_fim, vaga }]
+//   filiais:       { [filial]: { regional, dissidio_pct, dissidio_mes, reaj_benef_pct, reaj_benef_mes } }
+//   premissas:     { [escopo]: { [rubrica]: premissa } }  escopo = '*' (geral), 'R:<regional>' ou '<filial>'
+//   niveis:        { [nível do cargo]: múltiplo de salários do PPR }
+//
+// Premissa: { metodo, valor, base, periodo, mes, rateio, teto, por_nivel, quem }
+//   metodo  'nao'      não se aplica
+//           'pct'      % sobre uma base (salário, remuneração, folha, férias ou 13º), com teto opcional
+//           'fixo'     R$ por colaborador
+//           'rateio'   R$ total da filial, distribuído entre os colaboradores (por headcount ou proporcional ao salário)
+//           'multiplo' N salários por colaborador (PPR); opcionalmente pela tabela de nível do cargo
+//   periodo 'mensal' (todo mês) · 'anual_mes' (valor do ano inteiro lançado no mês `mes`) · 'anual_diluido' (valor anual ÷ 12)
+//   quem    lista vazia = todos; senão só quem está em um dos centros de custo ('cc:<código>') ou níveis de cargo ('cargo:<nível>')
+(function (raiz, fabrica) {
+  const motor = fabrica();
+  if (typeof module === 'object' && module.exports) module.exports = motor;
+  else raiz.Motor = motor;
+})(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+  const GRUPOS = [
+    { id: 'remuneracao', nome: 'Remuneração', cor: '#2f6fa3' },
+    { id: 'provisoes', nome: 'Provisões', cor: '#ec6b24' },
+    { id: 'encargos', nome: 'Encargos', cor: '#2a9d8f' },
+    { id: 'beneficios', nome: 'Benefícios', cor: '#8b5fbf' },
+    { id: 'demais', nome: 'Demais', cor: '#b58a12' },
+  ];
+
+  const P = (metodo, extra = {}) => ({ metodo, valor: 0, base: 'salario', periodo: 'mensal', mes: 12, rateio: 'hc', teto: null, por_nivel: false, quem: [], ...extra });
+
+  // Catálogo único com todas as rubricas encontradas nas planilhas das regionais.
+  // A ordem importa: uma rubrica só pode usar como base o que já foi calculado antes dela.
+  const RUBRICAS = [
+    { id: 'salario', nome: 'Salário', grupo: 'remuneracao', fixa: true },
+    { id: 'periculosidade', nome: 'Periculosidade', grupo: 'remuneracao', adicional: true, padrao: P('pct', { valor: 30 }) },
+    { id: 'insalubridade', nome: 'Insalubridade', grupo: 'remuneracao', adicional: true, padrao: P('nao') },
+    { id: 'penosidade', nome: 'Penosidade', grupo: 'remuneracao', adicional: true, padrao: P('nao') },
+    { id: 'adic_turno', nome: 'Adicionais de turno', grupo: 'remuneracao', adicional: true, dica: 'Inclui adicional intrajornada e passagem de turno', padrao: P('nao') },
+    { id: 'horas_extras', nome: 'Horas extras', grupo: 'remuneracao', padrao: P('rateio') },
+
+    { id: 'ferias', nome: 'Férias (1/3)', grupo: 'provisoes', padrao: P('pct', { valor: 2.7778, base: 'remuneracao' }) },
+    { id: 'decimo', nome: '13º salário', grupo: 'provisoes', padrao: P('pct', { valor: 8.3333 }) },
+    { id: 'rescisao', nome: 'Rescisão', grupo: 'provisoes', padrao: P('nao') },
+
+    { id: 'fgts', nome: 'FGTS', grupo: 'encargos', padrao: P('pct', { valor: 8 }) },
+    { id: 'fgts_ferias', nome: 'FGTS férias', grupo: 'encargos', padrao: P('pct', { valor: 8, base: 'ferias' }) },
+    { id: 'fgts_13', nome: 'FGTS 13º', grupo: 'encargos', padrao: P('pct', { valor: 8, base: 'decimo' }) },
+    { id: 'inss', nome: 'INSS', grupo: 'encargos', padrao: P('nao', { base: 'remuneracao' }) },
+    { id: 'inss_ferias', nome: 'INSS férias', grupo: 'encargos', padrao: P('nao', { base: 'ferias' }) },
+    { id: 'inss_13', nome: 'INSS 13º', grupo: 'encargos', padrao: P('nao', { base: 'decimo' }) },
+
+    { id: 'ppr', nome: 'PPR', grupo: 'beneficios', padrao: P('multiplo', { valor: 2.4, periodo: 'anual_diluido' }) },
+    { id: 'va', nome: 'VA / VR', grupo: 'beneficios', padrao: P('fixo') },
+    { id: 'va_natal', nome: 'VA natal / 13º VR', grupo: 'beneficios', padrao: P('nao', { periodo: 'anual_mes', mes: 12 }) },
+    { id: 'vt', nome: 'Vale-transporte', grupo: 'beneficios', padrao: P('fixo') },
+    { id: 'aux_creche', nome: 'Auxílio-creche', grupo: 'beneficios', padrao: P('nao') },
+    { id: 'educacional', nome: 'Auxílio educacional', grupo: 'beneficios', padrao: P('nao') },
+    { id: 'material_escolar', nome: 'Material escolar', grupo: 'beneficios', padrao: P('nao', { periodo: 'anual_mes', mes: 1 }) },
+    { id: 'aux_oculos', nome: 'Auxílio óculos', grupo: 'beneficios', padrao: P('nao') },
+    { id: 'oftalmo', nome: 'Oftalmo', grupo: 'beneficios', padrao: P('nao') },
+    { id: 'assist_medica', nome: 'Assistência médica', grupo: 'beneficios', padrao: P('fixo') },
+    { id: 'coparticipacao', nome: 'Coparticipação convênio médico', grupo: 'beneficios', padrao: P('nao') },
+    { id: 'assist_odonto', nome: 'Assistência odontológica', grupo: 'beneficios', padrao: P('fixo') },
+    { id: 'farmacia', nome: 'Farmácia', grupo: 'beneficios', padrao: P('nao') },
+    { id: 'seguro_vida', nome: 'Seguro de vida', grupo: 'beneficios', padrao: P('fixo') },
+    { id: 'refeitorio', nome: 'Refeitório', grupo: 'beneficios', padrao: P('nao') },
+    { id: 'fretado', nome: 'Fretado', grupo: 'beneficios', padrao: P('nao') },
+    { id: 'fretado_overall', nome: 'Fretado (overall)', grupo: 'beneficios', padrao: P('nao') },
+    { id: 'cesta_natalina', nome: 'Cesta natalina', grupo: 'beneficios', padrao: P('fixo', { periodo: 'anual_mes', mes: 12 }) },
+
+    { id: 'saude_ocupacional', nome: 'Saúde ocupacional', grupo: 'demais', padrao: P('nao') },
+    { id: 'endomarketing', nome: 'Endomarketing', grupo: 'demais', padrao: P('fixo', { valor: 25 }) },
+    { id: 'treinamento', nome: 'Treinamento', grupo: 'demais', padrao: P('rateio') },
+    { id: 'viagens', nome: 'Viagens', grupo: 'demais', padrao: P('rateio') },
+    { id: 'confraternizacoes', nome: 'Confraternizações', grupo: 'demais', padrao: P('fixo', { periodo: 'anual_mes', mes: 12 }) },
+  ];
+
+  const METODOS = {
+    nao: 'Não se aplica',
+    pct: '% sobre base',
+    fixo: 'R$ por colaborador',
+    rateio: 'Total da filial (rateio)',
+    multiplo: 'Nº de salários',
+  };
+  const BASES = { salario: 'Salário', remuneracao: 'Remuneração', folha: 'Folha c/ HE', ferias: 'Férias', decimo: '13º salário' };
+  const PERIODOS = { mensal: 'Todo mês', anual_mes: 'Uma vez no ano (mês)', anual_diluido: 'Anual diluído (÷12)' };
+
+  const R = RUBRICAS.length;
+  const IDX = Object.fromEntries(RUBRICAS.map((r, i) => [r.id, i]));
+  const ADICIONAIS = RUBRICAS.map((r, i) => (r.adicional ? i : -1)).filter(i => i >= 0);
+
+  /** O colaborador recebe a rubrica? (filtro "quem recebe" da premissa) */
+  function elegivel(p, c) {
+    return !p.quem || !p.quem.length || p.quem.includes('cc:' + (c.cc_cod || '')) || p.quem.includes('cargo:' + (c.cargo || ''));
+  }
+
+  function num(v) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  /** Premissa efetiva da rubrica para a filial: filial → regional → geral → padrão do catálogo. */
+  function premissaDe(premissas, filial, regional, rubricaId) {
+    const rub = RUBRICAS[IDX[rubricaId]];
+    const p = premissas?.[filial]?.[rubricaId] || premissas?.['R:' + regional]?.[rubricaId] || premissas?.['*']?.[rubricaId];
+    return { ...rub.padrao, ...(p || {}) };
+  }
+
+  /** Origem da premissa efetiva (para mostrar na tela se é da filial, da regional, geral ou padrão). */
+  function origemDe(premissas, filial, regional, rubricaId) {
+    if (premissas?.[filial]?.[rubricaId]) return 'filial';
+    if (premissas?.['R:' + regional]?.[rubricaId]) return 'regional';
+    if (premissas?.['*']?.[rubricaId]) return 'geral';
+    return 'padrao';
+  }
+
+  /**
+   * Calcula o custo mensal de cada colaborador em cada rubrica.
+   * Retorna { valores: Float64Array(n × R × 12), n, colaboradores } — use valor(i, r, m) para ler.
+   */
+  function calcular({ colaboradores = [], filiais = {}, premissas = {}, niveis = {} }) {
+    const n = colaboradores.length;
+    const valores = new Float64Array(n * R * 12);
+    const at = (i, r, m) => (i * R + r) * 12 + m;
+
+    // Premissas resolvidas por filial (evita resolver 12 × n vezes).
+    const cachePrem = new Map();
+    const premFilial = (filial, regional) => {
+      if (!cachePrem.has(filial)) cachePrem.set(filial, RUBRICAS.map(r => (r.fixa ? null : premissaDe(premissas, filial, regional, r.id))));
+      return cachePrem.get(filial);
+    };
+
+    const cfg = colaboradores.map(c => filiais[c.filial] || {});
+    const prems = colaboradores.map(c => premFilial(c.filial, c.regional));
+    const ativo = (i, m) => {
+      const c = colaboradores[i];
+      const ini = num(c.mes_inicio) || 1;
+      const fim = num(c.mes_fim) || 12;
+      return m + 1 >= ini && m + 1 <= fim;
+    };
+    const salario = (i, m) => {
+      const f = cfg[i];
+      const mesDiss = num(f.dissidio_mes);
+      const fator = mesDiss && m + 1 >= mesDiss ? 1 + num(f.dissidio_pct) / 100 : 1;
+      return num(colaboradores[i].salario) * fator;
+    };
+    const fatorBenef = (i, m) => {
+      const f = cfg[i];
+      const mes = num(f.reaj_benef_mes);
+      return mes && m + 1 >= mes ? 1 + num(f.reaj_benef_pct) / 100 : 1;
+    };
+
+    // Grupos de rateio: colaboradores de cada filial.
+    const porFilial = new Map();
+    colaboradores.forEach((c, i) => {
+      if (!porFilial.has(c.filial)) porFilial.set(c.filial, []);
+      porFilial.get(c.filial).push(i);
+    });
+
+    for (let m = 0; m < 12; m++) {
+      const sal = new Float64Array(n);
+      const ativos = new Uint8Array(n);
+      for (let i = 0; i < n; i++) {
+        ativos[i] = ativo(i, m) ? 1 : 0;
+        if (ativos[i]) {
+          sal[i] = salario(i, m);
+          valores[at(i, 0, m)] = sal[i];
+        }
+      }
+
+      const base = (i, nome) => {
+        if (nome === 'salario') return sal[i];
+        let rem = sal[i];
+        for (const r of ADICIONAIS) rem += valores[at(i, r, m)];
+        if (nome === 'remuneracao') return rem;
+        if (nome === 'folha') return rem + valores[at(i, IDX.horas_extras, m)];
+        if (nome === 'ferias') return valores[at(i, IDX.ferias, m)];
+        if (nome === 'decimo') return valores[at(i, IDX.decimo, m)];
+        return sal[i];
+      };
+
+      for (let r = 1; r < R; r++) {
+        const rub = RUBRICAS[r];
+        const ehBenef = rub.grupo === 'beneficios';
+
+        // Rateio: o total da filial é dividido entre quem está ativo no mês.
+        const rateados = new Set();
+        for (const [, idxs] of porFilial) {
+          const p = prems[idxs[0]][r];
+          if (p.metodo !== 'rateio') continue;
+          idxs.forEach(i => rateados.add(i));
+          let total = num(p.valor);
+          if (p.periodo === 'anual_mes') total = m + 1 === num(p.mes) ? total : 0;
+          else if (p.periodo === 'anual_diluido') total = total / 12;
+          if (!total) continue;
+          const elegiveis = idxs.filter(i => ativos[i] && elegivel(p, colaboradores[i]));
+          const pesos = elegiveis.map(i => (p.rateio === 'salario' ? sal[i] : 1));
+          const soma = pesos.reduce((a, b) => a + b, 0);
+          if (!soma) continue;
+          const fator = ehBenef ? fatorBenef(elegiveis[0], m) : 1;
+          elegiveis.forEach((i, k) => { valores[at(i, r, m)] = (total * fator * pesos[k]) / soma; });
+        }
+
+        for (let i = 0; i < n; i++) {
+          if (!ativos[i] || rateados.has(i)) continue;
+          const p = prems[i][r];
+          if (p.metodo === 'nao' || !elegivel(p, colaboradores[i])) continue;
+          let v = 0;
+          switch (p.metodo) {
+            case 'pct':
+              v = (num(p.valor) / 100) * base(i, rub.adicional ? 'salario' : p.base);
+              if (p.teto != null && p.teto !== '' && num(p.teto) > 0) v = Math.min(v, num(p.teto));
+              break;
+            case 'fixo':
+              v = num(p.valor) * (ehBenef ? fatorBenef(i, m) : 1);
+              if (p.periodo === 'anual_mes') v = m + 1 === num(p.mes) ? v : 0;
+              else if (p.periodo === 'anual_diluido') v = v / 12;
+              break;
+            case 'multiplo': {
+              const nivel = colaboradores[i].cargo;
+              const mult = p.por_nivel && niveis && niveis[nivel] != null ? num(niveis[nivel]) : num(p.valor);
+              v = mult * sal[i];
+              if (p.periodo === 'anual_mes') v = m + 1 === num(p.mes) ? v : 0;
+              else if (p.periodo === 'anual_diluido') v = v / 12;
+              break;
+            }
+            default:
+              v = 0;
+          }
+          valores[at(i, r, m)] = v;
+        }
+      }
+    }
+
+    return {
+      n,
+      colaboradores,
+      valores,
+      valor: (i, r, m) => valores[at(i, r, m)],
+    };
+  }
+
+  /**
+   * Soma o resultado por uma chave (ex.: filial, centro de custo, colaborador).
+   * Retorna Map(chave → { porRubrica: Float64Array(R×12), meses: Float64Array(12), total, hc: Float64Array(12) }).
+   */
+  function agregar(res, chaveDe, filtro) {
+    const out = new Map();
+    for (let i = 0; i < res.n; i++) {
+      const c = res.colaboradores[i];
+      if (filtro && !filtro(c)) continue;
+      const k = chaveDe(c);
+      if (!out.has(k)) out.set(k, { porRubrica: new Float64Array(R * 12), meses: new Float64Array(12), hc: new Float64Array(12), total: 0, n: 0 });
+      const ag = out.get(k);
+      ag.n++;
+      const ini = num(c.mes_inicio) || 1;
+      const fim = num(c.mes_fim) || 12;
+      for (let m = 0; m < 12; m++) if (m + 1 >= ini && m + 1 <= fim) ag.hc[m]++;
+      const off = i * R * 12;
+      for (let j = 0; j < R * 12; j++) {
+        const v = res.valores[off + j];
+        if (!v) continue;
+        ag.porRubrica[j] += v;
+        ag.meses[j % 12] += v;
+        ag.total += v;
+      }
+    }
+    return out;
+  }
+
+  /** Totais por grupo (Remuneração, Provisões...) a partir de um agregado: { [grupo]: Float64Array(12) }. */
+  function porGrupo(ag) {
+    const out = Object.fromEntries(GRUPOS.map(g => [g.id, new Float64Array(12)]));
+    RUBRICAS.forEach((rub, r) => {
+      for (let m = 0; m < 12; m++) out[rub.grupo][m] += ag.porRubrica[r * 12 + m];
+    });
+    return out;
+  }
+
+  return { MESES, GRUPOS, RUBRICAS, METODOS, BASES, PERIODOS, IDX, premissaDe, origemDe, elegivel, calcular, agregar, porGrupo };
+});

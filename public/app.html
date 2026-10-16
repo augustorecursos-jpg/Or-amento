@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orçamento de Pessoal · Âmbar</title>
+  <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body class="app">
+  <aside class="lateral" id="lateral">
+    <a class="lateral-marca logo claro" href="app.html"><b>Âmbar</b><small>ENERGIA · ORÇAMENTO</small></a>
+    <p class="lateral-grupo" id="grupo-ano">ORÇAMENTO</p>
+    <button class="lateral-item" data-aba="painel"><span class="ic">📊</span>Painel</button>
+    <button class="lateral-item" data-aba="simulacao"><span class="ic">🧮</span>Simulação mês a mês</button>
+    <button class="lateral-item so-admin" data-aba="premissas"><span class="ic">⚙️</span>Premissas e regras</button>
+    <button class="lateral-item so-admin" data-aba="base"><span class="ic">👥</span>Base de colaboradores</button>
+    <button class="lateral-item so-coord" data-aba="conferencia"><span class="ic">✅</span>Conferência</button>
+    <p class="lateral-grupo">VALIDAÇÃO</p>
+    <button class="lateral-item" data-aba="solicitacoes"><span class="ic">💬</span><span id="rot-solic">Pedidos de ajuste</span><span class="qtd" id="qtd-solic" hidden></span></button>
+    <button class="lateral-item so-admin" data-aba="coordenadores"><span class="ic">🔑</span>Acessos dos coordenadores</button>
+    <button class="lateral-item so-admin" data-aba="historico"><span class="ic">🕘</span>Histórico</button>
+    <div class="lateral-rodape"><button class="lateral-item" id="sair"><span class="ic">⎋</span>Sair</button></div>
+  </aside>
+
+  <div class="principal">
+    <header class="barra">
+      <button class="btn-menu" id="btn-menu" aria-label="Abrir menu">☰</button>
+      <div class="barra-titulo">
+        <small id="barra-ano">ORÇAMENTO DE PESSOAL</small>
+        <strong id="barra-pagina">Painel</strong>
+      </div>
+      <div class="barra-filtros" id="barra-filtros">
+        <select class="campo" id="f-regional" aria-label="Regional"></select>
+        <select class="campo" id="f-filial" aria-label="Filial"></select>
+      </div>
+      <div class="barra-usuario">
+        <div class="barra-nome"><strong id="u-nome"></strong><small id="u-papel"></small></div>
+        <div class="avatar" id="u-avatar"></div>
+      </div>
+    </header>
+
+    <main class="conteudo" id="conteudo">
+      <section data-painel="painel"></section>
+      <section data-painel="simulacao" hidden></section>
+      <section data-painel="premissas" hidden></section>
+      <section data-painel="base" hidden></section>
+      <section data-painel="conferencia" hidden></section>
+      <section data-painel="solicitacoes" hidden></section>
+      <section data-painel="coordenadores" hidden></section>
+      <section data-painel="historico" hidden></section>
+    </main>
+  </div>
+
+  <dialog class="modal" id="modal"></dialog>
+
+  <script src="vendor/xlsx.full.min.js" defer></script>
+  <script src="js/comum.js"></script>
+  <script src="js/motor.js"></script>
+  <script src="js/graficos.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

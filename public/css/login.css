@@ -1,0 +1,29 @@
+/* Tela de entrada */
+.login { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; background: var(--fundo); }
+.login-arte {
+  position: relative; overflow: hidden; background: var(--marinho); color: #dce7f0; padding: clamp(32px, 6vw, 80px);
+  display: flex; flex-direction: column; justify-content: center; gap: 1rem;
+}
+.login-arte::after {
+  content: ''; position: absolute; right: 0; bottom: 0; width: 80%; height: 40%; pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 420 150' preserveAspectRatio='none'%3E%3Cpath d='M420 0C300 6 220 100 60 150H100C250 110 320 24 420 18Z' fill='%23ec6b24'/%3E%3Cpath d='M420 18C320 24 250 110 100 150H420Z' fill='%23164d74'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+}
+.login-arte .pontilhado { top: 0; right: 0; width: 60%; height: 60%; background-image: radial-gradient(rgba(255, 255, 255, .16) 1.2px, transparent 1.3px); }
+.login-arte > * { position: relative; z-index: 1; }
+.login-arte small { font-family: var(--fonte-titulo); font-size: .72rem; letter-spacing: .18em; font-weight: 700; color: var(--laranja-claro); }
+.login-arte h2 { color: #fff; font-size: clamp(1.6rem, 3vw, 2.4rem); line-height: 1.2; max-width: 520px; }
+.login-arte ul { list-style: none; padding: 0; margin: .6rem 0 0; display: grid; gap: .7rem; max-width: 520px; }
+.login-arte li { padding-left: 1.4rem; position: relative; line-height: 1.5; }
+.login-arte li::before { content: ''; position: absolute; left: 0; top: .5rem; width: 8px; height: 8px; border-radius: 50%; background: var(--laranja); }
+.login-arte b { color: #fff; }
+.cartao { background: #fff; border-radius: var(--raio); padding: 2rem; border: 1px solid var(--linha); box-shadow: var(--sombra); }
+.login-cartao { align-self: center; justify-self: center; width: min(400px, calc(100% - 32px)); display: grid; gap: .7rem; margin: 32px 0; }
+.login-cartao h1 { font-size: 1.4rem; }
+.login-cartao p { margin: 0 0 .4rem; color: var(--texto-suave); font-size: .9rem; line-height: 1.5; }
+.login-cartao label { font-weight: 700; font-size: .85rem; color: var(--marinho); }
+.login-cartao .btn { margin-top: .4rem; }
+.login-cartao .erro { color: var(--vermelho); font-weight: 700; margin: 0; }
+@media (max-width: 860px) {
+  .login { grid-template-columns: 1fr; }
+  .login-arte { padding: 32px 16px 80px; }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "ambar-orcamento-pessoal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Orçamento de pessoal por filial: premissas, simulação mensal de dissídio e conferência pelos coordenadores - Âmbar Energia",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --no-warnings server.js",
+    "dev": "node --no-warnings --watch server.js",
+    "seed": "node --no-warnings scripts/seed-demo.js",
+    "test": "node --no-warnings --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  }
+}

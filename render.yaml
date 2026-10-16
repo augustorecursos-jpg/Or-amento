@@ -1,0 +1,27 @@
+# Blueprint do Render (render.com → New → Blueprint → este repositório).
+# Plano Starter + disco persistente: base, premissas, acessos e pedidos sobrevivem a reinícios e novos deploys.
+services:
+  - type: web
+    name: orcamento-pessoal-ambar
+    runtime: node
+    plan: starter
+    region: virginia
+    branch: claude/focused-lamport-6pb6er
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /healthz
+    disk:
+      name: dados
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATA_DIR
+        value: /var/data
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_PASSWORD
+        sync: false
