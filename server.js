@@ -140,6 +140,7 @@ function limparPremissa(p) {
     teto: p.teto === '' || p.teto == null ? null : numero(p.teto),
     por_nivel: Boolean(p.por_nivel),
     sem_dissidio: Boolean(p.sem_dissidio),
+    meses: Array.from({ length: 12 }, (_, i) => numero(Array.isArray(p.meses) ? p.meses[i] : 0)),
     niveis: Object.fromEntries(Object.entries(p.niveis && typeof p.niveis === 'object' ? p.niveis : {})
       .filter(([k, v]) => texto(k) && v !== '' && v != null).slice(0, 100).map(([k, v]) => [texto(k, 120), numero(v)])),
     quem: (Array.isArray(p.quem) ? p.quem : []).map(q => texto(q, 200)).filter(q => /^(cc|cargo):/.test(q)).slice(0, 300),
@@ -421,6 +422,31 @@ app.put('/api/premissas', exigirAdmin, (req, res) => {
   try { gravarPremissas(escopo, rubricas); db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; }
   registrar('Administrador', 'Alterou premissas', `${escopo === '*' ? 'Geral' : escopo} · ${Object.keys(rubricas).length} rubrica(s)`);
   res.json({ ok: true });
+});
+
+// Leva a periodicidade (e o mês / os 12 valores) de uma rubrica para as regras próprias de regionais e filiais,
+// mantendo o resto de cada regra (ex.: PPR em fevereiro em todas as unidades, cada uma com o seu target).
+app.put('/api/premissas/propagar', exigirAdmin, (req, res) => {
+  const rubrica = texto(req.body?.rubrica, 60);
+  const escopos = (Array.isArray(req.body?.escopos) ? req.body.escopos : []).map(e => texto(e, 140)).filter(Boolean);
+  if (!RUBRICAS_VALIDAS.has(rubrica)) return res.status(400).json({ erro: 'Item inválido.' });
+  const periodo = Motor.PERIODOS[req.body?.periodo] ? req.body.periodo : null;
+  if (!periodo) return res.status(400).json({ erro: 'Periodicidade inválida.' });
+  const ler = db.prepare('SELECT dados FROM premissas WHERE escopo = ? AND rubrica = ?');
+  const gravar = db.prepare('UPDATE premissas SET dados = ? WHERE escopo = ? AND rubrica = ?');
+  let n = 0;
+  db.exec('BEGIN');
+  for (const esc of escopos) {
+    const linha = ler.get(esc, rubrica);
+    if (!linha) continue;
+    const p = JSON.parse(linha.dados);
+    const novo = limparPremissa({ ...p, periodo, mes: req.body.mes ?? p.mes, meses: req.body.meses ?? p.meses });
+    gravar.run(JSON.stringify(novo), esc, rubrica);
+    n++;
+  }
+  db.exec('COMMIT');
+  registrar('Administrador', 'Aplicou periodicidade em regras próprias', `${rubrica} · ${periodo} · ${n} regra(s)`);
+  res.json({ ok: true, atualizadas: n });
 });
 
 // Importação do quadro de premissas (Excel): várias filiais de uma vez, com dissídio opcional.

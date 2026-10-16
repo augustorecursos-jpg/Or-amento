@@ -17,6 +17,7 @@
 //           'multiplo' N salários por colaborador (PPR) = salário × N, sobre o novo salário (com o dissídio da filial); sem_dissidio usa o salário da base; com por_nivel, usa a tabela `niveis` da própria regra
 //                      ({ [nível do cargo]: nº de salários }) — ex.: a Holding com target por cargo e as filiais com outro
 //   periodo 'mensal' (todo mês) · 'anual_mes' (valor do ano inteiro lançado no mês `mes`) · 'anual_diluido' (valor anual ÷ 12)
+//           · 'por_mes' (R$ fixo ou total da filial com um valor para cada mês em `meses[12]`, ex.: ações de endomarketing)
 //   quem    lista vazia = todos; senão só quem está em um dos centros de custo ('cc:<código>') ou níveis de cargo ('cargo:<nível>')
 (function (raiz, fabrica) {
   const motor = fabrica();
@@ -92,7 +93,7 @@
     multiplo: 'Nº de salários',
   };
   const BASES = { salario: 'Salário', remuneracao: 'Remuneração', folha: 'Folha c/ HE', ferias: 'Férias', decimo: '13º salário' };
-  const PERIODOS = { mensal: 'Todo mês', anual_mes: 'Uma vez no ano (mês)', anual_diluido: 'Anual diluído (÷12)' };
+  const PERIODOS = { mensal: 'Todo mês', anual_mes: 'Uma vez no ano (mês)', anual_diluido: 'Anual diluído (÷12)', por_mes: 'Valor diferente em cada mês' };
 
   const R = RUBRICAS.length;
   const IDX = Object.fromEntries(RUBRICAS.map((r, i) => [r.id, i]));
@@ -226,7 +227,7 @@
           const p = premsFilial[idxs[0]][r];
           if (p.metodo !== 'rateio') continue;
           idxs.forEach(i => { if (!temExcecao(i, r)) rateados.add(i); });
-          let total = num(p.valor);
+          let total = p.periodo === 'por_mes' ? num(p.meses?.[m]) : num(p.valor);
           if (p.periodo === 'anual_mes') total = m + 1 === num(p.mes) ? total : 0;
           else if (p.periodo === 'anual_diluido') total = total / 12;
           if (!total) continue;
@@ -249,7 +250,7 @@
               if (p.teto != null && p.teto !== '' && num(p.teto) > 0) v = Math.min(v, num(p.teto));
               break;
             case 'fixo':
-              v = num(p.valor) * (ehBenef ? fatorBenef(i, m) : 1);
+              v = (p.periodo === 'por_mes' ? num(p.meses?.[m]) : num(p.valor)) * (ehBenef ? fatorBenef(i, m) : 1);
               if (p.periodo === 'anual_mes') v = m + 1 === num(p.mes) ? v : 0;
               else if (p.periodo === 'anual_diluido') v = v / 12;
               break;
@@ -258,7 +259,7 @@
               // sem_dissidio força o salário da base.
               v = multiploDe(p, colaboradores[i].cargo, niveis) * salarioPpr(i, p);
               if (p.periodo === 'anual_mes') v = m + 1 === num(p.mes) ? v : 0;
-              else if (p.periodo === 'anual_diluido') v = v / 12;
+              else if (p.periodo === 'anual_diluido' || p.periodo === 'por_mes') v = v / 12;
               break;
             }
             default:

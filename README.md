@@ -59,6 +59,11 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   Mostra o custo anual de cada item antes de salvar e a **distribuição por centro de custo e colaborador** (🔍).
   Filtros de **regional** e **filial** em listas suspensas. Na filial: dissídio e reajuste de benefícios com mês de
   início. Copiar regras de uma filial para outras e dissídio em lote.
+  - **Valor diferente em cada mês** (no ⚙ do item): 12 valores, Jan a Dez, em R$ por colaborador ou total da filial —
+    ex.: ações de endomarketing. Aceita colar a linha do Excel.
+  - **Aplicar a forma de pagamento às regras próprias**: na Regra geral (ou numa regional), o ⚙ permite levar a
+    periodicidade/mês para as regionais e filiais que têm regra própria, mantendo os valores de cada uma — ex.: PPR inteiro
+    em fevereiro em todas as unidades, cada uma com o seu target.
   - **Horas extras, treinamento e viagens**: lance o **custo total do ano** da filial; a ferramenta divide por 12 e faz a
     média por colaborador (só entre quem recebe). Dá para trocar para total por mês no ⚙.
   - **PPR = salário × target**: ex.: R$ 13.780 × 2 = R$ 27.560 no ano. Se a filial tem dissídio, usa o **novo salário**

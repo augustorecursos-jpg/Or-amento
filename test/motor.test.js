@@ -124,3 +124,17 @@ test('PPR = novo salário (com dissídio) × target; sem dissídio fica salário
     premissas: { '*': { ppr: { metodo: 'multiplo', valor: 2, periodo: 'anual_mes', mes: 3, sem_dissidio: true } } } });
   perto(total(ignorar, 'ppr'), 27560);
 });
+
+test('valor diferente em cada mês: por colaborador e total da filial', () => {
+  const meses = [0, 500, 0, 0, 1200, 0, 0, 0, 0, 0, 0, 3000];
+  const premissas = { '*': {
+    endomarketing: { metodo: 'fixo', periodo: 'por_mes', meses },
+    treinamento: { metodo: 'rateio', periodo: 'por_mes', meses },
+  } };
+  const res = Motor.calcular({ colaboradores: [colab({ id: 1 }), colab({ id: 2 })], filiais: {}, premissas });
+  perto(res.valor(0, Motor.IDX.endomarketing, 1), 500);
+  perto(res.valor(0, Motor.IDX.endomarketing, 0), 0);
+  perto(total(res, 'endomarketing', 0), 4700);
+  perto(res.valor(0, Motor.IDX.treinamento, 11), 1500);
+  perto(total(res, 'treinamento', 0) + total(res, 'treinamento', 1), 4700);
+});

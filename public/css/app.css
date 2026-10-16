@@ -540,3 +540,15 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .base-situacao .chips { display: flex; gap: .35rem; flex-wrap: wrap; }
 .alerta-dup { margin-top: .9rem; padding: .75rem 1rem; border-radius: 10px; background: #fff3e8; border: 1px solid #f6cfb2; color: #8a3a0c; display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; font-size: .88rem; }
 .alerta-dup small { color: var(--texto-suave); }
+.meses-box { display: grid; gap: .55rem; padding: .9rem 1rem; border-radius: 12px; background: var(--fundo); }
+.meses-box b { color: var(--marinho); font-size: .86rem; }
+.meses-grade { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .45rem; }
+.meses-grade label { display: grid; gap: .2rem; font-size: .74rem; font-weight: 700; color: var(--texto-suave); }
+.meses-grade .campo { padding: .4rem .5rem; font-size: .84rem; }
+.meses-colar { display: flex; gap: .7rem; align-items: center; flex-wrap: wrap; }
+.meses-colar .campo { flex: 1; min-width: 240px; padding: .45rem .6rem; font-size: .82rem; }
+.meses-colar small { font-weight: 800; color: var(--marinho); }
+.propagar { background: var(--laranja-suave); border-radius: 10px; padding: .7rem .8rem; align-items: flex-start; line-height: 1.45; }
+.propagar small { display: block; color: var(--texto-suave); font-size: .76rem; }
+@media (max-width: 600px) { .meses-grade { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+#form-detalhes .rotulo { align-self: start; } .propagar input { margin-top: .2rem; }

@@ -20,7 +20,7 @@ const E = {
   filtro: { regional: '', filial: '' },
   aba: 'painel',
   sim: { visao: 'rubricas', mil: false, fechados: new Set(), busca: '', abertos: new Set() },
-  prem: { escopo: '*', edits: {}, filial: {}, busca: '', visao: 'filial', ocultarVazios: true, quadroReg: '' },
+  prem: { escopo: '*', edits: {}, filial: {}, propagar: {}, busca: '', visao: 'filial', ocultarVazios: true, quadroReg: '' },
   base: { busca: '', soVagas: false, soProprias: false, fila: [] },
   conf: { filial: '', modo: 'mes', sel: new Set() },
   solic: [],
@@ -738,7 +738,7 @@ function renderPremissas() {
   $('#prem-fil', el).addEventListener('change', e => trocarEscopo(e.target.value));
   $$('[data-fcampo]', el).forEach(i => i.addEventListener('input', () => { E.prem.filial[i.dataset.fcampo] = Number(i.value) || 0; atualizarPrevia(); }));
   $('#prem-salvar', el).addEventListener('click', salvarPremissas);
-  $('#prem-descartar', el).addEventListener('click', () => { E.prem.edits = {}; E.prem.filial = {}; renderPremissas(); });
+  $('#prem-descartar', el).addEventListener('click', () => { E.prem.edits = {}; E.prem.filial = {}; E.prem.propagar = {}; renderPremissas(); });
   $('#prem-copiar', el)?.addEventListener('click', copiarPremissas);
   $('#lote-aplicar', el)?.addEventListener('click', async () => {
     const pct = $('#lote-pct').value;
@@ -760,6 +760,7 @@ function trocarEscopo(escopo) {
   const pend = Object.keys(E.prem.edits).length + Object.keys(E.prem.filial).length;
   if (pend && !confirm('Há alterações não salvas nesta tela. Descartar e trocar?')) { renderPremissas(); return; }
   E.prem.escopo = escopo;
+  E.prem.propagar = {};
   E.prem.edits = {};
   E.prem.filial = {};
   renderPremissas();
@@ -772,6 +773,7 @@ const tipoDe = p => (p.metodo === 'multiplo' && p.por_nivel ? 'nivel' : p.metodo
 const fmtN = v => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 4 });
 
 function unidadeValor(metodo, periodo) {
+  if (periodo === 'por_mes' && (metodo === 'fixo' || metodo === 'rateio')) return '';
   if (metodo === 'rateio') return { anual_diluido: 'R$ total no ano', mensal: 'R$ total por mês', anual_mes: 'R$ no mês' }[periodo] || 'R$ total';
   if (metodo === 'fixo' && periodo === 'anual_mes') return 'R$ / colab. (1x)';
   if (metodo === 'fixo' && periodo === 'anual_diluido') return 'R$ / colab. no ano';
@@ -789,14 +791,15 @@ function metodoAoLigar(rub, p) {
 /** Resumo curto dos detalhes (base, periodicidade, rateio, teto). */
 function resumoDetalhes(p) {
   if (p.metodo === 'pct') return `s/ ${BASES[p.base].toLowerCase()}${p.teto ? ` · teto ${brl0.format(p.teto)}` : ''}`;
-  const per = { mensal: 'todo mês', anual_mes: `1x no ano · ${MESES[p.mes - 1]}`, anual_diluido: 'anual ÷ 12' }[p.periodo];
-  if (p.metodo === 'rateio') return `${{ mensal: 'total do mês', anual_mes: `total em ${MESES[p.mes - 1]}`, anual_diluido: 'total do ano ÷ 12' }[p.periodo]} · ${p.rateio === 'salario' ? 'proporcional ao salário' : 'média por colaborador'}`;
+  const per = { mensal: 'todo mês', anual_mes: `1x no ano · ${MESES[p.mes - 1]}`, anual_diluido: 'anual ÷ 12', por_mes: 'valor por mês' }[p.periodo];
+  if (p.metodo === 'rateio') return `${{ mensal: 'total do mês', anual_mes: `total em ${MESES[p.mes - 1]}`, anual_diluido: 'total do ano ÷ 12', por_mes: 'total de cada mês' }[p.periodo]} · ${p.rateio === 'salario' ? 'proporcional ao salário' : 'média por colaborador'}`;
   if (p.metodo === 'multiplo') return per;
   return per;
 }
 
 /** Valor curto para o quadro de filiais e para o Excel de premissas. */
 function textoCurto(p) {
+  if (p.periodo === 'por_mes' && (p.metodo === 'fixo' || p.metodo === 'rateio')) return 'por mês';
   switch (p.metodo) {
     case 'pct': return `${fmtN(p.valor)}%`;
     case 'fixo': return `R$ ${fmtN(p.valor)}`;
@@ -816,7 +819,10 @@ function linhaPremHtml(rub, previa) {
   const tipo = tem ? tipoDe(p) : metodoAoLigar(rub.id, p);
   const tipos = rub.adicional ? { pct: TIPOS.pct, fixo: TIPOS.fixo, rateio: TIPOS.rateio } : TIPOS;
   const nNiveis = Object.keys(p.niveis || {}).length;
-  const valorHtml = tipo === 'nivel'
+  const totalMeses = (p.meses || []).reduce((a, b) => a + (Number(b) || 0), 0);
+  const valorHtml = (tipo === 'fixo' || tipo === 'rateio') && p.periodo === 'por_mes'
+    ? `<button class="btn-detalhe btn-niveis" data-detalhes2 title="Valores de cada mês">📅 12 meses · ${brl0.format(totalMeses)} no ano</button>`
+    : tipo === 'nivel'
     ? `<button class="btn-detalhe btn-niveis" data-niveis title="Target de salários por nível do cargo">📋 Tabela por nível · ${nNiveis ? `${nNiveis} nível(is)` : 'preencher'}</button>`
     : `<span class="valor-un"><input class="campo" type="number" step="any" data-campo="valor" value="${p.valor ?? 0}"><small>${unidadeValor(tipo, p.periodo)}</small></span>`;
   const desab = tem ? '' : ' desab';
@@ -855,6 +861,7 @@ function desenharTabelaPrem() {
       if (v === 'nivel' && !Object.keys(E.prem.edits[rub].niveis || {}).length) editarNiveis(rub);
     });
     tr.querySelector('[data-niveis]')?.addEventListener('click', () => editarNiveis(rub));
+    tr.querySelector('[data-detalhes2]')?.addEventListener('click', () => editarDetalhes(rub));
     tr.querySelector('[data-campo="valor"]')?.addEventListener('input', e => {
       E.prem.edits[rub] = { ...atual(), valor: Number(e.target.value) || 0 };
       atualizarPrevia();
@@ -881,14 +888,41 @@ function editarDetalhes(rub) {
         <label class="rotulo">% calculado sobre${sel('base', bases, p.base)}<small>Remuneração = salário + adicionais. Folha = remuneração + horas extras.</small></label>
         <label class="rotulo">Teto mensal (R$) <small>opcional</small><input class="campo" name="teto" type="number" step="any" value="${p.teto ?? ''}" placeholder="sem teto"></label>`
       : `
-        <label class="rotulo">Quando é pago${sel('periodo', PERIODOS, p.periodo)}<small>“Uma vez no ano” lança o valor inteiro no mês escolhido (ex.: cesta natalina em dezembro).</small></label>
-        <label class="rotulo">Mês (se for uma vez no ano)<select class="campo" name="mes">${opcoesMes(p.mes)}</select></label>`}
+        <label class="rotulo">Quando é pago${sel('periodo', m === 'multiplo' ? Object.fromEntries(Object.entries(PERIODOS).filter(([k]) => k !== 'por_mes')) : PERIODOS, p.periodo)}<small>“Uma vez no ano” lança o valor inteiro no mês escolhido (ex.: PPR em fevereiro). “Valor diferente em cada mês” serve para gastos que variam (ex.: ações de endomarketing).</small></label>
+        <label class="rotulo" id="box-mes">Mês do pagamento<select class="campo" name="mes">${opcoesMes(p.mes)}</select></label>
+        <div class="inteiro meses-box" id="box-meses">
+          <b>${m === 'rateio' ? 'Total da filial em cada mês (R$)' : 'Valor por colaborador em cada mês (R$)'}</b>
+          <div class="meses-grade">${MESES.map((nm, i) => `<label>${nm}<input class="campo" type="number" step="any" data-mesv="${i}" value="${p.meses?.[i] || ''}" placeholder="0"></label>`).join('')}</div>
+          <div class="meses-colar"><input class="campo" id="meses-colar" placeholder="Ou cole aqui a linha do Excel com os 12 valores (Jan a Dez)"><small id="meses-total"></small></div>
+        </div>`}
       ${m === 'multiplo' ? `<label class="check inteiro"><input type="checkbox" name="sem_dissidio" ${p.sem_dissidio ? 'checked' : ''}> Ignorar o dissídio (usar o salário da base)</label>
         <p class="inteiro" style="margin:0;font-size:.8rem;color:var(--texto-suave)">Padrão: novo salário (com o dissídio da filial) × nº de salários. Ex.: R$ 13.780 com dissídio de 5% = R$ 14.469 × 2 = R$ 28.938 no ano, lançado inteiro no mês escolhido ou diluído em 12 meses.</p>` : ''}
+      ${outrosEscopos(rub).length && m !== 'pct' ? `<label class="check inteiro propagar"><input type="checkbox" name="propagar"><span>Aplicar esta forma de pagamento também às <b>${outrosEscopos(rub).length} regra(s) própria(s)</b> de ${E.prem.escopo === '*' ? 'regionais e filiais' : 'filiais desta regional'} para este item <small>${esc(outrosEscopos(rub).map(e => e.replace(/^R:/, 'Regional ')).join(', ').slice(0, 160))} — cada uma mantém os seus valores${m === 'multiplo' ? ' e targets' : ''}</small></span></label>` : ''}
       ${m === 'rateio' ? `<label class="rotulo inteiro">Como dividir o total entre os colaboradores${sel('rateio', { hc: 'Igual por pessoa (headcount)', salario: 'Proporcional ao salário' }, p.rateio)}</label>` : ''}
     </form>`,
     rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="ok-detalhes">Aplicar</button>',
   });
+  const f0 = $('#form-detalhes', d);
+  const mostrar = () => {
+    if (!f0.periodo) return;
+    $('#box-mes', d).hidden = f0.periodo.value !== 'anual_mes';
+    $('#box-meses', d).hidden = f0.periodo.value !== 'por_mes';
+  };
+  const somaMeses = () => {
+    const t = $$('[data-mesv]', d).reduce((s, i) => s + (Number(i.value) || 0), 0);
+    if ($('#meses-total', d)) $('#meses-total', d).textContent = `Total no ano: ${brl.format(t)}${m === 'fixo' ? ' por colaborador' : ' por filial'}`;
+  };
+  f0.periodo?.addEventListener('change', mostrar);
+  $$('[data-mesv]', d).forEach(i => i.addEventListener('input', somaMeses));
+  $('#meses-colar', d)?.addEventListener('input', e => {
+    const nums = e.target.value.trim().split(/\t|;|\s{2,}/).map(x => Number(String(x).replace(/R\$|\s/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'))).filter(x => !Number.isNaN(x));
+    if (nums.length < 2) return;
+    $$('[data-mesv]', d).forEach((i, k) => { i.value = nums[k] ?? ''; });
+    e.target.value = '';
+    somaMeses();
+  });
+  mostrar();
+  somaMeses();
   $('#ok-detalhes', d).addEventListener('click', () => {
     const f = $('#form-detalhes', d);
     const novo = { ...p };
@@ -898,10 +932,22 @@ function editarDetalhes(rub) {
     if (f.mes) novo.mes = Number(f.mes.value);
     if (f.rateio) novo.rateio = f.rateio.value;
     if (f.sem_dissidio) novo.sem_dissidio = f.sem_dissidio.checked;
+    if (f.periodo?.value === 'por_mes') novo.meses = $$('[data-mesv]', d).map(i => Number(i.value) || 0);
+    if (f.propagar?.checked) E.prem.propagar[rub] = { escopos: outrosEscopos(rub), periodo: novo.periodo, mes: novo.mes, meses: novo.meses };
+    else delete E.prem.propagar[rub];
     E.prem.edits[rub] = novo;
     d.close();
     desenharTabelaPrem();
   });
+}
+
+/** Regras próprias abaixo do escopo atual para o item (geral → regionais e filiais; regional → filiais dela). */
+function outrosEscopos(rub) {
+  const esc = E.prem.escopo;
+  if (esc !== '*' && !esc.startsWith('R:')) return [];
+  const reg = esc.slice(2);
+  return Object.keys(E.dados.premissas).filter(e => e !== esc && e !== '*' && E.dados.premissas[e]?.[rub]
+    && (esc === '*' || (E.dados.filiais[e] && E.dados.filiais[e].regional === reg)));
 }
 
 /** Tabela de nº de salários (target) por nível do cargo, guardada na própria regra — ex.: Holding/matriz. */
@@ -1048,6 +1094,7 @@ function lerCelulaPremissa(v) {
   const t = String(v).trim().toLowerCase();
   if (/^(n|nao|não|-|—|0)$/.test(t)) return { metodo: 'nao' };
   if (/^(nivel|nível)/.test(t)) return { metodo: 'multiplo', por_nivel: true };
+  if (/^por m[eê]s$/.test(t)) return { sim: true }; // valores de cada mês continuam como estão na ferramenta
   const n = Number((t.match(/-?[\d.,]+/) || ['0'])[0].replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')) || 0;
   if (t.includes('%')) return { metodo: 'pct', valor: n };
   if (t.includes('sal')) return { metodo: 'multiplo', valor: n, por_nivel: false };
@@ -1235,11 +1282,18 @@ async function salvarPremissas() {
   try {
     if (Object.keys(edits).length) await api('/api/premissas', { method: 'PUT', body: { escopo, rubricas: edits } });
     if (Object.keys(filial).length) await api('/api/filiais', { method: 'PUT', body: { filiais: [{ filial: escopo, ...filial }] } });
+    let propagadas = 0;
+    for (const [rubrica, pr] of Object.entries(E.prem.propagar)) {
+      const r = await api('/api/premissas/propagar', { method: 'PUT', body: { rubrica, ...pr } });
+      propagadas += r.atualizadas;
+    }
+    E.prem.propagar = {};
+    if (propagadas) toast(`Premissas salvas · forma de pagamento aplicada também em ${propagadas} regra(s) própria(s).`);
     E.prem.edits = {};
     E.prem.filial = {};
     await carregar();
     renderPremissas();
-    toast('Premissas salvas.');
+    if (!propagadas) toast('Premissas salvas.');
   } catch (e) { toast(e.message, 'erro'); }
 }
 
@@ -1677,6 +1731,9 @@ function lerProprias(d) {
 function descreverPremissa(p) {
   const v = Number(p.valor) || 0;
   const per = p.periodo === 'anual_mes' ? ` · em ${MESES[p.mes - 1]}` : p.periodo === 'anual_diluido' ? ' · anual ÷ 12' : '';
+  if (p.periodo === 'por_mes' && (p.metodo === 'fixo' || p.metodo === 'rateio')) {
+    return `valor diferente por mês · ${brl.format((p.meses || []).reduce((a, b) => a + (Number(b) || 0), 0))} no ano${p.metodo === 'rateio' ? ' (total da filial)' : ' por colaborador'}`;
+  }
   switch (p.metodo) {
     case 'pct': return `${num2.format(v)}% s/ ${BASES[p.base].split(' (')[0].toLowerCase()}${p.teto ? ` · teto ${brl.format(p.teto)}` : ''}`;
     case 'fixo': return `${brl.format(v)} por colaborador${per}`;
