@@ -534,3 +534,9 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .fila-cab { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; padding-bottom: .4rem; border-bottom: 1px solid var(--linha); }
 .fila-item { margin: 0; padding: .4rem 0; border-bottom: 1px dashed var(--fundo-2); }
 .fila-item .btn-ic { color: var(--vermelho); }
+.modos-import { display: grid; gap: .45rem; flex: 1; min-width: 300px; }
+.modos-import .check { align-items: flex-start; }
+.modos-import small { display: block; color: var(--texto-suave); font-size: .76rem; }
+.base-situacao .chips { display: flex; gap: .35rem; flex-wrap: wrap; }
+.alerta-dup { margin-top: .9rem; padding: .75rem 1rem; border-radius: 10px; background: #fff3e8; border: 1px solid #f6cfb2; color: #8a3a0c; display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; font-size: .88rem; }
+.alerta-dup small { color: var(--texto-suave); }

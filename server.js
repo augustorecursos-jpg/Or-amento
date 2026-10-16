@@ -229,7 +229,8 @@ app.get('/api/dados', exigirLogin, (req, res) => {
   const colaboradores = db.prepare(`SELECT * FROM colaboradores ${filtro} ORDER BY regional, filial, nome`).all(...params)
     .map(c => ({ ...c, vaga: Boolean(c.vaga), excecoes: lerExcecoes(c.excecoes) }));
   const filiais = {};
-  for (const f of db.prepare(`SELECT * FROM filiais ${filtro} ORDER BY regional, filial`).all(...params)) filiais[f.filial] = f;
+  const comGente = new Set(colaboradores.map(c => c.filial));
+  for (const f of db.prepare(`SELECT * FROM filiais ${filtro} ORDER BY regional, filial`).all(...params)) if (comGente.has(f.filial)) filiais[f.filial] = f;
   const premissas = {};
   for (const p of db.prepare('SELECT * FROM premissas').all()) {
     const visivel = u.admin || p.escopo === '*' || (p.escopo.startsWith('R:') ? u.regionais.includes(p.escopo.slice(2)) : filiais[p.escopo]);
@@ -287,7 +288,8 @@ const CAMPOS_COLAB = ['matricula', 'nome', 'regional', 'filial', 'situacao', 'fu
 
 app.post('/api/colaboradores/importar', exigirAdmin, (req, res) => {
   const linhas = Array.isArray(req.body?.linhas) ? req.body.linhas : [];
-  const modo = req.body?.modo === 'adicionar' ? 'adicionar' : 'substituir';
+  // tudo = a base passa a ser só o que está nos arquivos · substituir = troca só as regionais dos arquivos · adicionar = soma
+  const modo = ['tudo', 'substituir', 'adicionar'].includes(req.body?.modo) ? req.body.modo : 'substituir';
   const validos = [];
   const erros = [];
   linhas.forEach((l, i) => {
@@ -301,14 +303,20 @@ app.post('/api/colaboradores/importar', exigirAdmin, (req, res) => {
   const inserir = db.prepare(`INSERT INTO colaboradores (${CAMPOS_COLAB.join(',')}) VALUES (${CAMPOS_COLAB.map(() => '?').join(',')})`);
   db.exec('BEGIN');
   try {
-    // "Substituir" troca a base apenas das regionais que vieram no arquivo (cada regional tem a sua planilha).
-    if (modo === 'substituir') {
+    if (modo !== 'adicionar') {
       // Guarda as condições próprias (sucedidos) já cadastradas, para não perdê-las ao reimportar a base.
-      const antigas = db.prepare(`SELECT matricula, excecoes FROM colaboradores WHERE matricula <> '' AND excecoes <> '{}' AND regional IN (${regionais.map(() => '?').join(',')})`).all(...regionais);
-      const porMatricula = new Map(antigas.map(a => [a.matricula, a.excecoes]));
-      for (const c of validos) if (c.excecoes === '{}' && porMatricula.has(c.matricula)) c.excecoes = porMatricula.get(c.matricula);
-      const del = db.prepare('DELETE FROM colaboradores WHERE regional = ?');
-      regionais.forEach(r => del.run(r));
+      const antigas = modo === 'tudo'
+        ? db.prepare("SELECT matricula, nome, excecoes FROM colaboradores WHERE matricula <> '' AND excecoes <> '{}'").all()
+        : db.prepare(`SELECT matricula, nome, excecoes FROM colaboradores WHERE matricula <> '' AND excecoes <> '{}' AND regional IN (${regionais.map(() => '?').join(',')})`).all(...regionais);
+      // Mesma matrícula pode existir em empresas diferentes: casa por matrícula + nome.
+      const chave = c => `${c.matricula}|${String(c.nome).trim().toUpperCase()}`;
+      const porMatricula = new Map(antigas.map(a => [chave(a), a.excecoes]));
+      for (const c of validos) if (c.excecoes === '{}' && porMatricula.has(chave(c))) c.excecoes = porMatricula.get(chave(c));
+      if (modo === 'tudo') db.exec('DELETE FROM colaboradores');
+      else {
+        const del = db.prepare('DELETE FROM colaboradores WHERE regional = ?');
+        regionais.forEach(r => del.run(r));
+      }
     }
     for (const c of validos) inserir.run(...CAMPOS_COLAB.map(k => c[k]));
     sincronizarFiliais();
@@ -340,6 +348,23 @@ app.put('/api/colaboradores/:id', exigirAdmin, (req, res) => {
   const mudou = CAMPOS_COLAB.filter(k => String(atual[k]) !== String(c[k])).map(k => `${k}: ${atual[k]} → ${c[k]}`).join('; ');
   registrar('Administrador', 'Alterou colaborador', `${c.nome} · ${mudou}`);
   res.json({ ok: true });
+});
+
+// Duplicado = mesma matrícula, mesmo nome e mesma filial (a mesma matrícula pode existir em empresas diferentes).
+// Vagas não entram. Fica só o registro mais recente (maior id).
+app.post('/api/colaboradores/remover-duplicados', exigirAdmin, (req, res) => {
+  const r = db.prepare(`DELETE FROM colaboradores WHERE vaga = 0 AND EXISTS (
+    SELECT 1 FROM colaboradores c2 WHERE c2.vaga = 0 AND c2.id > colaboradores.id AND c2.matricula = colaboradores.matricula
+      AND c2.filial = colaboradores.filial AND upper(trim(c2.nome)) = upper(trim(colaboradores.nome)))`).run();
+  registrar('Administrador', 'Removeu matrículas duplicadas', `${r.changes} registro(s)`);
+  res.json({ ok: true, removidos: Number(r.changes) });
+});
+
+app.delete('/api/colaboradores', exigirAdmin, (req, res) => {
+  if (req.body?.confirmar !== 'APAGAR') return res.status(400).json({ erro: 'Confirmação inválida.' });
+  const r = db.prepare('DELETE FROM colaboradores').run();
+  registrar('Administrador', 'Apagou toda a base de colaboradores', `${r.changes} registro(s)`);
+  res.json({ ok: true, removidos: Number(r.changes) });
 });
 
 app.delete('/api/colaboradores/:id', exigirAdmin, (req, res) => {

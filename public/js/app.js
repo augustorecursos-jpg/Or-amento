@@ -1335,6 +1335,7 @@ function renderBase() {
         <br><small>Colunas a mais na planilha são ignoradas.</small></label>
       <div id="previa" class="previa"></div>
     </section>
+    <section class="cartao base-situacao" style="margin-top:1.2rem" id="base-situacao"></section>
     <section class="cartao" style="margin-top:1.2rem">
       <div class="ferramentas">
         <input class="campo" id="base-busca" placeholder="Buscar nome, matrícula, função…" value="${esc(E.base.busca)}" style="min-width:260px">
@@ -1475,8 +1476,11 @@ async function previaImportacao(arquivos) {
       <div class="chips">${Object.entries(porReg).map(([r, f]) => `<span class="chip">${esc(r)} · ${f.size} filiais</span>`).join('')}</div>
       ${semRegional ? `<p style="color:#b54d12">⚠ ${semRegional} linha(s) sem regional — serão ignoradas.</p>` : ''}
       <div class="linha">
-        <label class="check"><input type="radio" name="modo" value="substituir" checked> Substituir a base das regionais do arquivo</label>
-        <label class="check"><input type="radio" name="modo" value="adicionar"> Adicionar à base atual</label>
+        <div class="modos-import">
+          <label class="check"><input type="radio" name="modo" value="tudo" checked> <span><b>Substituir toda a base</b> por estes arquivos <small>recomendado · a base fica só com o que está nos arquivos</small></span></label>
+          <label class="check"><input type="radio" name="modo" value="substituir"> <span><b>Substituir só as regionais</b> que estão nos arquivos <small>as outras regionais ficam como estão</small></span></label>
+          <label class="check"><input type="radio" name="modo" value="adicionar"> <span><b>Adicionar</b> à base atual <small>soma, não apaga nada · cuidado com duplicados</small></span></label>
+        </div>
         <button class="btn btn-laranja" id="confirmar-import" style="margin-left:auto">Importar ${linhas.length} linhas</button>
       </div>` : ''}`;
   $('#add-arquivo')?.addEventListener('click', () => $('#arquivo').click());
@@ -1503,7 +1507,49 @@ async function previaImportacao(arquivos) {
   });
 }
 
+/** Situação da base: total por regional, matrículas repetidas e ações de limpeza. */
+function desenharSituacaoBase() {
+  const el = $('#base-situacao');
+  if (!el) return;
+  const todos = E.dados.colaboradores;
+  const porReg = {};
+  todos.forEach(c => { porReg[c.regional] = (porReg[c.regional] || 0) + 1; });
+  // Duplicado = mesma matrícula + nome + filial (a mesma matrícula existe em empresas diferentes); vagas não contam.
+  const contMat = new Map();
+  todos.forEach(c => {
+    if (c.vaga) return;
+    const k = `${c.matricula}|${String(c.nome).trim().toUpperCase()}|${c.filial}`;
+    contMat.set(k, (contMat.get(k) || 0) + 1);
+  });
+  const repetidas = [...contMat.values()].filter(n => n > 1);
+  const sobra = repetidas.reduce((s, n) => s + n - 1, 0);
+  el.innerHTML = `
+    <div class="ferramentas" style="margin:0">
+      <h3 style="margin:0">Base atual: ${num0.format(todos.length)} registro(s)</h3>
+      <div class="chips">${Object.entries(porReg).sort().map(([r, n]) => `<span class="chip">${esc(r)} · ${num0.format(n)}</span>`).join('')}</div>
+      <span class="direita"><button class="btn btn-perigo btn-sm" id="apagar-base" ${todos.length ? '' : 'disabled'}>🗑 Apagar toda a base</button></span>
+    </div>
+    ${sobra ? `<div class="alerta-dup">⚠ <b>${num0.format(repetidas.length)} colaborador(es) aparecem mais de uma vez</b> (mesma matrícula, nome e filial) (${num0.format(sobra)} registro(s) a mais) — provavelmente de uma importação somada à anterior.
+      <button class="btn btn-laranja btn-sm" id="remover-dup">Remover duplicados</button><small>Fica só o registro mais recente de cada um.</small></div>` : ''}`;
+  $('#remover-dup', el)?.addEventListener('click', async () => {
+    if (!confirm(`Remover ${sobra} registro(s) duplicado(s)? Fica só o registro mais recente de cada colaborador.`)) return;
+    const r = await api('/api/colaboradores/remover-duplicados', { method: 'POST' });
+    await carregar();
+    renderBase();
+    toast(`${r.removidos} registro(s) duplicado(s) removido(s).`);
+  });
+  $('#apagar-base', el)?.addEventListener('click', async () => {
+    const txt = prompt(`Isto apaga os ${todos.length} registros da base (as premissas continuam). Para confirmar, digite APAGAR:`);
+    if (txt !== 'APAGAR') return;
+    const r = await api('/api/colaboradores', { method: 'DELETE', body: { confirmar: 'APAGAR' } });
+    await carregar();
+    renderBase();
+    toast(`Base apagada (${r.removidos} registros). Importe as planilhas de novo.`);
+  });
+}
+
 function desenharBase() {
+  desenharSituacaoBase();
   const busca = E.base.busca.toLowerCase();
   const idx = new Map(E.res.colaboradores.map((c, i) => [c.id, i]));
   const lista = E.dados.colaboradores.filter(c => noFiltro(c) && (!E.base.soVagas || c.vaga) && (!E.base.soProprias || temProprias(c)) &&
