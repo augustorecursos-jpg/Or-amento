@@ -1825,6 +1825,18 @@ const CONTA_SUGERIDA = {
   saude_ocupacional: '67980 - EXAMES PERIÓDICOS', endomarketing: '105278 - ENDOMARKETING', treinamento: '246 - CURSOS E TREINAMENTOS DE PESSOAL',
   viagens: '68420 - DIÁRIAS', confraternizacoes: '251 - CONFRATERNIZAÇÕES',
 };
+// Pacote de cada item no arquivo da contabilidade (editável na tela).
+const PROVISOES_TRAB = new Set(['ferias', 'decimo', 'fgts_ferias', 'fgts_13', 'inss_ferias', 'inss_13']);
+function pacoteDoItem(cfg, rub) {
+  if (cfg.mapa_pacotes?.[rub]) return cfg.mapa_pacotes[rub];
+  const [pessoal, beneficios, provisoes] = cfg.pacotes;
+  if (PROVISOES_TRAB.has(rub)) return provisoes;
+  const grupo = RUBRICAS[IDX[rub]].grupo;
+  if (grupo === 'beneficios' && rub !== 'ppr') return beneficios;
+  if (grupo === 'demais') return beneficios;
+  return pessoal;
+}
+
 const codigoDe = rotulo => String(rotulo || '').split(' - ')[0].trim();
 
 /** Conta contábil de um item: escolhida na tela → sugerida (achando na lista pelo código). */
@@ -1853,8 +1865,9 @@ function linhasContabeis(cfg) {
     RUBRICAS.forEach((r, k) => {
       const conta = contaDoItem2(cfg, r.id);
       if (!conta) return;
-      const chave = `${cc}\u0000${conta}`;
-      if (!porChave.has(chave)) porChave.set(chave, { cc, conta, meses: new Float64Array(12) });
+      const pacote = pacoteDoItem(cfg, r.id);
+      const chave = `${pacote}\u0000${cc}\u0000${conta}`;
+      if (!porChave.has(chave)) porChave.set(chave, { pacote, cc, conta, meses: new Float64Array(12) });
       const l = porChave.get(chave);
       for (let m = 0; m < 12; m++) l.meses[m] += E.res.valor(i, k, m);
     });
@@ -1862,7 +1875,7 @@ function linhasContabeis(cfg) {
   const ordemConta = new Map(cfg.contas.map((c, i) => [c, i]));
   return [...porChave.values()]
     .filter(l => E.contabil.zeradas || l.meses.some(v => Math.abs(v) >= 0.005))
-    .sort((a, b) => a.cc.localeCompare(b.cc, 'pt-BR', { numeric: true }) || (ordemConta.get(a.conta) ?? 999) - (ordemConta.get(b.conta) ?? 999) || a.conta.localeCompare(b.conta));
+    .sort((a, b) => cfg.pacotes.indexOf(a.pacote) - cfg.pacotes.indexOf(b.pacote) || a.cc.localeCompare(b.cc, 'pt-BR', { numeric: true }) || (ordemConta.get(a.conta) ?? 999) - (ordemConta.get(b.conta) ?? 999) || a.conta.localeCompare(b.conta));
 }
 
 async function renderContabil() {
@@ -1891,7 +1904,7 @@ async function renderContabil() {
         <label class="btn btn-marinho btn-sm" style="cursor:pointer">⬆ Importar listas (Excel)<input type="file" id="ct-listas" accept=".xlsx,.xls" hidden></label>
         <div class="chips" style="margin-top:.7rem"><span class="chip ${cfg.contas.length ? 'ok' : 'falta'}">${cfg.contas.length} contas contábeis</span><span class="chip ${cfg.ccs.length ? 'ok' : 'falta'}">${cfg.ccs.length} centros de custo</span></div>
         <div class="form-grade" style="margin-top:.9rem">
-          <label class="rotulo">Pacote<input class="campo" id="ct-pacote" value="${esc(cfg.pacote)}"></label>
+          <label class="rotulo inteiro">Pacotes <small>(separados por vírgula)</small><input class="campo" id="ct-pacotes" value="${esc(cfg.pacotes.join(', '))}"></label>
           <label class="rotulo">Terceiro<input class="campo" id="ct-terceiro" value="${esc(cfg.terceiro)}"></label>
         </div>
       </section>
@@ -1909,9 +1922,10 @@ async function renderContabil() {
 
     <section class="cartao" style="margin-top:1.2rem">
       <h3>3 · Item do orçamento → Conta contábil <small>· sugestão inicial pelo nome da conta; troque o que precisar</small></h3>
-      <div class="tabela-wrap" style="max-height:420px"><table class="tabela contabil-itens"><thead><tr><th>Item</th><th class="n">Custo anual (${esc(escopo)})</th><th>Conta contábil</th></tr></thead>
-      <tbody>${GRUPOS.map(g => `<tr class="grupo"><td colspan="3" style="cursor:default">${g.nome}</td></tr>${RUBRICAS.map((r, k) => ({ r, k })).filter(x => x.r.grupo === g.id).map(({ r, k }) => `
+      <div class="tabela-wrap" style="max-height:420px"><table class="tabela contabil-itens"><thead><tr><th>Item</th><th class="n">Custo anual (${esc(escopo)})</th><th>Pacote</th><th>Conta contábil</th></tr></thead>
+      <tbody>${GRUPOS.map(g => `<tr class="grupo"><td colspan="4" style="cursor:default">${g.nome}</td></tr>${RUBRICAS.map((r, k) => ({ r, k })).filter(x => x.r.grupo === g.id).map(({ r, k }) => `
         <tr><td>${esc(r.nome)}</td><td class="n">${brl0.format(anualRub(k))}</td>
+        <td><select class="campo" data-pacote="${r.id}">${cfg.pacotes.map(pc => `<option ${pc === pacoteDoItem(cfg, r.id) ? 'selected' : ''}>${esc(pc)}</option>`).join('')}</select></td>
         <td><select class="campo" data-rub="${r.id}">${opcoes(cfg.contas.length ? cfg.contas : Object.values(CONTA_SUGERIDA), contaDoItem2(cfg, r.id), '— não enviar —')}</select></td></tr>`).join('')}`).join('')}</tbody></table></div>
     </section>
 
@@ -1919,7 +1933,7 @@ async function renderContabil() {
       <div class="ferramentas" style="margin-bottom:.8rem"><h3 style="margin:0">Prévia · ${esc(escopo)} <small>· ${linhas.length} linha(s) · ${colabs.length} colaborador(es)</small></h3>
         <span class="direita"><label class="check"><input type="checkbox" id="ct-zeradas" ${E.contabil.zeradas ? 'checked' : ''}> incluir linhas zeradas</label></span></div>
       <div class="tabela-wrap alta"><table class="tabela tabela-contabil"><thead><tr><th>Pacote</th><th>Centro de Custo</th><th>Conta Contábil</th><th>Terceiro</th>${meses.map(m => `<th class="n">${m}</th>`).join('')}</tr></thead>
-      <tbody>${linhas.slice(0, 400).map(l => `<tr><td>${esc(cfg.pacote)}</td><td>${esc(l.cc)}</td><td>${esc(l.conta)}</td><td>${esc(cfg.terceiro)}</td>${[...l.meses].map(v => `<td class="n">${Math.round(v) ? num0.format(Math.round(v)) : '-'}</td>`).join('')}</tr>`).join('')
+      <tbody>${linhas.slice(0, 400).map(l => `<tr><td>${esc(l.pacote)}</td><td>${esc(l.cc)}</td><td>${esc(l.conta)}</td><td>${esc(cfg.terceiro)}</td>${[...l.meses].map(v => `<td class="n">${Math.round(v) ? num0.format(Math.round(v)) : '-'}</td>`).join('')}</tr>`).join('')
         || '<tr><td colspan="16" class="vazio">Nada para mostrar com esses filtros.</td></tr>'}</tbody></table></div>
       ${linhas.length > 400 ? `<p class="subtitulo" style="margin:.6rem 0 0">Mostrando 400 de ${linhas.length} linhas — o Excel traz todas.</p>` : ''}
     </section>`;
@@ -1927,7 +1941,12 @@ async function renderContabil() {
   const salvar = async parcial => {
     try { E.contabil.cfg = await api('/api/contabil', { method: 'PUT', body: parcial }); renderContabil(); } catch (e) { toast(e.message, 'erro'); }
   };
-  $('#ct-pacote', el).addEventListener('change', e => salvar({ pacote: e.target.value }));
+  $('#ct-pacotes', el).addEventListener('change', e => {
+    const pacotes = e.target.value.split(',').map(x => x.trim()).filter(Boolean);
+    if (pacotes.length < 3) return toast('Informe os três pacotes: pessoal, benefícios e provisões trabalhistas.', 'erro');
+    salvar({ pacotes });
+  });
+  $$('[data-pacote]', el).forEach(s => s.addEventListener('change', () => salvar({ mapa_pacotes: { ...cfg.mapa_pacotes, [s.dataset.pacote]: s.value } })));
   $('#ct-terceiro', el).addEventListener('change', e => salvar({ terceiro: e.target.value }));
   $('#ct-zeradas', el).addEventListener('change', e => { E.contabil.zeradas = e.target.checked; renderContabil(); });
   $$('[data-cc]', el).forEach(s => s.addEventListener('change', () => {
@@ -1975,7 +1994,7 @@ function baixarContabil(cfg) {
   const meses = MESES.map(m => `${m}/${ano.slice(-2)}`);
   const linhas = linhasContabeis(cfg);
   const aoa = [['Pacote', 'Centro de Custo', 'Conta Contábil', 'Terceiro', ...meses],
-    ...linhas.map(l => [cfg.pacote, l.cc, l.conta, cfg.terceiro, ...[...l.meses].map(v => Math.round(v * 100) / 100)])];
+    ...linhas.map(l => [l.pacote, l.cc, l.conta, cfg.terceiro, ...[...l.meses].map(v => Math.round(v * 100) / 100)])];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   // Formato da contabilidade: milhar sem centavos e "-" no zero
   for (let r = 1; r < aoa.length; r++) for (let c = 4; c < 16; c++) {

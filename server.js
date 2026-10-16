@@ -449,7 +449,10 @@ function lerContabil() {
   const linha = db.prepare("SELECT valor FROM config WHERE chave = 'contabil'").get();
   let c = {};
   try { c = JSON.parse(linha?.valor || '{}'); } catch { c = {}; }
-  return { pacote: 'PESSOAL', terceiro: 'N/A Custom1', cc_padrao: 'N/A Centro de Custo', contas: [], ccs: [], mapa_rubricas: {}, mapa_cc: {}, ...c };
+  return {
+    terceiro: 'N/A Custom1', cc_padrao: 'N/A Centro de Custo', contas: [], ccs: [], mapa_rubricas: {}, mapa_cc: {},
+    pacotes: ['PESSOAL', 'BENEFÍCIOS', 'PROVISÕES TRABALHISTAS'], mapa_pacotes: {}, ...c,
+  };
 }
 
 app.get('/api/contabil', exigirAdmin, (req, res) => res.json(lerContabil()));
@@ -462,7 +465,8 @@ app.put('/api/contabil', exigirAdmin, (req, res) => {
     ? Object.fromEntries(Object.entries(v).filter(([k]) => chaveOk(k)).map(([k, x]) => [texto(k, 60), texto(x, 160)]).filter(([, x]) => x))
     : null);
   const novo = {
-    pacote: b.pacote != null ? texto(b.pacote, 60) : atual.pacote,
+    pacotes: lista(b.pacotes) ?? atual.pacotes,
+    mapa_pacotes: mapa(b.mapa_pacotes, k => RUBRICAS_VALIDAS.has(k)) ?? atual.mapa_pacotes,
     terceiro: b.terceiro != null ? texto(b.terceiro, 60) : atual.terceiro,
     cc_padrao: b.cc_padrao != null ? texto(b.cc_padrao, 160) : atual.cc_padrao,
     contas: lista(b.contas) ?? atual.contas,
