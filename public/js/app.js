@@ -20,7 +20,7 @@ const E = {
   filtro: { regional: '', filial: '' },
   aba: 'painel',
   sim: { visao: 'rubricas', mil: false, fechados: new Set(), busca: '' },
-  prem: { escopo: '*', edits: {}, filial: {}, busca: '' },
+  prem: { escopo: '*', edits: {}, filial: {}, busca: '', visao: 'filial', ocultarVazios: true },
   base: { busca: '', soVagas: false },
   conf: { filial: '' },
   solic: [],
@@ -496,9 +496,25 @@ function renderPremissas() {
   const colabs = E.dados.colaboradores.filter(colabsDoEscopo(escopo));
   const cfgF = ehFilial ? { ...E.dados.filiais[escopo], ...E.prem.filial } : null;
 
-  el.innerHTML = `
+  const cabecalho = `
     <div class="cab-pagina"><div><h1 class="titulo-pagina">Premissas e <em>regras</em></h1>
-      <p class="subtitulo">Defina as regras uma vez na <b>regra geral</b>, ajuste o que for diferente na <b>regional</b> e só o que for exceção na <b>filial</b>. Cada nível herda do nível acima.</p></div></div>
+      <p class="subtitulo">Para cada filial, diga se ela <b>tem</b> o item (Sim/Não), <b>como é calculado</b> (% ou R$) e o <b>valor</b>. O que for igual para todas pode ficar na <b>regra geral</b> ou na <b>regional</b> — a filial herda e só muda o que for diferente.</p></div>
+      <div class="segmentos" id="prem-visao"><button data-v="filial" class="${E.prem.visao === 'filial' ? 'ativo' : ''}">Editar por filial</button><button data-v="quadro" class="${E.prem.visao === 'quadro' ? 'ativo' : ''}">Quadro de todas as filiais</button></div></div>`;
+  const ligarVisao = () => $$('#prem-visao button', el).forEach(b => b.addEventListener('click', () => {
+    const pend = Object.keys(E.prem.edits).length + Object.keys(E.prem.filial).length;
+    if (pend && !confirm('Há alterações não salvas nesta tela. Descartar?')) return;
+    E.prem.edits = {}; E.prem.filial = {};
+    E.prem.visao = b.dataset.v;
+    renderPremissas();
+  }));
+  if (E.prem.visao === 'quadro') {
+    el.innerHTML = `${cabecalho}<div id="prem-conteudo"></div>`;
+    ligarVisao();
+    renderQuadro();
+    return;
+  }
+
+  el.innerHTML = `${cabecalho}
     <div class="prem-grade">
       <aside class="cartao escopos">
         <input class="campo" id="prem-busca" placeholder="Buscar filial…" value="${esc(E.prem.busca)}">
@@ -529,11 +545,12 @@ function renderPremissas() {
           <span class="info" id="prem-info"></span>
           ${ehFilial ? '<button class="btn btn-claro btn-sm" id="prem-copiar">Copiar regras desta filial para…</button>' : ''}
           <button class="btn btn-claro btn-sm" id="prem-descartar">Descartar</button>
-          <button class="btn btn-laranja" id="prem-salvar">Salvar premissas</button>
+          <button class="btn btn-laranja btn-sm" id="prem-salvar">Salvar premissas</button>
         </div>
       </div>
     </div>`;
 
+  ligarVisao();
   $$('.escopo', el).forEach(b => b.addEventListener('click', () => trocarEscopo(b.dataset.escopo)));
   const buscaEl = $('#prem-busca', el);
   buscaEl.addEventListener('input', () => { E.prem.busca = buscaEl.value; renderPremissas(); $('#prem-busca').focus(); $('#prem-busca').setSelectionRange(buscaEl.value.length, buscaEl.value.length); });
@@ -568,8 +585,39 @@ function trocarEscopo(escopo) {
   window.scrollTo(0, 0);
 }
 
+const TIPOS = { pct: '% sobre base', fixo: 'R$ por colaborador', rateio: 'R$ total da filial', multiplo: 'Nº de salários' };
+const fmtN = v => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 4 });
+
 function unidadeValor(metodo) {
-  return { pct: '%', fixo: 'R$/colab.', rateio: 'R$ total', multiplo: '× salário' }[metodo] || '';
+  return { pct: '%', fixo: 'R$ / colab.', rateio: 'R$ total', multiplo: 'salários' }[metodo] || '';
+}
+
+/** Tipo de cobrança usado quando a filial passa de "Não tem" para "Tem". */
+function metodoAoLigar(rub, p) {
+  if (p.ultimo_metodo && p.ultimo_metodo !== 'nao') return p.ultimo_metodo;
+  const padrao = RUBRICAS[IDX[rub]].padrao.metodo;
+  if (padrao !== 'nao') return padrao;
+  return RUBRICAS[IDX[rub]].adicional ? 'pct' : 'fixo';
+}
+
+/** Resumo curto dos detalhes (base, periodicidade, rateio, teto). */
+function resumoDetalhes(p) {
+  if (p.metodo === 'pct') return `s/ ${BASES[p.base].toLowerCase()}${p.teto ? ` · teto ${brl0.format(p.teto)}` : ''}`;
+  const per = { mensal: 'todo mês', anual_mes: `1x no ano · ${MESES[p.mes - 1]}`, anual_diluido: 'anual ÷ 12' }[p.periodo];
+  if (p.metodo === 'rateio') return `${per} · rateio ${p.rateio === 'salario' ? 'pelo salário' : 'por HC'}`;
+  if (p.metodo === 'multiplo') return `${per}${p.por_nivel ? ' · tabela de nível' : ''}`;
+  return per;
+}
+
+/** Valor curto para o quadro de filiais e para o Excel de premissas. */
+function textoCurto(p) {
+  switch (p.metodo) {
+    case 'pct': return `${fmtN(p.valor)}%`;
+    case 'fixo': return `R$ ${fmtN(p.valor)}`;
+    case 'rateio': return `R$ ${fmtN(p.valor)} total`;
+    case 'multiplo': return p.por_nivel ? 'nível' : `${fmtN(p.valor)} sal`;
+    default: return 'Não';
+  }
 }
 
 function linhaPremHtml(rub, previa) {
@@ -578,47 +626,269 @@ function linhaPremHtml(rub, previa) {
   const r = IDX[rub.id];
   let anual = 0;
   for (let i = 0; i < previa.n; i++) for (let m = 0; m < 12; m++) anual += previa.valor(i, r, m);
-  const m = p.metodo;
-  const sel = (campo, opcoes, valor, extra = '') => `<select class="campo" data-campo="${campo}" ${extra}>${Object.entries(opcoes).map(([k, v]) => `<option value="${k}" ${k === valor ? 'selected' : ''}>${v}</option>`).join('')}</select>`;
-  const desab = cond => (cond ? '' : ' desab');
-  const bases = rub.adicional ? { salario: BASES.salario } : BASES;
-  return `<tr class="${propria ? 'propria' : 'herdada'}" data-rub="${rub.id}">
-    <td class="rub fixa">${esc(rub.nome)}<small>${propria ? (escopo === '*' ? 'regra geral' : 'regra própria') : `herdada · ${esc(origem)}`}</small></td>
+  const tem = p.metodo !== 'nao';
+  const tipo = tem ? p.metodo : metodoAoLigar(rub.id, p);
+  const tipos = rub.adicional ? { pct: TIPOS.pct, fixo: TIPOS.fixo, rateio: TIPOS.rateio } : TIPOS;
+  const desab = tem ? '' : ' desab';
+  return `<tr class="${propria ? 'propria' : 'herdada'}${tem ? '' : ' nao-tem'}" data-rub="${rub.id}">
+    <td class="rub fixa">${esc(rub.nome)}<small>${propria ? (escopo === '*' ? 'regra geral' : escopo.startsWith('R:') ? 'regra da regional' : 'regra desta filial') : `herdada · ${esc(origem)}`}</small></td>
+    <td><label class="chave" title="A filial tem este item?"><input type="checkbox" data-tem ${tem ? 'checked' : ''}><span></span><b>${tem ? 'Sim' : 'Não'}</b></label></td>
+    <td class="${desab}"><select class="campo" data-campo="metodo">${Object.entries(tipos).map(([k, v]) => `<option value="${k}" ${k === tipo ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
+    <td class="${desab}"><span class="valor-un"><input class="campo" type="number" step="any" data-campo="valor" value="${p.valor ?? 0}"><small>${unidadeValor(tipo)}</small></span></td>
+    <td class="${desab}"><button class="btn-detalhe" data-detalhes title="Base, periodicidade, rateio e teto">⚙ ${esc(resumoDetalhes({ ...p, metodo: tipo }))}</button></td>
+    <td class="${desab}"><button class="btn-detalhe" data-quem title="Quem recebe esta rubrica">👥 ${p.quem?.length ? `${p.quem.length} grupo(s)` : 'Todos'}</button></td>
     <td class="n" data-anual>${anual ? brl0.format(anual) : '–'}</td>
-    <td>${sel('metodo', METODOS, m)}</td>
-    <td class="${desab(m !== 'nao')}"><button class="btn btn-claro btn-sm" data-quem title="Quem recebe esta rubrica">👥 ${p.quem?.length ? `${p.quem.length} grupo(s)` : 'Todos'}</button></td>
-    <td class="${desab(m !== 'nao')}"><input class="campo" type="number" step="any" data-campo="valor" value="${p.valor ?? 0}" title="${unidadeValor(m)}"> <small class="sub" style="display:inline">${unidadeValor(m)}</small></td>
-    <td class="${desab(m === 'pct')}">${sel('base', bases, p.base)}</td>
-    <td class="${desab(['fixo', 'rateio', 'multiplo'].includes(m))}">${sel('periodo', PERIODOS, p.periodo)}</td>
-    <td class="${desab(['fixo', 'rateio', 'multiplo'].includes(m) && p.periodo === 'anual_mes')}"><select class="campo" data-campo="mes">${opcoesMes(p.mes)}</select></td>
-    <td>${m === 'rateio' ? sel('rateio', { hc: 'Por headcount', salario: 'Proporcional ao salário' }, p.rateio)
-      : m === 'multiplo' ? `<label class="check"><input type="checkbox" data-campo="por_nivel" ${p.por_nivel ? 'checked' : ''}> pela tabela de nível</label>`
-      : m === 'pct' ? `<input class="campo curto" type="number" step="any" data-campo="teto" value="${p.teto ?? ''}" placeholder="teto R$">` : ''}</td>
-    <td><span class="acoes">${anual ? `<button class="btn-ic" data-ver title="Ver distribuição por centro de custo e colaborador">🔍</button>` : ''}${propria ? `<button class="btn-ic" data-reset title="${escopo === '*' ? 'Voltar ao padrão do sistema' : 'Remover regra própria (volta a herdar)'}">↺</button>` : ''}</span></td>
+    <td><span class="acoes">${anual ? '<button class="btn-ic" data-ver title="Ver distribuição por centro de custo e colaborador">🔍</button>' : ''}${propria ? `<button class="btn-ic" data-reset title="${escopo === '*' ? 'Voltar ao padrão do sistema' : 'Remover regra própria (volta a herdar)'}">↺</button>` : ''}</span></td>
   </tr>`;
 }
 
 function desenharTabelaPrem() {
   const previa = calcularPrevia();
   const t = $('#tabela-prem');
-  t.innerHTML = `<thead><tr><th class="fixa">Rubrica</th><th class="n">Custo anual</th><th>Método</th><th>Quem recebe</th><th>Valor</th><th>Base</th><th>Periodicidade</th><th>Mês</th><th>Rateio / teto</th><th></th></tr></thead>
-    <tbody>${GRUPOS.map(g => `<tr class="grupo"><td class="fixa" colspan="10" style="cursor:default"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${g.cor};margin-right:.4rem"></i>${g.nome}</td></tr>
+  t.innerHTML = `<thead><tr><th class="fixa">Item</th><th>Tem?</th><th>Como é calculado</th><th>Valor</th><th>Detalhes</th><th>Quem recebe</th><th class="n">Custo anual</th><th></th></tr></thead>
+    <tbody>${GRUPOS.map(g => `<tr class="grupo"><td class="fixa" colspan="8"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${g.cor};margin-right:.4rem"></i>${g.nome}</td></tr>
       ${RUBRICAS.filter(r => r.grupo === g.id && !r.fixa).map(r => linhaPremHtml(r, previa)).join('')}`).join('')}</tbody>`;
   $$('tr[data-rub]', t).forEach(tr => {
     const rub = tr.dataset.rub;
-    tr.querySelectorAll('[data-campo]').forEach(inp => inp.addEventListener(inp.tagName === 'SELECT' || inp.type === 'checkbox' ? 'change' : 'input', () => {
-      const atual = { ...premEfetiva(E.prem.escopo, rub).p };
-      const campo = inp.dataset.campo;
-      atual[campo] = inp.type === 'checkbox' ? inp.checked : inp.tagName === 'SELECT' && campo !== 'mes' ? inp.value : inp.value === '' && campo === 'teto' ? null : Number(inp.value);
-      E.prem.edits[rub] = atual;
-      if (inp.tagName === 'SELECT' || inp.type === 'checkbox') desenharTabelaPrem();
-      else atualizarPrevia();
-    }));
+    const atual = () => ({ ...premEfetiva(E.prem.escopo, rub).p });
+    tr.querySelector('[data-tem]').addEventListener('change', e => {
+      const p = atual();
+      E.prem.edits[rub] = e.target.checked
+        ? { ...p, metodo: metodoAoLigar(rub, p) }
+        : { ...p, metodo: 'nao', ultimo_metodo: p.metodo !== 'nao' ? p.metodo : p.ultimo_metodo };
+      desenharTabelaPrem();
+    });
+    tr.querySelector('[data-campo="metodo"]').addEventListener('change', e => {
+      E.prem.edits[rub] = { ...atual(), metodo: e.target.value };
+      desenharTabelaPrem();
+    });
+    tr.querySelector('[data-campo="valor"]').addEventListener('input', e => {
+      E.prem.edits[rub] = { ...atual(), valor: Number(e.target.value) || 0 };
+      atualizarPrevia();
+    });
+    tr.querySelector('[data-detalhes]').addEventListener('click', () => editarDetalhes(rub));
+    tr.querySelector('[data-quem]').addEventListener('click', () => escolherQuem(rub));
     tr.querySelector('[data-reset]')?.addEventListener('click', () => { E.prem.edits[rub] = null; desenharTabelaPrem(); });
     tr.querySelector('[data-ver]')?.addEventListener('click', () => verDistribuicao(rub));
-    tr.querySelector('[data-quem]').addEventListener('click', () => escolherQuem(rub));
   });
   atualizarRodapePrem(previa);
+}
+
+/** Detalhes da regra: base do %, teto, periodicidade, mês, forma de rateio e PPR por nível. */
+function editarDetalhes(rub) {
+  const p = { ...premEfetiva(E.prem.escopo, rub).p };
+  const rubrica = RUBRICAS[IDX[rub]];
+  const m = p.metodo === 'nao' ? metodoAoLigar(rub, p) : p.metodo;
+  const sel = (nome, opcoes, valor) => `<select class="campo" name="${nome}">${Object.entries(opcoes).map(([k, v]) => `<option value="${k}" ${String(k) === String(valor) ? 'selected' : ''}>${v}</option>`).join('')}</select>`;
+  const bases = rubrica.adicional ? { salario: BASES.salario } : BASES;
+  const d = abrirModal({
+    titulo: rubrica.nome, sup: `DETALHES · ${TIPOS[m].toUpperCase()}`,
+    corpo: `<form class="form-grade" id="form-detalhes">
+      ${m === 'pct' ? `
+        <label class="rotulo">% calculado sobre${sel('base', bases, p.base)}<small>Remuneração = salário + adicionais. Folha = remuneração + horas extras.</small></label>
+        <label class="rotulo">Teto mensal (R$) <small>opcional</small><input class="campo" name="teto" type="number" step="any" value="${p.teto ?? ''}" placeholder="sem teto"></label>`
+      : `
+        <label class="rotulo">Quando é pago${sel('periodo', PERIODOS, p.periodo)}<small>“Uma vez no ano” lança o valor inteiro no mês escolhido (ex.: cesta natalina em dezembro).</small></label>
+        <label class="rotulo">Mês (se for uma vez no ano)<select class="campo" name="mes">${opcoesMes(p.mes)}</select></label>`}
+      ${m === 'rateio' ? `<label class="rotulo inteiro">Como dividir o total entre os colaboradores${sel('rateio', { hc: 'Igual por pessoa (headcount)', salario: 'Proporcional ao salário' }, p.rateio)}</label>` : ''}
+      ${m === 'multiplo' ? '<label class="check inteiro"><input type="checkbox" name="por_nivel" ' + (p.por_nivel ? 'checked' : '') + '> Usar a tabela de PPR por nível do cargo (em Regra geral)</label>' : ''}
+    </form>`,
+    rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="ok-detalhes">Aplicar</button>',
+  });
+  $('#ok-detalhes', d).addEventListener('click', () => {
+    const f = $('#form-detalhes', d);
+    const novo = { ...p };
+    if (f.base) novo.base = f.base.value;
+    if (f.teto) novo.teto = f.teto.value === '' ? null : Number(f.teto.value);
+    if (f.periodo) novo.periodo = f.periodo.value;
+    if (f.mes) novo.mes = Number(f.mes.value);
+    if (f.rateio) novo.rateio = f.rateio.value;
+    if (f.por_nivel) novo.por_nivel = f.por_nivel.checked;
+    E.prem.edits[rub] = novo;
+    d.close();
+    desenharTabelaPrem();
+  });
+}
+
+// ----- Quadro de todas as filiais -----
+
+function renderQuadro() {
+  const el = $('#prem-conteudo');
+  const fils = Object.values(E.dados.filiais).sort((a, b) => a.regional.localeCompare(b.regional) || a.filial.localeCompare(b.filial));
+  const rubs = RUBRICAS.filter(r => !r.fixa);
+  const efet = (f, r) => Motor.premissaDe(E.dados.premissas, f.filial, f.regional, r.id);
+  const visiveis = E.prem.ocultarVazios ? rubs.filter(r => fils.some(f => efet(f, r).metodo !== 'nao')) : rubs;
+  el.innerHTML = `
+    <div class="ferramentas">
+      <label class="check"><input type="checkbox" id="q-ocultar" ${E.prem.ocultarVazios ? 'checked' : ''}> Ocultar itens que nenhuma filial tem</label>
+      <span class="legenda-quadro"><span class="propria">desta filial</span><span>herdado (regional/geral)</span><span class="nao">não tem</span></span>
+      <span class="direita">
+        <button class="btn btn-claro btn-sm" id="q-exportar">⬇ Exportar quadro (Excel)</button>
+        <label class="btn btn-marinho btn-sm" style="cursor:pointer">⬆ Importar quadro<input type="file" id="q-importar" accept=".xlsx,.xls" hidden></label>
+      </span>
+    </div>
+    ${fils.length ? `<div class="tabela-wrap alta"><table class="tabela quadro">
+      <thead><tr><th class="fixa">Filial</th><th>Dissídio</th>${visiveis.map(r => `<th title="${esc(NOME_GRUPO[r.grupo])}" style="box-shadow:inset 0 3px 0 ${COR_GRUPO[r.grupo]}">${esc(r.nome)}</th>`).join('')}</tr></thead>
+      <tbody>${fils.map((f, k) => `${k === 0 || fils[k - 1].regional !== f.regional ? `<tr class="grupo"><td class="fixa" colspan="${visiveis.length + 2}">${esc(f.regional)}</td></tr>` : ''}
+        <tr><td class="fixa"><button class="btn-link" data-ir="${esc(f.filial)}">${esc(f.filial)}</button></td>
+        <td>${fmtN(f.dissidio_pct)}% · ${MESES[f.dissidio_mes - 1]}</td>
+        ${visiveis.map(r => {
+          const p = efet(f, r);
+          const propria = Boolean(E.dados.premissas[f.filial]?.[r.id]);
+          return `<td class="${p.metodo === 'nao' ? 'nao' : ''}${propria ? ' propria' : ''}" data-ir="${esc(f.filial)}" title="${esc(r.nome)} · ${esc(f.filial)}${p.metodo !== 'nao' ? ` · ${esc(resumoDetalhes(p))}` : ''}">${p.metodo === 'nao' ? '—' : esc(textoCurto(p))}${p.quem?.length && p.metodo !== 'nao' ? ' 👥' : ''}</td>`;
+        }).join('')}</tr>`).join('')}</tbody></table></div>` : '<div class="cartao vazio"><span>📥</span>Importe a base de colaboradores para listar as filiais.</div>'}`;
+  $('#q-ocultar', el).addEventListener('change', e => { E.prem.ocultarVazios = e.target.checked; renderQuadro(); });
+  $$('[data-ir]', el).forEach(c => c.addEventListener('click', () => { E.prem.visao = 'filial'; trocarEscopo(c.dataset.ir); }));
+  $('#q-exportar', el).addEventListener('click', exportarQuadro);
+  $('#q-importar', el).addEventListener('change', e => e.target.files[0] && importarQuadro(e.target.files[0]));
+}
+
+const COLS_FIXAS = ['REGIONAL', 'FILIAL', 'DISSÍDIO %', 'MÊS DISSÍDIO', 'REAJ. BENEFÍCIOS %', 'MÊS REAJ. BENEFÍCIOS'];
+
+function exportarQuadro() {
+  if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
+  const rubs = RUBRICAS.filter(r => !r.fixa);
+  const fils = Object.values(E.dados.filiais).sort((a, b) => a.regional.localeCompare(b.regional) || a.filial.localeCompare(b.filial));
+  const linhas = [[...COLS_FIXAS, ...rubs.map(r => r.nome)]];
+  for (const f of fils) {
+    linhas.push([f.regional, f.filial, f.dissidio_pct, MESES[f.dissidio_mes - 1], f.reaj_benef_pct, MESES[f.reaj_benef_mes - 1],
+      ...rubs.map(r => {
+        const p = Motor.premissaDe(E.dados.premissas, f.filial, f.regional, r.id);
+        return p.metodo === 'fixo' ? Number(p.valor) : textoCurto(p);
+      })]);
+  }
+  const ws = XLSX.utils.aoa_to_sheet(linhas);
+  ws['!cols'] = linhas[0].map((_, i) => ({ wch: i < 2 ? 24 : 14 }));
+  ws['!freeze'] = { xSplit: 2, ySplit: 1 };
+  const ajuda = XLSX.utils.aoa_to_sheet([
+    ['Como preencher o quadro de premissas'],
+    [''],
+    ['Uma linha por filial e uma coluna por item. Em cada célula escreva o que a filial tem:'],
+    ['Exemplo na célula', 'Significa'],
+    ['30%', 'Percentual (sobre o salário, ou a base definida na ferramenta)'],
+    ['1480  ou  R$ 1480', 'Valor em R$ por colaborador'],
+    ['8000 total', 'Valor total da filial, rateado entre os colaboradores (ex.: horas extras)'],
+    ['2,4 sal', 'Número de salários (ex.: PPR)'],
+    ['nível', 'PPR pela tabela de nível do cargo'],
+    ['Não', 'A filial não tem este item'],
+    ['(vazio)', 'Usa a regra da regional / regra geral'],
+    [''],
+    ['Periodicidade (todo mês, uma vez no ano, anual ÷ 12), base do %, teto, rateio e "quem recebe" continuam valendo como estão na ferramenta.'],
+    ['Os meses podem ser escritos como número (5) ou nome (Mai).'],
+  ]);
+  ajuda['!cols'] = [{ wch: 22 }, { wch: 80 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Premissas');
+  XLSX.utils.book_append_sheet(wb, ajuda, 'Como preencher');
+  XLSX.writeFile(wb, `Premissas-por-filial-${E.dados.config.ano}.xlsx`);
+}
+
+const chaveNome = s => normCab(s).replace(/[^A-Z0-9%]/g, '');
+// Nomes das colunas nas planilhas antigas (BZO), para aceitar também esses cabeçalhos.
+const APELIDOS = {
+  va: ['VA/VR', 'VA', 'VR'], va_natal: ['VA NATAL (DEZEMBRO)', '13° VR', '13º VR'], vt: ['VT'], assist_medica: ['ASSIST. MÉDICA', 'ASSIST. MÉDICA (EMPRESA)'],
+  assist_odonto: ['ASSIST. ODONTO', 'ASSIST. ODONTO (EMPRESA)'], aux_creche: ['AUXÍLIO CRECHÊ', 'AUXÍLIO CRECHE'], adic_turno: ['ADICIONAIS DE TURNO (INCLUSOS ADIC. INTRAJORNADA E PASSAGEM DE TURNO)'],
+  decimo: ['13° SALÁRIO'], coparticipacao: ['COPARTICIPAÇÃO CONVÊNIO MÉDICO'], educacional: ['EDUCACIONAL'], farmacia: ['FARMACIA'],
+};
+
+function lerCelulaPremissa(v) {
+  if (v == null || String(v).trim() === '') return null;
+  if (typeof v === 'number') return v ? { metodo: 'fixo', valor: v } : { metodo: 'nao' };
+  const t = String(v).trim().toLowerCase();
+  if (/^(n|nao|não|-|—|0)$/.test(t)) return { metodo: 'nao' };
+  if (/^(nivel|nível)/.test(t)) return { metodo: 'multiplo', por_nivel: true };
+  const n = Number((t.match(/-?[\d.,]+/) || ['0'])[0].replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')) || 0;
+  if (t.includes('%')) return { metodo: 'pct', valor: n };
+  if (t.includes('sal')) return { metodo: 'multiplo', valor: n, por_nivel: false };
+  if (t.includes('total') || t.includes('rateio')) return { metodo: 'rateio', valor: n };
+  if (/^sim$/.test(t)) return { sim: true };
+  return n ? { metodo: 'fixo', valor: n } : { metodo: 'nao' };
+}
+
+const mesDe = v => {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (n >= 1 && n <= 12) return n;
+  const i = MESES.findIndex(m => normCab(m) === normCab(v).slice(0, 3));
+  return i >= 0 ? i + 1 : null;
+};
+
+const CAMPOS_REGRA = ['metodo', 'valor', 'base', 'periodo', 'mes', 'rateio', 'teto', 'por_nivel', 'quem'];
+const mesmaRegra = (a, b) => CAMPOS_REGRA.every(k => JSON.stringify(a[k] ?? null) === JSON.stringify(b[k] ?? null));
+
+async function importarQuadro(arquivo) {
+  if (!window.XLSX) return toast('Carregando o leitor de Excel… tente de novo.', 'erro');
+  const wb = XLSX.read(await arquivo.arrayBuffer(), { type: 'array' });
+  const aba = wb.SheetNames.find(n => normCab(n) === 'PREMISSAS') || wb.SheetNames[0];
+  const linhas = XLSX.utils.sheet_to_json(wb.Sheets[aba], { header: 1, raw: true, defval: null });
+  const h = linhas.findIndex(l => (l || []).some(c => normCab(c) === 'FILIAL'));
+  if (h < 0) return toast('Não encontrei a coluna FILIAL na planilha.', 'erro');
+  const cab = linhas[h].map(c => chaveNome(c));
+  const col = nome => cab.indexOf(chaveNome(nome));
+  const rubCol = {};
+  for (const r of RUBRICAS.filter(x => !x.fixa)) {
+    const i = [r.nome, ...(APELIDOS[r.id] || [])].map(col).find(x => x >= 0);
+    if (i != null) rubCol[r.id] = i;
+  }
+  const iFil = col('FILIAL');
+  const iReg = col('REGIONAL');
+  const itens = [];
+  const novas = [];
+  let mudancas = 0;
+  for (const l of linhas.slice(h + 1)) {
+    const filial = String(l?.[iFil] ?? '').trim().toUpperCase();
+    if (!filial) continue;
+    const cfg = E.dados.filiais[filial];
+    const regional = cfg?.regional || String(l[iReg] ?? '').trim().toUpperCase();
+    if (!cfg) novas.push(filial);
+    const rubricas = {};
+    for (const [rub, i] of Object.entries(rubCol)) {
+      const lido = lerCelulaPremissa(l[i]);
+      const padrao = RUBRICAS[IDX[rub]].padrao;
+      const propriaAtual = E.dados.premissas[filial]?.[rub];
+      const herdada = premHerdadaDe(filial, regional, rub);
+      if (!lido) { if (propriaAtual) { rubricas[rub] = null; mudancas++; } continue; }
+      const efetiva = propriaAtual ? { ...padrao, ...propriaAtual } : herdada;
+      let novo;
+      if (lido.sim) novo = efetiva.metodo !== 'nao' ? efetiva : { ...efetiva, metodo: metodoAoLigar(rub, efetiva) };
+      else if (lido.metodo === 'nao') novo = { ...efetiva, metodo: 'nao', ultimo_metodo: efetiva.metodo !== 'nao' ? efetiva.metodo : efetiva.ultimo_metodo };
+      else novo = { ...(efetiva.metodo === lido.metodo ? efetiva : herdada.metodo === lido.metodo ? herdada : padrao), ...lido };
+      if (mesmaRegra(novo, herdada)) { if (propriaAtual) { rubricas[rub] = null; mudancas++; } }
+      else if (!propriaAtual || !mesmaRegra(novo, { ...padrao, ...propriaAtual })) { rubricas[rub] = novo; mudancas++; }
+    }
+    const filialCfg = {};
+    const val = nome => { const i = col(nome); return i >= 0 ? l[i] : null; };
+    if (val('DISSÍDIO %') != null && val('DISSÍDIO %') !== '') filialCfg.dissidio_pct = Number(String(val('DISSÍDIO %')).replace('%', '').replace(',', '.')) || 0;
+    if (mesDe(val('MÊS DISSÍDIO'))) filialCfg.dissidio_mes = mesDe(val('MÊS DISSÍDIO'));
+    if (val('REAJ. BENEFÍCIOS %') != null && val('REAJ. BENEFÍCIOS %') !== '') filialCfg.reaj_benef_pct = Number(String(val('REAJ. BENEFÍCIOS %')).replace('%', '').replace(',', '.')) || 0;
+    if (mesDe(val('MÊS REAJ. BENEFÍCIOS'))) filialCfg.reaj_benef_mes = mesDe(val('MÊS REAJ. BENEFÍCIOS'));
+    itens.push({ escopo: filial, rubricas, filial: cfg && Object.keys(filialCfg).length ? filialCfg : null });
+  }
+  const faltando = RUBRICAS.filter(r => !r.fixa && !(r.id in rubCol)).map(r => r.nome);
+  const d = abrirModal({
+    titulo: arquivo.name, sup: 'IMPORTAR QUADRO DE PREMISSAS',
+    corpo: `<p style="margin:0"><b>${itens.length}</b> filial(is) na planilha · <b>${mudancas}</b> regra(s) a alterar · <b>${Object.keys(rubCol).length}</b> itens reconhecidos.</p>
+      ${novas.length ? `<p style="margin:0;color:#b54d12">⚠ ${novas.length} filial(is) ainda não estão na base de colaboradores: ${esc(novas.join(', '))}. As regras ficam guardadas e passam a valer quando a base for importada (o dissídio delas é ignorado).</p>` : ''}
+      ${faltando.length ? `<p style="margin:0;color:var(--texto-suave)">Colunas não encontradas (continuam como estão): ${esc(faltando.join(', '))}.</p>` : ''}
+      <p style="margin:0;color:var(--texto-suave)">Valores iguais à regra da regional/geral ficam como herdados, sem criar exceção na filial.</p>`,
+    rodape: `<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="ok-quadro" ${itens.length ? '' : 'disabled'}>Importar</button>`,
+  });
+  $('#ok-quadro', d).addEventListener('click', async () => {
+    try {
+      await api('/api/premissas/lote', { method: 'PUT', body: { itens } });
+      d.close();
+      await carregar();
+      renderPremissas();
+      toast(`Quadro importado: ${mudancas} regra(s) alterada(s).`);
+    } catch (e) { toast(e.message, 'erro'); }
+  });
+}
+
+/** Regra herdada por uma filial (regional → geral → padrão), sem olhar a regra própria dela. */
+function premHerdadaDe(filial, regional, rub) {
+  const P = E.dados.premissas;
+  const padrao = RUBRICAS[IDX[rub]].padrao;
+  return { ...padrao, ...(P['R:' + regional]?.[rub] || P['*']?.[rub] || {}) };
 }
 
 let _timerPrev;
@@ -761,7 +1031,7 @@ function renderNiveis() {
 // ---------- Base de colaboradores ----------
 
 const ALIASES = {
-  matricula: ['CHAPA', 'MATRICULA'],
+  matricula: ['CHAPA', 'MATRICULA', 'MATRICULA/CHAPA'],
   nome: ['FUNCIONARIO', 'NOME', 'COLABORADOR'],
   regional: ['REGIONAL'],
   filial: ['FILIAL'],
@@ -771,7 +1041,7 @@ const ALIASES = {
   cc_cod: ['CODCCUSTORED', 'COD. C. CUSTO', 'COD. CENTRO DE CUSTO', 'CODIGO CENTRO DE CUSTO'],
   cc_nome: ['NOMECCUSTO', 'DESCRICAO CENTRO DE CUSTO', 'DESCRICAO - CENTRO DE CUSTO', 'CENTRO DE CUSTO'],
   salario: ['SALARIO S/PROV DISSIDIO', 'SALARIO S/ PROV DISSIDIO', 'SALARIO BASE', 'SALARIO'],
-  mes_inicio: ['MES INICIO', 'MES ADMISSAO', 'MES DE ADMISSAO'],
+  mes_inicio: ['MES INICIO', 'MES DE INICIO', 'MES ADMISSAO', 'MES DE ADMISSAO'],
   mes_fim: ['MES FIM', 'MES DESLIGAMENTO', 'MES DE DESLIGAMENTO'],
 };
 const ROTULO_CAMPO = { matricula: 'Matrícula', nome: 'Funcionário', regional: 'Regional', filial: 'Filial', situacao: 'Situação', funcao: 'Função', cargo: 'Cargo / nível', cc_cod: 'Cód. centro de custo', cc_nome: 'Centro de custo', salario: 'Salário', mes_inicio: 'Mês início', mes_fim: 'Mês fim' };
@@ -816,13 +1086,18 @@ function renderBase() {
   const el = painel('base');
   el.innerHTML = `
     <div class="cab-pagina"><div><h1 class="titulo-pagina">Base de <em>colaboradores</em></h1>
-      <p class="subtitulo">Suba a planilha de cada regional como está hoje — a ferramenta lê até a coluna <b>salário</b> e calcula o resto pelas premissas.</p></div>
+      <p class="subtitulo">Suba só os dados cadastrais e o <b>salário</b> (sem dissídio) de cada colaborador. Periculosidade, horas extras, benefícios, encargos e provisões <b>não vêm da planilha</b>: a ferramenta calcula tudo pelas premissas de cada filial.</p></div>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn btn-claro" id="nova-vaga">+ Nova vaga</button><button class="btn btn-claro" id="novo-colab">+ Colaborador</button></div></div>
     <section class="cartao importar">
-      <h3>Importar planilhas <small>· .xlsx ou .csv · pode selecionar várias regionais de uma vez</small></h3>
+      <h3>Importar base <small>· .xlsx ou .csv · pode ser uma planilha por regional ou todas juntas</small></h3>
+      <div class="passos-modelo">
+        <div><b>1</b><span>Baixe o modelo — são só <b>12 colunas</b>, até o salário.</span><button class="btn btn-marinho btn-sm" id="baixar-modelo">⬇ Baixar modelo (Excel)</button></div>
+        <div><b>2</b><span>Cole os colaboradores (uma linha por pessoa). Vagas: situação “Nova Vaga” e o mês de admissão em <i>Mês início</i>.</span></div>
+        <div><b>3</b><span>Suba o arquivo aqui embaixo e confira a prévia antes de importar.</span></div>
+      </div>
       <label class="zona-arquivo" id="zona"><input type="file" id="arquivo" accept=".xlsx,.xls,.csv" multiple hidden>
-        <strong>Clique ou arraste as planilhas aqui</strong>Colunas lidas: Chapa · Funcionário · Regional · Filial · Situação · Função · Cargo · Centro de custo · Salário
-        <br><a href="exemplos/base-modelo.csv" download onclick="event.stopPropagation()">Baixar modelo em branco</a></label>
+        <strong>Clique ou arraste a planilha aqui</strong>Matrícula · Funcionário · Regional · Filial · Situação · Função · Cargo · Cód. C. Custo · Centro de custo · Salário · Mês início · Mês fim
+        <br><small>Colunas a mais na planilha são ignoradas.</small></label>
       <div id="previa" class="previa"></div>
     </section>
     <section class="cartao" style="margin-top:1.2rem">
@@ -841,9 +1116,40 @@ function renderBase() {
   zona.addEventListener('drop', e => { e.preventDefault(); zona.classList.remove('sobre'); previaImportacao([...e.dataTransfer.files]); });
   $('#base-busca', el).addEventListener('input', e => { E.base.busca = e.target.value; desenharBase(); });
   $('#base-vagas', el).addEventListener('change', e => { E.base.soVagas = e.target.checked; desenharBase(); });
+  $('#baixar-modelo', el).addEventListener('click', baixarModeloBase);
   $('#nova-vaga', el).addEventListener('click', () => editarColaborador(null, { vaga: true }));
   $('#novo-colab', el).addEventListener('click', () => editarColaborador(null, {}));
   desenharBase();
+}
+
+function baixarModeloBase() {
+  if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
+  const cab = ['MATRÍCULA', 'FUNCIONÁRIO', 'REGIONAL', 'FILIAL', 'SITUAÇÃO', 'FUNÇÃO', 'CARGO', 'CÓD. C. CUSTO', 'CENTRO DE CUSTO', 'SALÁRIO', 'MÊS INÍCIO', 'MÊS FIM'];
+  const ws = XLSX.utils.aoa_to_sheet([
+    cab,
+    ['10001', 'NOME DO COLABORADOR', 'NORTE', 'APARECIDA', 'Ativo', 'Operador I', '15-Operação - Produção', '17150', 'OPERAÇÃO', 4175.6, 1, 12],
+    ['', 'NOVA VAGA - OPERADOR I', 'NORTE', 'APARECIDA', 'Nova Vaga', 'Operador I', '15-Operação - Produção', '17150', 'OPERAÇÃO', 4000, 4, 12],
+  ]);
+  ws['!cols'] = [12, 34, 16, 22, 14, 28, 26, 14, 26, 12, 11, 10].map(wch => ({ wch }));
+  const ajuda = XLSX.utils.aoa_to_sheet([
+    ['Coluna', 'O que colocar'],
+    ['MATRÍCULA', 'Chapa/matrícula (pode ficar vazia para vagas)'],
+    ['FUNCIONÁRIO', 'Nome do colaborador ou descrição da vaga'],
+    ['REGIONAL / FILIAL', 'Iguais em todas as linhas da mesma unidade (ex.: NORTE / APARECIDA)'],
+    ['SITUAÇÃO', 'Ativo, Férias, Afastado… Use "Nova Vaga" para vagas previstas'],
+    ['FUNÇÃO / CARGO', 'Cargo = nível do cargo (ex.: 07-Supervisores), usado no PPR por nível e no filtro "quem recebe"'],
+    ['CÓD. C. CUSTO / CENTRO DE CUSTO', 'Código e nome do centro de custo'],
+    ['SALÁRIO', 'Salário mensal atual, SEM o dissídio (o reajuste é aplicado pela ferramenta no mês da data-base)'],
+    ['MÊS INÍCIO', 'Opcional. 1 a 12 — para vagas, o mês de admissão. Vazio = janeiro'],
+    ['MÊS FIM', 'Opcional. 1 a 12 — desligamento previsto. Vazio = dezembro'],
+    [''],
+    ['Não inclua periculosidade, horas extras, benefícios, encargos ou provisões: eles são calculados pelas premissas de cada filial.'],
+  ]);
+  ajuda['!cols'] = [{ wch: 30 }, { wch: 100 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Base');
+  XLSX.utils.book_append_sheet(wb, ajuda, 'Como preencher');
+  XLSX.writeFile(wb, 'Modelo-base-orcamento.xlsx');
 }
 
 async function previaImportacao(arquivos) {

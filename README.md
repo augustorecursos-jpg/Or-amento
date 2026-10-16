@@ -48,15 +48,20 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   **simulador de dissídio**: altere o % e o mês da data-base de cada filial e o custo muda na hora; nada é salvo até
   clicar em *Aplicar ao orçamento*. Exporta Excel com resumo mensal, por filial, por centro de custo e por colaborador
   (formato próximo da planilha BZO).
-- **Premissas e regras** – três níveis com herança: **regra geral → regional → filial**. Cada rubrica tem método
-  (% sobre base, R$ por colaborador, total da filial rateado, nº de salários), *quem recebe* (centros de custo / níveis
-  de cargo), periodicidade (todo mês, uma vez no ano, anual ÷ 12), teto e rateio por headcount ou salário. Mostra o
-  custo anual de cada rubrica antes de salvar e a **distribuição por centro de custo e colaborador** (🔍). Na filial:
-  dissídio e reajuste de benefícios com mês de início. Copiar regras de uma filial para outras, dissídio em lote e
-  tabela de **PPR por nível do cargo**.
-- **Base de colaboradores** – importa as planilhas das regionais (várias de uma vez; acha sozinho a linha de cabeçalho
-  e a aba BZO). Modo *substituir as regionais do arquivo* ou *adicionar*. Inclui **vagas** (mês de admissão) e
-  **desligamentos previstos** (mês de saída).
+- **Premissas e regras** – para cada filial e cada item: **Tem? (Sim/Não)**, **como é calculado** (% sobre base,
+  R$ por colaborador, R$ total da filial rateado, nº de salários) e **valor**. O botão ⚙ guarda os detalhes
+  (periodicidade — todo mês, uma vez no ano, anual ÷ 12 —, base do %, teto e rateio por headcount ou salário) e 👥
+  define *quem recebe* (centros de custo / níveis de cargo). Herança em três níveis: **regra geral → regional → filial**.
+  Mostra o custo anual de cada item antes de salvar e a **distribuição por centro de custo e colaborador** (🔍).
+  Na filial: dissídio e reajuste de benefícios com mês de início. Copiar regras de uma filial para outras, dissídio em
+  lote e tabela de **PPR por nível do cargo**.
+- **Quadro de todas as filiais** – grade filial × item com o que cada filial tem. **Exporta para Excel**, você preenche
+  (`30%`, `1480`, `8000 total`, `2,4 sal`, `Não`, vazio = herda) e **importa de volta**; valores iguais à regra da
+  regional/geral não viram exceção.
+- **Base de colaboradores** – só os dados até o **salário** (sem dissídio), no **modelo Excel de 12 colunas** que a
+  própria tela baixa: matrícula, funcionário, regional, filial, situação, função, cargo, cód. e nome do centro de custo,
+  salário, mês início e mês fim. Benefícios, adicionais, encargos e provisões **não** vêm da planilha. Modo *substituir as
+  regionais do arquivo* ou *adicionar*. **Vagas** (situação “Nova Vaga” + mês de admissão) e **desligamentos previstos**.
 - **Pedidos de ajuste** – caixa de entrada com status (aberta, em análise, ajustada, recusada), resposta ao coordenador
   e botão **Abrir item**, que leva direto ao colaborador ou à premissa da filial.
 - **Acessos dos coordenadores** – login, senha e regionais de cada coordenador.

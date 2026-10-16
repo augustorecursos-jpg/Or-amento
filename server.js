@@ -140,7 +140,24 @@ function limparPremissa(p) {
     teto: p.teto === '' || p.teto == null ? null : numero(p.teto),
     por_nivel: Boolean(p.por_nivel),
     quem: (Array.isArray(p.quem) ? p.quem : []).map(q => texto(q, 200)).filter(q => /^(cc|cargo):/.test(q)).slice(0, 300),
+    // Ao marcar "Não tem", guarda como era cobrado, para voltar igual se marcar "Sim" de novo.
+    ultimo_metodo: Motor.METODOS[p.ultimo_metodo] && p.ultimo_metodo !== 'nao' ? p.ultimo_metodo : null,
   };
+}
+
+/** Grava as premissas de um escopo: { rubrica: premissa } (null = remove a regra própria e volta a herdar). */
+function gravarPremissas(escopo, rubricas) {
+  const gravar = db.prepare('INSERT INTO premissas (escopo, rubrica, dados) VALUES (?, ?, ?) ON CONFLICT(escopo, rubrica) DO UPDATE SET dados = excluded.dados');
+  const apagar = db.prepare('DELETE FROM premissas WHERE escopo = ? AND rubrica = ?');
+  let n = 0;
+  for (const [id, p] of Object.entries(rubricas || {})) {
+    if (!RUBRICAS_VALIDAS.has(id)) continue;
+    const limpa = limparPremissa(p);
+    if (limpa) gravar.run(escopo, id, JSON.stringify(limpa));
+    else apagar.run(escopo, id);
+    n++;
+  }
+  return n;
 }
 
 // Limite simples de tentativas de login com falha por IP.
@@ -355,18 +372,29 @@ app.put('/api/premissas', exigirAdmin, (req, res) => {
   const escopo = texto(req.body?.escopo, 140);
   const rubricas = req.body?.rubricas || {};
   if (!escopo) return res.status(400).json({ erro: 'Informe o escopo.' });
-  const gravar = db.prepare('INSERT INTO premissas (escopo, rubrica, dados) VALUES (?, ?, ?) ON CONFLICT(escopo, rubrica) DO UPDATE SET dados = excluded.dados');
-  const apagar = db.prepare('DELETE FROM premissas WHERE escopo = ? AND rubrica = ?');
   db.exec('BEGIN');
-  for (const [id, p] of Object.entries(rubricas)) {
-    if (!RUBRICAS_VALIDAS.has(id)) continue;
-    const limpa = limparPremissa(p);
-    if (limpa) gravar.run(escopo, id, JSON.stringify(limpa));
-    else apagar.run(escopo, id); // null = volta a herdar do nível acima
-  }
-  db.exec('COMMIT');
+  try { gravarPremissas(escopo, rubricas); db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; }
   registrar('Administrador', 'Alterou premissas', `${escopo === '*' ? 'Geral' : escopo} · ${Object.keys(rubricas).length} rubrica(s)`);
   res.json({ ok: true });
+});
+
+// Importação do quadro de premissas (Excel): várias filiais de uma vez, com dissídio opcional.
+app.put('/api/premissas/lote', exigirAdmin, (req, res) => {
+  const itens = Array.isArray(req.body?.itens) ? req.body.itens : [];
+  let rubricas = 0;
+  let filiais = 0;
+  db.exec('BEGIN');
+  try {
+    for (const it of itens) {
+      const escopo = texto(it.escopo, 140);
+      if (!escopo) continue;
+      rubricas += gravarPremissas(escopo, it.rubricas);
+      if (it.filial && salvarFilial(escopo, it.filial)) filiais++;
+    }
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  registrar('Administrador', 'Importou quadro de premissas', `${itens.length} filial(is) · ${rubricas} regra(s)`);
+  res.json({ ok: true, rubricas, filiais });
 });
 
 app.post('/api/premissas/copiar', exigirAdmin, (req, res) => {
