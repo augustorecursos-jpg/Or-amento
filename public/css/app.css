@@ -342,3 +342,20 @@ body.app { display: flex; min-height: 100vh; }
 .passos-modelo > div > b { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--laranja); color: #fff; font-size: .82rem; }
 @media (max-width: 900px) { .passos-modelo { grid-template-columns: 1fr; } }
 @media (min-width: 901px) { .prem-rodape { flex-wrap: nowrap; } .prem-rodape .info { flex: 1; min-width: 0; } .prem-rodape .btn { white-space: nowrap; } }
+
+/* Premissas: filtros em lista suspensa */
+.prem-filtros { display: flex; gap: 1rem; align-items: flex-end; flex-wrap: wrap; padding: 1rem 1.2rem; margin-bottom: 1.2rem; }
+.prem-filtros .rotulo { min-width: 260px; flex: 0 1 340px; }
+.prem-filtros p { margin: 0 0 .55rem; font-size: .78rem; color: var(--texto-suave); flex: 1; min-width: 200px; }
+.niveis-ppr { display: grid; gap: .6rem; padding: .9rem 1rem; border-radius: 12px; background: var(--fundo); }
+.niveis-ppr p { margin: 0; font-size: .8rem; color: var(--texto-suave); }
+
+/* Condições próprias do colaborador */
+.proprias { border-top: 1px dashed var(--linha); padding-top: .9rem; display: grid; gap: .6rem; justify-items: start; }
+.proprias h4 { font-size: .9rem; }
+.proprias h4 small { font-family: var(--fonte); font-weight: 400; color: var(--texto-suave); font-size: .78rem; }
+#lista-proprias { display: grid; gap: .5rem; width: 100%; }
+.propria-linha { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 110px auto; gap: .45rem; align-items: center; }
+.propria-linha .campo { padding: .45rem .6rem; font-size: .85rem; }
+.propria-linha small { grid-column: 1 / -1; font-size: .74rem; color: var(--texto-suave); margin-top: -.2rem; }
+@media (max-width: 700px) { .propria-linha { grid-template-columns: 1fr 1fr; } }

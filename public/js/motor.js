@@ -2,17 +2,20 @@
 // O mesmo arquivo roda no navegador (simulação instantânea) e no servidor (Node).
 //
 // Entrada:
-//   colaboradores: [{ id, matricula, nome, regional, filial, cargo, cc_cod, cc_nome, salario, mes_inicio, mes_fim, vaga }]
+//   colaboradores: [{ id, matricula, nome, regional, filial, cargo, cc_cod, cc_nome, salario, mes_inicio, mes_fim, vaga, excecoes }]
+//                  excecoes: { [rubrica]: { metodo: 'nao' | 'fixo' | 'pct' | 'multiplo', valor } } — condições próprias do
+//                  colaborador (ex.: sucedidos de outra empresa com benefício diferente). Valem no lugar da regra da filial.
 //   filiais:       { [filial]: { regional, dissidio_pct, dissidio_mes, reaj_benef_pct, reaj_benef_mes } }
 //   premissas:     { [escopo]: { [rubrica]: premissa } }  escopo = '*' (geral), 'R:<regional>' ou '<filial>'
-//   niveis:        { [nível do cargo]: múltiplo de salários do PPR }
+//   niveis:        { [nível do cargo]: múltiplo de salários do PPR } — tabela geral, usada se a regra não tiver a sua
 //
-// Premissa: { metodo, valor, base, periodo, mes, rateio, teto, por_nivel, quem }
+// Premissa: { metodo, valor, base, periodo, mes, rateio, teto, por_nivel, niveis, quem }
 //   metodo  'nao'      não se aplica
 //           'pct'      % sobre uma base (salário, remuneração, folha, férias ou 13º), com teto opcional
 //           'fixo'     R$ por colaborador
 //           'rateio'   R$ total da filial, distribuído entre os colaboradores (por headcount ou proporcional ao salário)
-//           'multiplo' N salários por colaborador (PPR); opcionalmente pela tabela de nível do cargo
+//           'multiplo' N salários por colaborador (PPR); com por_nivel, usa a tabela `niveis` da própria regra
+//                      ({ [nível do cargo]: nº de salários }) — ex.: a Holding com target por cargo e as filiais com outro
 //   periodo 'mensal' (todo mês) · 'anual_mes' (valor do ano inteiro lançado no mês `mes`) · 'anual_diluido' (valor anual ÷ 12)
 //   quem    lista vazia = todos; senão só quem está em um dos centros de custo ('cc:<código>') ou níveis de cargo ('cargo:<nível>')
 (function (raiz, fabrica) {
@@ -32,7 +35,7 @@
     { id: 'demais', nome: 'Demais', cor: '#b58a12' },
   ];
 
-  const P = (metodo, extra = {}) => ({ metodo, valor: 0, base: 'salario', periodo: 'mensal', mes: 12, rateio: 'hc', teto: null, por_nivel: false, quem: [], ...extra });
+  const P = (metodo, extra = {}) => ({ metodo, valor: 0, base: 'salario', periodo: 'mensal', mes: 12, rateio: 'hc', teto: null, por_nivel: false, niveis: {}, quem: [], ...extra });
 
   // Catálogo único com todas as rubricas encontradas nas planilhas das regionais.
   // A ordem importa: uma rubrica só pode usar como base o que já foi calculado antes dela.
@@ -42,7 +45,7 @@
     { id: 'insalubridade', nome: 'Insalubridade', grupo: 'remuneracao', adicional: true, padrao: P('nao') },
     { id: 'penosidade', nome: 'Penosidade', grupo: 'remuneracao', adicional: true, padrao: P('nao') },
     { id: 'adic_turno', nome: 'Adicionais de turno', grupo: 'remuneracao', adicional: true, dica: 'Inclui adicional intrajornada e passagem de turno', padrao: P('nao') },
-    { id: 'horas_extras', nome: 'Horas extras', grupo: 'remuneracao', padrao: P('rateio') },
+    { id: 'horas_extras', nome: 'Horas extras', grupo: 'remuneracao', dica: 'Custo total do ano da filial; vira média mensal por colaborador', padrao: P('rateio', { periodo: 'anual_diluido' }) },
 
     { id: 'ferias', nome: 'Férias (1/3)', grupo: 'provisoes', padrao: P('pct', { valor: 2.7778, base: 'remuneracao' }) },
     { id: 'decimo', nome: '13º salário', grupo: 'provisoes', padrao: P('pct', { valor: 8.3333 }) },
@@ -76,8 +79,8 @@
 
     { id: 'saude_ocupacional', nome: 'Saúde ocupacional', grupo: 'demais', padrao: P('nao') },
     { id: 'endomarketing', nome: 'Endomarketing', grupo: 'demais', padrao: P('fixo', { valor: 25 }) },
-    { id: 'treinamento', nome: 'Treinamento', grupo: 'demais', padrao: P('rateio') },
-    { id: 'viagens', nome: 'Viagens', grupo: 'demais', padrao: P('rateio') },
+    { id: 'treinamento', nome: 'Treinamento', grupo: 'demais', padrao: P('rateio', { periodo: 'anual_diluido' }) },
+    { id: 'viagens', nome: 'Viagens', grupo: 'demais', padrao: P('rateio', { periodo: 'anual_diluido' }) },
     { id: 'confraternizacoes', nome: 'Confraternizações', grupo: 'demais', padrao: P('fixo', { periodo: 'anual_mes', mes: 12 }) },
   ];
 
@@ -98,6 +101,22 @@
   /** O colaborador recebe a rubrica? (filtro "quem recebe" da premissa) */
   function elegivel(p, c) {
     return !p.quem || !p.quem.length || p.quem.includes('cc:' + (c.cc_cod || '')) || p.quem.includes('cargo:' + (c.cargo || ''));
+  }
+
+  /** Regra do colaborador: a da filial, ou a condição própria dele (exceção) quando houver. */
+  function aplicarExcecao(p, exc) {
+    if (!exc || !METODOS[exc.metodo]) return p;
+    const periodo = exc.metodo === p.metodo ? p.periodo : exc.metodo === 'multiplo' ? 'anual_diluido' : 'mensal';
+    return { ...p, metodo: exc.metodo, valor: num(exc.valor), periodo, quem: [], por_nivel: false, teto: exc.metodo === 'pct' ? p.teto : null };
+  }
+
+  /** Nº de salários do PPR para o nível do cargo: tabela da regra → tabela geral → valor da regra. */
+  function multiploDe(p, nivel, niveis) {
+    if (p.por_nivel) {
+      if (p.niveis && p.niveis[nivel] != null && p.niveis[nivel] !== '') return num(p.niveis[nivel]);
+      if (niveis && niveis[nivel] != null) return num(niveis[nivel]);
+    }
+    return num(p.valor);
   }
 
   function num(v) {
@@ -137,7 +156,14 @@
     };
 
     const cfg = colaboradores.map(c => filiais[c.filial] || {});
-    const prems = colaboradores.map(c => premFilial(c.filial, c.regional));
+    const premsFilial = colaboradores.map(c => premFilial(c.filial, c.regional));
+    // Regra de cada colaborador (com as exceções dele) e quem tem exceção em cada rubrica (fica fora do rateio).
+    const prems = colaboradores.map((c, i) => {
+      const exc = c.excecoes;
+      if (!exc || !Object.keys(exc).length) return premsFilial[i];
+      return premsFilial[i].map((p, r) => (p && exc[RUBRICAS[r].id] ? aplicarExcecao(p, exc[RUBRICAS[r].id]) : p));
+    });
+    const temExcecao = (i, r) => Boolean(colaboradores[i].excecoes && colaboradores[i].excecoes[RUBRICAS[r].id]);
     const ativo = (i, m) => {
       const c = colaboradores[i];
       const ini = num(c.mes_inicio) || 1;
@@ -192,14 +218,14 @@
         // Rateio: o total da filial é dividido entre quem está ativo no mês.
         const rateados = new Set();
         for (const [, idxs] of porFilial) {
-          const p = prems[idxs[0]][r];
+          const p = premsFilial[idxs[0]][r];
           if (p.metodo !== 'rateio') continue;
-          idxs.forEach(i => rateados.add(i));
+          idxs.forEach(i => { if (!temExcecao(i, r)) rateados.add(i); });
           let total = num(p.valor);
           if (p.periodo === 'anual_mes') total = m + 1 === num(p.mes) ? total : 0;
           else if (p.periodo === 'anual_diluido') total = total / 12;
           if (!total) continue;
-          const elegiveis = idxs.filter(i => ativos[i] && elegivel(p, colaboradores[i]));
+          const elegiveis = idxs.filter(i => ativos[i] && !temExcecao(i, r) && elegivel(p, colaboradores[i]));
           const pesos = elegiveis.map(i => (p.rateio === 'salario' ? sal[i] : 1));
           const soma = pesos.reduce((a, b) => a + b, 0);
           if (!soma) continue;
@@ -223,9 +249,7 @@
               else if (p.periodo === 'anual_diluido') v = v / 12;
               break;
             case 'multiplo': {
-              const nivel = colaboradores[i].cargo;
-              const mult = p.por_nivel && niveis && niveis[nivel] != null ? num(niveis[nivel]) : num(p.valor);
-              v = mult * sal[i];
+              v = multiploDe(p, colaboradores[i].cargo, niveis) * sal[i];
               if (p.periodo === 'anual_mes') v = m + 1 === num(p.mes) ? v : 0;
               else if (p.periodo === 'anual_diluido') v = v / 12;
               break;
@@ -283,5 +307,5 @@
     return out;
   }
 
-  return { MESES, GRUPOS, RUBRICAS, METODOS, BASES, PERIODOS, IDX, premissaDe, origemDe, elegivel, calcular, agregar, porGrupo };
+  return { MESES, GRUPOS, RUBRICAS, METODOS, BASES, PERIODOS, IDX, premissaDe, origemDe, elegivel, aplicarExcecao, multiploDe, calcular, agregar, porGrupo };
 });

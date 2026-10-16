@@ -31,6 +31,7 @@ CREATE TABLE IF NOT EXISTS colaboradores (
   mes_inicio INTEGER NOT NULL DEFAULT 1,
   mes_fim    INTEGER NOT NULL DEFAULT 12,
   vaga       INTEGER NOT NULL DEFAULT 0,
+  excecoes   TEXT NOT NULL DEFAULT '{}',
   atualizado_em TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS ix_colab_filial ON colaboradores(regional, filial);
@@ -102,6 +103,10 @@ CREATE TABLE IF NOT EXISTS historico (
   detalhe TEXT
 );
 `);
+
+// Atualizações de esquema em bancos já existentes.
+const colunas = db.prepare('PRAGMA table_info(colaboradores)').all().map(c => c.name);
+if (!colunas.includes('excecoes')) db.exec("ALTER TABLE colaboradores ADD COLUMN excecoes TEXT NOT NULL DEFAULT '{}'");
 
 if (!db.prepare("SELECT 1 FROM config WHERE chave = 'ano'").get()) {
   db.prepare("INSERT INTO config (chave, valor) VALUES ('ano', ?)").run(String(new Date().getFullYear() + 1));

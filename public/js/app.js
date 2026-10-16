@@ -20,8 +20,8 @@ const E = {
   filtro: { regional: '', filial: '' },
   aba: 'painel',
   sim: { visao: 'rubricas', mil: false, fechados: new Set(), busca: '' },
-  prem: { escopo: '*', edits: {}, filial: {}, busca: '', visao: 'filial', ocultarVazios: true },
-  base: { busca: '', soVagas: false },
+  prem: { escopo: '*', edits: {}, filial: {}, busca: '', visao: 'filial', ocultarVazios: true, quadroReg: '' },
+  base: { busca: '', soVagas: false, soProprias: false },
   conf: { filial: '' },
   solic: [],
   solicFiltro: 'pendentes',
@@ -482,14 +482,20 @@ function renderPremissas() {
   const { escopo } = E.prem;
   const regs = regionais();
   const proprias = esc => Object.keys(E.dados.premissas[esc] || {}).length;
-  const busca = E.prem.busca.toLowerCase();
-  const lista = [`<button class="escopo geral${escopo === '*' ? ' ativo' : ''}" data-escopo="*"><span>★ Regra geral (todas)</span></button>`];
-  for (const r of regs) {
-    const fils = filiaisDa(r).filter(f => !busca || f.toLowerCase().includes(busca) || r.toLowerCase().includes(busca));
-    if (busca && !fils.length) continue;
-    lista.push(`<button class="escopo regional${escopo === 'R:' + r ? ' ativo' : ''}" data-escopo="R:${esc(r)}"><span>${esc(r)}</span>${proprias('R:' + r) ? '<i class="pontinho" title="Tem regras próprias"></i>' : ''}</button>`);
-    fils.forEach(f => lista.push(`<button class="escopo filial${escopo === f ? ' ativo' : ''}" data-escopo="${esc(f)}"><span>${esc(f)}</span>${proprias(f) ? '<i class="pontinho" title="Tem regras próprias"></i>' : ''}</button>`));
-  }
+  const marca = esc => (proprias(esc) ? ' ●' : '');
+  const regAtual = escopo === '*' ? '*' : premEscopoRegional(escopo);
+  const filtrosHtml = `
+    <div class="prem-filtros cartao">
+      <label class="rotulo">Regional<select class="campo" id="prem-reg">
+        <option value="*" ${regAtual === '*' ? 'selected' : ''}>★ Regra geral (todas as filiais)${marca('*')}</option>
+        ${regs.map(r => `<option value="${esc(r)}" ${regAtual === r ? 'selected' : ''}>${esc(r)}${marca('R:' + r)}</option>`).join('')}
+      </select></label>
+      <label class="rotulo">Filial<select class="campo" id="prem-fil" ${regAtual === '*' ? 'disabled' : ''}>
+        ${regAtual === '*' ? '<option>— escolha uma regional —</option>' : `<option value="R:${esc(regAtual)}" ${escopo === 'R:' + regAtual ? 'selected' : ''}>Toda a regional ${esc(regAtual)}${marca('R:' + regAtual)}</option>
+        ${filiaisDa(regAtual).map(f => `<option value="${esc(f)}" ${escopo === f ? 'selected' : ''}>${esc(f)}${marca(f)}</option>`).join('')}`}
+      </select></label>
+      <p>● = tem regras próprias. A filial herda da regional, que herda da regra geral.</p>
+    </div>`;
 
   const ehFilial = Boolean(E.dados.filiais[escopo]);
   const nomeEscopo = escopo === '*' ? 'Regra geral' : escopo.startsWith('R:') ? `Regional ${escopo.slice(2)}` : escopo;
@@ -515,11 +521,8 @@ function renderPremissas() {
   }
 
   el.innerHTML = `${cabecalho}
-    <div class="prem-grade">
-      <aside class="cartao escopos">
-        <input class="campo" id="prem-busca" placeholder="Buscar filial…" value="${esc(E.prem.busca)}">
-        <div class="escopos-lista">${lista.join('')}</div>
-      </aside>
+    ${filtrosHtml}
+    <div>
       <div>
         <div class="prem-cab">
           <div><small>${escopo === '*' ? 'TODAS AS FILIAIS' : escopo.startsWith('R:') ? 'REGIONAL' : `FILIAL · ${esc(cfgF.regional)}`}</small>
@@ -540,7 +543,6 @@ function renderPremissas() {
           <div class="linha-campos">Aplicar <input class="campo" type="number" step="0.01" id="lote-pct" placeholder="%"> % a partir de <select class="campo" id="lote-mes">${opcoesMes(5)}</select> em todas as filiais ${escopo === '*' ? 'da empresa' : 'da regional'} <button class="btn btn-claro btn-sm" id="lote-aplicar">Aplicar</button></div>
           <p>Grava direto em cada filial. Depois é possível ajustar filial por filial.</p></div>`}
         <div class="tabela-wrap"><table class="tabela tabela-prem" id="tabela-prem"></table></div>
-        ${escopo === '*' ? '<section class="cartao" style="margin-top:1rem" id="ppr-niveis"></section>' : ''}
         <div class="prem-rodape">
           <span class="info" id="prem-info"></span>
           ${ehFilial ? '<button class="btn btn-claro btn-sm" id="prem-copiar">Copiar regras desta filial para…</button>' : ''}
@@ -551,9 +553,8 @@ function renderPremissas() {
     </div>`;
 
   ligarVisao();
-  $$('.escopo', el).forEach(b => b.addEventListener('click', () => trocarEscopo(b.dataset.escopo)));
-  const buscaEl = $('#prem-busca', el);
-  buscaEl.addEventListener('input', () => { E.prem.busca = buscaEl.value; renderPremissas(); $('#prem-busca').focus(); $('#prem-busca').setSelectionRange(buscaEl.value.length, buscaEl.value.length); });
+  $('#prem-reg', el).addEventListener('change', e => trocarEscopo(e.target.value === '*' ? '*' : `R:${e.target.value}`));
+  $('#prem-fil', el).addEventListener('change', e => trocarEscopo(e.target.value));
   $$('[data-fcampo]', el).forEach(i => i.addEventListener('input', () => { E.prem.filial[i.dataset.fcampo] = Number(i.value) || 0; atualizarPrevia(); }));
   $('#prem-salvar', el).addEventListener('click', salvarPremissas);
   $('#prem-descartar', el).addEventListener('click', () => { E.prem.edits = {}; E.prem.filial = {}; renderPremissas(); });
@@ -572,12 +573,11 @@ function renderPremissas() {
     try { await api('/api/config', { method: 'PUT', body: { ano: e.target.value } }); E.dados.config.ano = e.target.value; atualizarAno(); toast('Ano do orçamento atualizado.'); } catch (err) { toast(err.message, 'erro'); }
   });
   desenharTabelaPrem();
-  if (escopo === '*') renderNiveis();
 }
 
 function trocarEscopo(escopo) {
   const pend = Object.keys(E.prem.edits).length + Object.keys(E.prem.filial).length;
-  if (pend && !confirm('Há alterações não salvas nesta tela. Descartar e trocar?')) return;
+  if (pend && !confirm('Há alterações não salvas nesta tela. Descartar e trocar?')) { renderPremissas(); return; }
   E.prem.escopo = escopo;
   E.prem.edits = {};
   E.prem.filial = {};
@@ -585,11 +585,14 @@ function trocarEscopo(escopo) {
   window.scrollTo(0, 0);
 }
 
-const TIPOS = { pct: '% sobre base', fixo: 'R$ por colaborador', rateio: 'R$ total da filial', multiplo: 'Nº de salários' };
+const TIPOS = { pct: '% sobre base', fixo: 'R$ por colaborador', rateio: 'Total da filial (média por colab.)', multiplo: 'Nº de salários' };
 const fmtN = v => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 4 });
 
-function unidadeValor(metodo) {
-  return { pct: '%', fixo: 'R$ / colab.', rateio: 'R$ total', multiplo: 'salários' }[metodo] || '';
+function unidadeValor(metodo, periodo) {
+  if (metodo === 'rateio') return { anual_diluido: 'R$ total no ano', mensal: 'R$ total por mês', anual_mes: 'R$ no mês' }[periodo] || 'R$ total';
+  if (metodo === 'fixo' && periodo === 'anual_mes') return 'R$ / colab. (1x)';
+  if (metodo === 'fixo' && periodo === 'anual_diluido') return 'R$ / colab. no ano';
+  return { pct: '%', fixo: 'R$ / colab. / mês', multiplo: 'salários' }[metodo] || '';
 }
 
 /** Tipo de cobrança usado quando a filial passa de "Não tem" para "Tem". */
@@ -604,8 +607,8 @@ function metodoAoLigar(rub, p) {
 function resumoDetalhes(p) {
   if (p.metodo === 'pct') return `s/ ${BASES[p.base].toLowerCase()}${p.teto ? ` · teto ${brl0.format(p.teto)}` : ''}`;
   const per = { mensal: 'todo mês', anual_mes: `1x no ano · ${MESES[p.mes - 1]}`, anual_diluido: 'anual ÷ 12' }[p.periodo];
-  if (p.metodo === 'rateio') return `${per} · rateio ${p.rateio === 'salario' ? 'pelo salário' : 'por HC'}`;
-  if (p.metodo === 'multiplo') return `${per}${p.por_nivel ? ' · tabela de nível' : ''}`;
+  if (p.metodo === 'rateio') return `${{ mensal: 'total do mês', anual_mes: `total em ${MESES[p.mes - 1]}`, anual_diluido: 'total do ano ÷ 12' }[p.periodo]} · ${p.rateio === 'salario' ? 'proporcional ao salário' : 'média por colaborador'}`;
+  if (p.metodo === 'multiplo') return `${per}${p.por_nivel ? ` · por nível do cargo (${Object.keys(p.niveis || {}).length})` : ''}`;
   return per;
 }
 
@@ -614,7 +617,7 @@ function textoCurto(p) {
   switch (p.metodo) {
     case 'pct': return `${fmtN(p.valor)}%`;
     case 'fixo': return `R$ ${fmtN(p.valor)}`;
-    case 'rateio': return `R$ ${fmtN(p.valor)} total`;
+    case 'rateio': return `R$ ${fmtN(p.valor)} total${p.periodo === 'anual_diluido' ? '/ano' : p.periodo === 'mensal' ? '/mês' : ''}`;
     case 'multiplo': return p.por_nivel ? 'nível' : `${fmtN(p.valor)} sal`;
     default: return 'Não';
   }
@@ -634,7 +637,7 @@ function linhaPremHtml(rub, previa) {
     <td class="rub fixa">${esc(rub.nome)}<small>${propria ? (escopo === '*' ? 'regra geral' : escopo.startsWith('R:') ? 'regra da regional' : 'regra desta filial') : `herdada · ${esc(origem)}`}</small></td>
     <td><label class="chave" title="A filial tem este item?"><input type="checkbox" data-tem ${tem ? 'checked' : ''}><span></span><b>${tem ? 'Sim' : 'Não'}</b></label></td>
     <td class="${desab}"><select class="campo" data-campo="metodo">${Object.entries(tipos).map(([k, v]) => `<option value="${k}" ${k === tipo ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
-    <td class="${desab}"><span class="valor-un"><input class="campo" type="number" step="any" data-campo="valor" value="${p.valor ?? 0}"><small>${unidadeValor(tipo)}</small></span></td>
+    <td class="${desab}"><span class="valor-un"><input class="campo" type="number" step="any" data-campo="valor" value="${p.valor ?? 0}"><small>${unidadeValor(tipo, p.periodo)}</small></span></td>
     <td class="${desab}"><button class="btn-detalhe" data-detalhes title="Base, periodicidade, rateio e teto">⚙ ${esc(resumoDetalhes({ ...p, metodo: tipo }))}</button></td>
     <td class="${desab}"><button class="btn-detalhe" data-quem title="Quem recebe esta rubrica">👥 ${p.quem?.length ? `${p.quem.length} grupo(s)` : 'Todos'}</button></td>
     <td class="n" data-anual>${anual ? brl0.format(anual) : '–'}</td>
@@ -691,7 +694,7 @@ function editarDetalhes(rub) {
         <label class="rotulo">Quando é pago${sel('periodo', PERIODOS, p.periodo)}<small>“Uma vez no ano” lança o valor inteiro no mês escolhido (ex.: cesta natalina em dezembro).</small></label>
         <label class="rotulo">Mês (se for uma vez no ano)<select class="campo" name="mes">${opcoesMes(p.mes)}</select></label>`}
       ${m === 'rateio' ? `<label class="rotulo inteiro">Como dividir o total entre os colaboradores${sel('rateio', { hc: 'Igual por pessoa (headcount)', salario: 'Proporcional ao salário' }, p.rateio)}</label>` : ''}
-      ${m === 'multiplo' ? '<label class="check inteiro"><input type="checkbox" name="por_nivel" ' + (p.por_nivel ? 'checked' : '') + '> Usar a tabela de PPR por nível do cargo (em Regra geral)</label>' : ''}
+      ${m === 'multiplo' ? tabelaNiveisHtml(p) : ''}
     </form>`,
     rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="ok-detalhes">Aplicar</button>',
   });
@@ -703,23 +706,45 @@ function editarDetalhes(rub) {
     if (f.periodo) novo.periodo = f.periodo.value;
     if (f.mes) novo.mes = Number(f.mes.value);
     if (f.rateio) novo.rateio = f.rateio.value;
-    if (f.por_nivel) novo.por_nivel = f.por_nivel.checked;
+    if (f.por_nivel) {
+      novo.por_nivel = f.por_nivel.checked;
+      novo.niveis = {};
+      $$('[data-nivel]', f).forEach(i => { if (i.value !== '') novo.niveis[i.dataset.nivel] = Number(i.value); });
+    }
     E.prem.edits[rub] = novo;
     d.close();
     desenharTabelaPrem();
   });
 }
 
+/** Tabela de PPR por nível do cargo, guardada na própria regra (ex.: Holding com target por cargo). */
+function tabelaNiveisHtml(p) {
+  const colabs = E.dados.colaboradores.filter(colabsDoEscopo(E.prem.escopo));
+  const herdada = E.prem.escopo === '*' ? {} : premHerdada(E.prem.escopo, 'ppr').p.niveis || {};
+  const tabela = { ...E.dados.niveis, ...herdada, ...(p.niveis || {}) };
+  const niveis = [...new Set([...E.dados.colaboradores.map(c => c.cargo).filter(Boolean), ...Object.keys(p.niveis || {})])].sort();
+  return `<div class="inteiro niveis-ppr">
+    <label class="check"><input type="checkbox" name="por_nivel" ${p.por_nivel ? 'checked' : ''}> O nº de salários varia por <b>nível do cargo</b></label>
+    <p>Preencha o target de cada nível (ex.: até Administrativo = 1, Especialista = 2, Coordenação = 3, Gerentes = 5…). Nível em branco usa o valor padrão da regra (${fmtN(p.valor)} salário(s)).</p>
+    <div class="tabela-wrap" style="max-height:300px"><table class="tabela"><thead><tr><th>Nível do cargo</th><th class="n">Colaboradores</th><th>Nº de salários</th></tr></thead>
+    <tbody>${niveis.map(n => `<tr><td>${esc(n)}</td><td class="n">${colabs.filter(c => c.cargo === n).length}</td>
+      <td><input class="campo" style="width:90px;padding:.35rem .5rem" type="number" step="any" data-nivel="${esc(n)}" value="${p.niveis?.[n] ?? (p.por_nivel ? tabela[n] ?? '' : '')}" placeholder="${fmtN(p.valor)}"></td></tr>`).join('')
+      || '<tr><td colspan="3" class="vazio">Importe a base para listar os níveis de cargo.</td></tr>'}</tbody></table></div>
+  </div>`;
+}
+
 // ----- Quadro de todas as filiais -----
 
 function renderQuadro() {
   const el = $('#prem-conteudo');
-  const fils = Object.values(E.dados.filiais).sort((a, b) => a.regional.localeCompare(b.regional) || a.filial.localeCompare(b.filial));
+  const fils = Object.values(E.dados.filiais).filter(f => !E.prem.quadroReg || f.regional === E.prem.quadroReg)
+    .sort((a, b) => a.regional.localeCompare(b.regional) || a.filial.localeCompare(b.filial));
   const rubs = RUBRICAS.filter(r => !r.fixa);
   const efet = (f, r) => Motor.premissaDe(E.dados.premissas, f.filial, f.regional, r.id);
   const visiveis = E.prem.ocultarVazios ? rubs.filter(r => fils.some(f => efet(f, r).metodo !== 'nao')) : rubs;
   el.innerHTML = `
     <div class="ferramentas">
+      <select class="campo" id="q-reg" aria-label="Regional"><option value="">Todas as regionais</option>${regionais().map(r => `<option ${r === E.prem.quadroReg ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select>
       <label class="check"><input type="checkbox" id="q-ocultar" ${E.prem.ocultarVazios ? 'checked' : ''}> Ocultar itens que nenhuma filial tem</label>
       <span class="legenda-quadro"><span class="propria">desta filial</span><span>herdado (regional/geral)</span><span class="nao">não tem</span></span>
       <span class="direita">
@@ -737,6 +762,7 @@ function renderQuadro() {
           const propria = Boolean(E.dados.premissas[f.filial]?.[r.id]);
           return `<td class="${p.metodo === 'nao' ? 'nao' : ''}${propria ? ' propria' : ''}" data-ir="${esc(f.filial)}" title="${esc(r.nome)} · ${esc(f.filial)}${p.metodo !== 'nao' ? ` · ${esc(resumoDetalhes(p))}` : ''}">${p.metodo === 'nao' ? '—' : esc(textoCurto(p))}${p.quem?.length && p.metodo !== 'nao' ? ' 👥' : ''}</td>`;
         }).join('')}</tr>`).join('')}</tbody></table></div>` : '<div class="cartao vazio"><span>📥</span>Importe a base de colaboradores para listar as filiais.</div>'}`;
+  $('#q-reg', el).addEventListener('change', e => { E.prem.quadroReg = e.target.value; renderQuadro(); });
   $('#q-ocultar', el).addEventListener('change', e => { E.prem.ocultarVazios = e.target.checked; renderQuadro(); });
   $$('[data-ir]', el).forEach(c => c.addEventListener('click', () => { E.prem.visao = 'filial'; trocarEscopo(c.dataset.ir); }));
   $('#q-exportar', el).addEventListener('click', exportarQuadro);
@@ -767,7 +793,8 @@ function exportarQuadro() {
     ['Exemplo na célula', 'Significa'],
     ['30%', 'Percentual (sobre o salário, ou a base definida na ferramenta)'],
     ['1480  ou  R$ 1480', 'Valor em R$ por colaborador'],
-    ['8000 total', 'Valor total da filial, rateado entre os colaboradores (ex.: horas extras)'],
+    ['96000 total/ano', 'Custo total do ano da filial; vira média mensal por colaborador (ex.: horas extras)'],
+    ['8000 total/mês', 'Custo total por mês da filial, dividido entre os colaboradores'],
     ['2,4 sal', 'Número de salários (ex.: PPR)'],
     ['nível', 'PPR pela tabela de nível do cargo'],
     ['Não', 'A filial não tem este item'],
@@ -800,7 +827,10 @@ function lerCelulaPremissa(v) {
   const n = Number((t.match(/-?[\d.,]+/) || ['0'])[0].replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')) || 0;
   if (t.includes('%')) return { metodo: 'pct', valor: n };
   if (t.includes('sal')) return { metodo: 'multiplo', valor: n, por_nivel: false };
-  if (t.includes('total') || t.includes('rateio')) return { metodo: 'rateio', valor: n };
+  if (t.includes('total') || t.includes('rateio')) {
+    const periodo = /ano/.test(t) ? 'anual_diluido' : /m[eê]s/.test(t) ? 'mensal' : undefined;
+    return periodo ? { metodo: 'rateio', valor: n, periodo } : { metodo: 'rateio', valor: n };
+  }
   if (/^sim$/.test(t)) return { sim: true };
   return n ? { metodo: 'fixo', valor: n } : { metodo: 'nao' };
 }
@@ -1009,25 +1039,6 @@ function copiarPremissas() {
   });
 }
 
-function renderNiveis() {
-  const el = $('#ppr-niveis');
-  const niveis = { ...E.dados.niveis };
-  const cargos = [...new Set(E.dados.colaboradores.map(c => c.cargo).filter(Boolean))].sort();
-  cargos.forEach(c => { if (!(c in niveis)) niveis[c] = ''; });
-  el.innerHTML = `<h3>PPR por nível do cargo <small>· usado quando a regra do PPR estiver marcada “pela tabela de nível”. Em branco = usa o nº de salários da regra.</small></h3>
-    <div class="tabela-wrap" style="max-height:320px"><table class="tabela"><thead><tr><th>Nível do cargo</th><th class="n">Colaboradores</th><th>Nº de salários</th></tr></thead>
-    <tbody>${Object.keys(niveis).sort().map(n => `<tr><td>${esc(n)}</td><td class="n">${E.dados.colaboradores.filter(c => c.cargo === n).length}</td><td><input class="campo" style="width:90px;padding:.35rem .5rem" type="number" step="any" data-nivel="${esc(n)}" value="${niveis[n]}"></td></tr>`).join('') || '<tr><td colspan="3" class="vazio">Importe a base para listar os níveis.</td></tr>'}</tbody></table></div>
-    <div style="display:flex;justify-content:flex-end;margin-top:.8rem"><button class="btn btn-marinho btn-sm" id="salvar-niveis">Salvar tabela de PPR</button></div>`;
-  $('#salvar-niveis', el).addEventListener('click', async () => {
-    const out = {};
-    $$('[data-nivel]', el).forEach(i => { if (i.value !== '') out[i.dataset.nivel] = Number(i.value); });
-    await api('/api/niveis', { method: 'PUT', body: { niveis: out } });
-    await carregar();
-    renderPremissas();
-    toast('Tabela de PPR salva.');
-  });
-}
-
 // ---------- Base de colaboradores ----------
 
 const ALIASES = {
@@ -1104,6 +1115,7 @@ function renderBase() {
       <div class="ferramentas">
         <input class="campo" id="base-busca" placeholder="Buscar nome, matrícula, função…" value="${esc(E.base.busca)}" style="min-width:260px">
         <label class="check"><input type="checkbox" id="base-vagas" ${E.base.soVagas ? 'checked' : ''}> só vagas</label>
+        <label class="check"><input type="checkbox" id="base-proprias" ${E.base.soProprias ? 'checked' : ''}> só com condições próprias</label>
         <span class="direita" id="base-resumo"></span>
       </div>
       <div class="tabela-wrap alta" id="base-tabela"></div>
@@ -1116,10 +1128,40 @@ function renderBase() {
   zona.addEventListener('drop', e => { e.preventDefault(); zona.classList.remove('sobre'); previaImportacao([...e.dataTransfer.files]); });
   $('#base-busca', el).addEventListener('input', e => { E.base.busca = e.target.value; desenharBase(); });
   $('#base-vagas', el).addEventListener('change', e => { E.base.soVagas = e.target.checked; desenharBase(); });
+  $('#base-proprias', el).addEventListener('change', e => { E.base.soProprias = e.target.checked; desenharBase(); });
   $('#baixar-modelo', el).addEventListener('click', baixarModeloBase);
   $('#nova-vaga', el).addEventListener('click', () => editarColaborador(null, { vaga: true }));
   $('#novo-colab', el).addEventListener('click', () => editarColaborador(null, {}));
   desenharBase();
+}
+
+/** Aba opcional "Condições próprias": MATRÍCULA | ITEM | VALOR → exceções por colaborador (ex.: sucedidos). */
+function aplicarCondicoesProprias(wb, lido) {
+  const aba = wb.SheetNames.find(n => /^(CONDICOES|EXCECOES|SUCEDIDOS)/.test(normCab(n).replace(/[^A-Z]/g, '')));
+  if (!aba) return;
+  const linhas = XLSX.utils.sheet_to_json(wb.Sheets[aba], { header: 1, raw: true, defval: null });
+  const h = linhas.findIndex(l => (l || []).some(c => normCab(c).startsWith('MATRICULA') || normCab(c) === 'CHAPA'));
+  if (h < 0) return;
+  const cab = linhas[h].map(normCab);
+  const iMat = cab.findIndex(c => c.startsWith('MATRICULA') || c === 'CHAPA');
+  const iItem = cab.findIndex(c => c === 'ITEM' || c === 'BENEFICIO' || c === 'RUBRICA');
+  const iVal = cab.findIndex(c => c === 'VALOR');
+  const porNome = new Map();
+  RUBRICAS.filter(r => !r.fixa).forEach(r => [r.nome, ...(APELIDOS[r.id] || [])].forEach(n => porNome.set(chaveNome(n), r.id)));
+  const porMat = new Map(lido.linhas.filter(l => l.matricula).map(l => [String(l.matricula), l]));
+  lido.avisosCond = [];
+  for (const l of linhas.slice(h + 1)) {
+    if (!l || l[iMat] == null || l[iMat] === '') continue;
+    const mat = String(l[iMat]).trim();
+    const rub = porNome.get(chaveNome(l[iItem]));
+    const colab = porMat.get(mat);
+    if (!colab) { lido.avisosCond.push(`Condições próprias: matrícula ${mat} não está na aba de colaboradores.`); continue; }
+    if (!rub) { lido.avisosCond.push(`Condições próprias: item “${l[iItem]}” não reconhecido (matrícula ${mat}).`); continue; }
+    const v = lerCelulaPremissa(l[iVal]);
+    if (!v || v.sim) continue;
+    (colab.excecoes ||= {})[rub] = { metodo: v.metodo === 'rateio' ? 'fixo' : v.metodo, valor: v.valor || 0 };
+  }
+  lido.avisosCond = lido.avisosCond.slice(0, 8);
 }
 
 function baixarModeloBase() {
@@ -1144,10 +1186,23 @@ function baixarModeloBase() {
     ['MÊS FIM', 'Opcional. 1 a 12 — desligamento previsto. Vazio = dezembro'],
     [''],
     ['Não inclua periculosidade, horas extras, benefícios, encargos ou provisões: eles são calculados pelas premissas de cada filial.'],
+    [''],
+    ['ABA "Condições próprias" (opcional)', 'Só para quem tem benefício diferente da regra da filial (ex.: sucedidos). Uma linha por colaborador e item:'],
+    ['MATRÍCULA', 'A mesma da aba Base'],
+    ['ITEM', 'Nome do item como aparece na ferramenta (ex.: VA / VR, Assistência médica, Farmácia, Vale-transporte, PPR)'],
+    ['VALOR', '1850 = R$ por mês · 20% = percentual · 3 sal = nº de salários · Não = não recebe'],
   ]);
-  ajuda['!cols'] = [{ wch: 30 }, { wch: 100 }];
+  ajuda['!cols'] = [{ wch: 34 }, { wch: 100 }];
+  const cond = XLSX.utils.aoa_to_sheet([
+    ['MATRÍCULA', 'ITEM', 'VALOR'],
+    ['10001', 'VA / VR', 1850],
+    ['10001', 'Farmácia', 300],
+    ['10001', 'Vale-transporte', 'Não'],
+  ]);
+  cond['!cols'] = [{ wch: 14 }, { wch: 30 }, { wch: 14 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Base');
+  XLSX.utils.book_append_sheet(wb, cond, 'Condições próprias');
   XLSX.utils.book_append_sheet(wb, ajuda, 'Como preencher');
   XLSX.writeFile(wb, 'Modelo-base-orcamento.xlsx');
 }
@@ -1164,6 +1219,7 @@ async function previaImportacao(arquivos) {
         ? XLSX.read((await arq.text()).replace(/^\uFEFF/, ''), { type: 'string', raw: true })
         : XLSX.read(await arq.arrayBuffer(), { type: 'array' });
       const r = lerPlanilha(wb);
+      if (r) aplicarCondicoesProprias(wb, r);
       lidas.push({ arquivo: arq.name, ...(r || { erro: true }) });
     } catch { lidas.push({ arquivo: arq.name, erro: true }); }
   }
@@ -1176,7 +1232,8 @@ async function previaImportacao(arquivos) {
     ${lidas.map(l => l.erro ? `<p>❌ <b>${esc(l.arquivo)}</b>: não encontrei uma linha de cabeçalho com Funcionário, Filial e Salário.</p>`
       : `<div><b>📄 ${esc(l.arquivo)}</b> · aba “${esc(l.aba)}” · ${l.linhas.length} linha(s)<div class="chips" style="margin-top:.35rem">${Object.entries(l.mapa).map(([k, i]) => `<span class="chip ${i >= 0 ? 'ok' : 'falta'}">${i >= 0 ? '✓' : '–'} ${ROTULO_CAMPO[k]}</span>`).join('')}</div></div>`).join('')}
     ${linhas.length ? `
-      <div><b>${linhas.length}</b> colaboradores · <b>${linhas.filter(l => l.vaga).length}</b> vaga(s) · folha base de <b>${brl0.format(totalSal)}</b>/mês</div>
+      <div><b>${linhas.length}</b> colaboradores · <b>${linhas.filter(l => l.vaga).length}</b> vaga(s) · folha base de <b>${brl0.format(totalSal)}</b>/mês${linhas.some(l => l.excecoes) ? ` · <b>${linhas.filter(l => l.excecoes).length}</b> com condições próprias` : ''}</div>
+      ${lidas.flatMap(l => l.avisosCond || []).map(a => `<p style="color:#b54d12;margin:0">⚠ ${esc(a)}</p>`).join('')}
       <div class="chips">${Object.entries(porReg).map(([r, f]) => `<span class="chip">${esc(r)} · ${f.size} filiais</span>`).join('')}</div>
       ${semRegional ? `<p style="color:#b54d12">⚠ ${semRegional} linha(s) sem regional — serão ignoradas.</p>` : ''}
       <div class="linha">
@@ -1198,14 +1255,14 @@ async function previaImportacao(arquivos) {
 function desenharBase() {
   const busca = E.base.busca.toLowerCase();
   const idx = new Map(E.res.colaboradores.map((c, i) => [c.id, i]));
-  const lista = E.dados.colaboradores.filter(c => noFiltro(c) && (!E.base.soVagas || c.vaga) &&
+  const lista = E.dados.colaboradores.filter(c => noFiltro(c) && (!E.base.soVagas || c.vaga) && (!E.base.soProprias || temProprias(c)) &&
     (!busca || `${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome} ${c.cc_cod}`.toLowerCase().includes(busca)));
   const anual = c => { const i = idx.get(c.id); let s = 0; for (let k = 0; k < RN * 12; k++) s += E.res.valores[i * RN * 12 + k]; return s; };
   $('#base-resumo').innerHTML = `<span class="etiqueta azul">${lista.length} registro(s)</span><span class="etiqueta pend">${lista.filter(c => c.vaga).length} vaga(s)</span>`;
   $('#base-tabela').innerHTML = lista.length ? `<table class="tabela">
     <thead><tr><th class="fixa">Colaborador</th><th>Filial</th><th>Função / cargo</th><th>Centro de custo</th><th class="n">Salário</th><th>Período</th><th class="n">Custo anual</th><th></th></tr></thead>
     <tbody>${lista.slice(0, 1500).map(c => `<tr class="${c.vaga ? 'vaga' : ''}">
-      <td class="fixa">${esc(c.nome)}${c.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}<span class="sub">${esc(c.matricula || '')} · ${esc(c.situacao || '')}</span></td>
+      <td class="fixa">${esc(c.nome)}${c.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${etiquetaProprias(c)}<span class="sub">${esc(c.matricula || '')} · ${esc(c.situacao || '')}</span></td>
       <td>${esc(c.filial)}<span class="sub">${esc(c.regional)}</span></td>
       <td>${esc(c.funcao || '')}<span class="sub">${esc(c.cargo || '')}</span></td>
       <td>${esc(c.cc_cod || '')}<span class="sub">${esc(c.cc_nome || '')}</span></td>
@@ -1246,15 +1303,23 @@ function editarColaborador(id, padrao = {}) {
       <label class="rotulo">${c.vaga ? 'Mês de admissão' : 'Mês de início'}<select class="campo" name="mes_inicio">${opcoesMes(c.mes_inicio)}</select></label>
       <label class="rotulo">Mês de saída <small>(desligamento previsto)</small><select class="campo" name="mes_fim">${opcoesMes(c.mes_fim)}</select></label>
       <label class="check inteiro"><input type="checkbox" name="vaga" ${c.vaga ? 'checked' : ''}> É uma vaga prevista (ainda não preenchida)</label>
+      <div class="inteiro proprias">
+        <h4>Condições próprias deste colaborador <small>· ex.: sucedidos com benefício diferente da regra da filial</small></h4>
+        <div id="lista-proprias"></div>
+        <button type="button" class="btn btn-claro btn-sm" id="add-propria">+ Adicionar item com valor próprio</button>
+      </div>
       ${dl('dl-reg', regionais())}${dl('dl-fil', filiaisDa(''))}${dl('dl-cargo', E.dados.colaboradores.map(x => x.cargo))}
     </form>`,
     rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="salvar-colab">Salvar</button>',
   });
+  montarProprias(d, c);
   $('#salvar-colab', d).addEventListener('click', async () => {
     const f = $('#form-colab', d);
     if (!f.reportValidity()) return;
     const body = Object.fromEntries(new FormData(f));
     body.vaga = f.vaga.checked;
+    body.excecoes = lerProprias(d);
+    if (body.excecoes === null) return;
     if (Number(body.mes_fim) < Number(body.mes_inicio)) return toast('O mês de saída deve ser depois do início.', 'erro');
     try {
       await api(id ? `/api/colaboradores/${id}` : '/api/colaboradores', { method: id ? 'PUT' : 'POST', body });
@@ -1264,6 +1329,50 @@ function editarColaborador(id, padrao = {}) {
       toast('Salvo.');
     } catch (e) { toast(e.message, 'erro'); }
   });
+}
+
+// ----- Condições próprias (exceções por colaborador) -----
+
+const TIPOS_PROPRIA = { fixo: 'R$ por mês', pct: '%', multiplo: 'Nº de salários', nao: 'Não recebe' };
+const temProprias = c => Boolean(c.excecoes && Object.keys(c.excecoes).length);
+const etiquetaProprias = c => (temProprias(c) ? ` <span class="etiqueta azul" title="${esc(Object.entries(c.excecoes).map(([r, e]) => `${RUBRICAS[IDX[r]].nome}: ${textoCurto({ ...e, periodo: 'mensal' })}`).join(' · '))}">condições próprias</span>` : '');
+
+function montarProprias(d, c) {
+  const box = $('#lista-proprias', d);
+  const regra = rub => {
+    if (!c.filial) return '';
+    const p = Motor.premissaDe(E.dados.premissas, c.filial, c.regional || E.dados.filiais[c.filial]?.regional, rub);
+    return p.metodo === 'nao' ? 'filial não tem' : `regra da filial: ${textoCurto(p)}`;
+  };
+  const linha = (rub = '', e = { metodo: 'fixo', valor: '' }) => {
+    const div = document.createElement('div');
+    div.className = 'propria-linha';
+    div.innerHTML = `
+      <select class="campo" data-p="rub"><option value="">Escolha o item…</option>${GRUPOS.filter(g => g.id !== 'provisoes' && g.id !== 'encargos').map(g => `<optgroup label="${g.nome}">${RUBRICAS.filter(r => r.grupo === g.id && !r.fixa).map(r => `<option value="${r.id}" ${r.id === rub ? 'selected' : ''}>${esc(r.nome)}</option>`).join('')}</optgroup>`).join('')}</select>
+      <select class="campo" data-p="metodo">${Object.entries(TIPOS_PROPRIA).map(([k, v]) => `<option value="${k}" ${k === e.metodo ? 'selected' : ''}>${v}</option>`).join('')}</select>
+      <input class="campo" type="number" step="any" data-p="valor" value="${e.valor ?? ''}" placeholder="valor" ${e.metodo === 'nao' ? 'disabled' : ''}>
+      <button type="button" class="btn-ic" data-p="rem" title="Remover">✕</button>
+      <small data-p="regra">${rub ? esc(regra(rub)) : ''}</small>`;
+    div.querySelector('[data-p=rub]').addEventListener('change', ev => { div.querySelector('[data-p=regra]').textContent = ev.target.value ? regra(ev.target.value) : ''; });
+    div.querySelector('[data-p=metodo]').addEventListener('change', ev => { div.querySelector('[data-p=valor]').disabled = ev.target.value === 'nao'; });
+    div.querySelector('[data-p=rem]').addEventListener('click', () => div.remove());
+    box.appendChild(div);
+  };
+  Object.entries(c.excecoes || {}).forEach(([rub, e]) => linha(rub, e));
+  $('#add-propria', d).addEventListener('click', () => linha());
+}
+
+/** Lê as condições próprias do formulário; null se houver item repetido. */
+function lerProprias(d) {
+  const out = {};
+  for (const div of $$('.propria-linha', d)) {
+    const rub = div.querySelector('[data-p=rub]').value;
+    if (!rub) continue;
+    if (out[rub]) { toast(`O item ${RUBRICAS[IDX[rub]].nome} aparece duas vezes.`, 'erro'); return null; }
+    const metodo = div.querySelector('[data-p=metodo]').value;
+    out[rub] = { metodo, valor: metodo === 'nao' ? 0 : Number(div.querySelector('[data-p=valor]').value) || 0 };
+  }
+  return out;
 }
 
 // ---------- Conferência (coordenadores) ----------
@@ -1335,7 +1444,7 @@ function detalheConferencia() {
         <tbody>${colabs.map(c => {
           const a = anual(c);
           const meses = c.mes_fim - c.mes_inicio + 1;
-          return `<tr class="${c.vaga ? 'vaga' : ''}"><td class="fixa">${esc(c.nome)}${c.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}<span class="sub">${esc(c.matricula || '')}</span></td>
+          return `<tr class="${c.vaga ? 'vaga' : ''}"><td class="fixa">${esc(c.nome)}${c.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${etiquetaProprias(c)}<span class="sub">${esc(c.matricula || '')}</span></td>
             <td>${esc(c.funcao || '')}<span class="sub">${esc(c.cargo || '')}</span></td><td>${esc(c.cc_cod || '')}<span class="sub">${esc(c.cc_nome || '')}</span></td>
             <td class="n">${brl.format(c.salario)}</td><td>${meses === 12 ? 'Ano todo' : `${MESES[c.mes_inicio - 1]} – ${MESES[c.mes_fim - 1]}`}</td>
             <td class="n">${brl0.format(a / meses)}</td><td class="n">${brl0.format(a)}</td>

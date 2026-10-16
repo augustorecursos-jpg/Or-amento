@@ -53,8 +53,13 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   (periodicidade — todo mês, uma vez no ano, anual ÷ 12 —, base do %, teto e rateio por headcount ou salário) e 👥
   define *quem recebe* (centros de custo / níveis de cargo). Herança em três níveis: **regra geral → regional → filial**.
   Mostra o custo anual de cada item antes de salvar e a **distribuição por centro de custo e colaborador** (🔍).
-  Na filial: dissídio e reajuste de benefícios com mês de início. Copiar regras de uma filial para outras, dissídio em
-  lote e tabela de **PPR por nível do cargo**.
+  Filtros de **regional** e **filial** em listas suspensas. Na filial: dissídio e reajuste de benefícios com mês de
+  início. Copiar regras de uma filial para outras e dissídio em lote.
+  - **Horas extras, treinamento e viagens**: lance o **custo total do ano** da filial; a ferramenta divide por 12 e faz a
+    média por colaborador (só entre quem recebe). Dá para trocar para total por mês no ⚙.
+  - **PPR**: cada regra (geral, regional ou filial) pode ter a sua **tabela de nº de salários por nível do cargo** — ex.:
+    Holding (matriz) com 1 salário até Administrativo, 2 para Especialista, 3 Coordenação, 5 Gerentes… e as demais
+    filiais com 2,4 salários.
 - **Quadro de todas as filiais** – grade filial × item com o que cada filial tem. **Exporta para Excel**, você preenche
   (`30%`, `1480`, `8000 total`, `2,4 sal`, `Não`, vazio = herda) e **importa de volta**; valores iguais à regra da
   regional/geral não viram exceção.
@@ -62,6 +67,10 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   própria tela baixa: matrícula, funcionário, regional, filial, situação, função, cargo, cód. e nome do centro de custo,
   salário, mês início e mês fim. Benefícios, adicionais, encargos e provisões **não** vêm da planilha. Modo *substituir as
   regionais do arquivo* ou *adicionar*. **Vagas** (situação “Nova Vaga” + mês de admissão) e **desligamentos previstos**.
+  - **Condições próprias por colaborador** (ex.: sucedidos da empresa anterior): no cadastro do colaborador, valores
+    próprios de qualquer benefício (R$ por mês, %, nº de salários ou “não recebe”), no lugar da regra da filial. Também
+    pela aba opcional *Condições próprias* do modelo (MATRÍCULA · ITEM · VALOR). Reimportar a base mantém essas condições
+    pela matrícula.
 - **Pedidos de ajuste** – caixa de entrada com status (aberta, em análise, ajustada, recusada), resposta ao coordenador
   e botão **Abrir item**, que leva direto ao colaborador ou à premissa da filial.
 - **Acessos dos coordenadores** – login, senha e regionais de cada coordenador.

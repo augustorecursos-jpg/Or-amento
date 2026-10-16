@@ -31,7 +31,7 @@ test('dissídio só a partir do mês da data-base', () => {
 });
 
 test('rateio do total da filial por headcount e só entre quem recebe', () => {
-  const premissas = { CUIABA: { horas_extras: { metodo: 'rateio', valor: 900, rateio: 'hc', quem: ['cc:17150'] } } };
+  const premissas = { CUIABA: { horas_extras: { metodo: 'rateio', valor: 900, rateio: 'hc', periodo: 'mensal', quem: ['cc:17150'] } } };
   const colaboradores = [colab({ id: 1, cc_cod: '17150' }), colab({ id: 2, cc_cod: '17150' }), colab({ id: 3, cc_cod: '22153' })];
   const res = Motor.calcular({ colaboradores, filiais: {}, premissas });
   perto(res.valor(0, Motor.IDX.horas_extras, 0), 450);
@@ -39,7 +39,7 @@ test('rateio do total da filial por headcount e só entre quem recebe', () => {
 });
 
 test('vaga entra só a partir do mês de admissão e o rateio se redistribui', () => {
-  const premissas = { '*': { horas_extras: { metodo: 'rateio', valor: 1000 }, va: { metodo: 'fixo', valor: 100 } } };
+  const premissas = { '*': { horas_extras: { metodo: 'rateio', valor: 1000, periodo: 'mensal' }, va: { metodo: 'fixo', valor: 100 } } };
   const colaboradores = [colab({ id: 1 }), colab({ id: 2, vaga: true, mes_inicio: 7 })];
   const res = Motor.calcular({ colaboradores, filiais: {}, premissas });
   perto(res.valor(0, Motor.IDX.horas_extras, 0), 1000);
@@ -72,4 +72,42 @@ test('reajuste de benefícios a partir do mês', () => {
   const res = Motor.calcular({ colaboradores: [colab()], filiais: { CUIABA: { reaj_benef_pct: 10, reaj_benef_mes: 3 } }, premissas: { '*': { va: { metodo: 'fixo', valor: 100 } } } });
   perto(res.valor(0, Motor.IDX.va, 1), 100);
   perto(res.valor(0, Motor.IDX.va, 2), 110);
+});
+
+test('horas extras: total do ano da filial vira média mensal igual por colaborador', () => {
+  const premissas = { CUIABA: { horas_extras: { metodo: 'rateio', valor: 120000 } } };
+  const res = Motor.calcular({ colaboradores: [colab({ id: 1 }), colab({ id: 2, salario: 9000 })], filiais: {}, premissas });
+  perto(res.valor(0, Motor.IDX.horas_extras, 0), 5000);
+  perto(res.valor(1, Motor.IDX.horas_extras, 5), 5000);
+  perto(total(res, 'horas_extras', 0) + total(res, 'horas_extras', 1), 120000);
+});
+
+test('sucedido com benefício próprio: substitui a regra e sai do rateio', () => {
+  const premissas = { '*': { va: { metodo: 'fixo', valor: 1000 }, assist_medica: { metodo: 'rateio', valor: 1200, periodo: 'mensal' }, farmacia: { metodo: 'nao' } } };
+  const sucedido = colab({ id: 2, excecoes: { va: { metodo: 'fixo', valor: 1500 }, assist_medica: { metodo: 'fixo', valor: 900 }, farmacia: { metodo: 'fixo', valor: 300 } } });
+  const res = Motor.calcular({ colaboradores: [colab({ id: 1 }), sucedido, colab({ id: 3 })], filiais: {}, premissas });
+  perto(res.valor(0, Motor.IDX.va, 0), 1000);
+  perto(res.valor(1, Motor.IDX.va, 0), 1500);
+  perto(res.valor(1, Motor.IDX.assist_medica, 0), 900);
+  perto(res.valor(0, Motor.IDX.assist_medica, 0), 600);
+  perto(res.valor(1, Motor.IDX.farmacia, 0), 300);
+  perto(res.valor(0, Motor.IDX.farmacia, 0), 0);
+  const semVa = Motor.calcular({ colaboradores: [colab({ excecoes: { va: { metodo: 'nao' } } })], filiais: {}, premissas });
+  perto(semVa.valor(0, Motor.IDX.va, 0), 0);
+});
+
+test('PPR: tabela de nível da própria regra (Holding) e outra regra nas filiais', () => {
+  const premissas = {
+    '*': { ppr: { metodo: 'multiplo', valor: 2.4, periodo: 'anual_diluido' } },
+    HOLDING: { ppr: { metodo: 'multiplo', valor: 1, periodo: 'anual_diluido', por_nivel: true, niveis: { '09-Administrativo': 1, '08-Especialistas': 2, '05-Gerentes': 5 } } },
+  };
+  const colaboradores = [
+    colab({ id: 1, filial: 'HOLDING', regional: 'SUDESTE', salario: 1000, cargo: '05-Gerentes' }),
+    colab({ id: 2, filial: 'HOLDING', regional: 'SUDESTE', salario: 1000, cargo: '15-Operação - Produção' }),
+    colab({ id: 3, filial: 'CUIABA', salario: 1000, cargo: '05-Gerentes' }),
+  ];
+  const res = Motor.calcular({ colaboradores, filiais: {}, premissas });
+  perto(total(res, 'ppr', 0), 5000);
+  perto(total(res, 'ppr', 1), 1000);
+  perto(total(res, 'ppr', 2), 2400);
 });

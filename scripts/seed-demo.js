@@ -76,7 +76,7 @@ const OPERACAO = ['cc:17150', 'cc:17151', 'cc:17147'];
 
 // Regra geral (vale para todas as filiais)
 P('*', 'periculosidade', { metodo: 'pct', valor: 30, quem: OPERACAO });
-P('*', 'horas_extras', { metodo: 'rateio', valor: 8000, rateio: 'salario', quem: OPERACAO });
+P('*', 'horas_extras', { metodo: 'rateio', valor: 96000, periodo: 'anual_diluido', quem: OPERACAO });
 P('*', 'va', { metodo: 'fixo', valor: 1480 });
 P('*', 'vt', { metodo: 'fixo', valor: 430 });
 P('*', 'assist_medica', { metodo: 'fixo', valor: 1500 });
@@ -92,7 +92,7 @@ P('*', 'treinamento', { metodo: 'rateio', valor: 12000, periodo: 'anual_diluido'
 P('R:NORTE', 'va', { metodo: 'fixo', valor: 1600 });
 P('R:NORTE', 'farmacia', { metodo: 'fixo', valor: 800 });
 P('R:NORTE', 'assist_medica', { metodo: 'fixo', valor: 2300 });
-P('R:NORTE', 'aux_creche', { metodo: 'rateio', valor: 2400 });
+P('R:NORTE', 'aux_creche', { metodo: 'rateio', valor: 2400, periodo: 'mensal' });
 P('R:SUL', 'va', { metodo: 'fixo', valor: 1900 });
 P('R:SUL', 'va_natal', { metodo: 'fixo', valor: 3800, periodo: 'anual_mes', mes: 12 });
 P('R:RIO DE JANEIRO', 'assist_medica', { metodo: 'fixo', valor: 2360 });
@@ -100,17 +100,26 @@ P('R:RIO DE JANEIRO', 'farmacia', { metodo: 'fixo', valor: 400 });
 P('R:SUDESTE', 'va', { metodo: 'fixo', valor: 290 });
 P('R:SUDESTE', 'refeitorio', { metodo: 'fixo', valor: 27 });
 P('R:SUDESTE', 'fretado', { metodo: 'fixo', valor: 23 });
-P('R:SUDESTE', 'ppr', { metodo: 'multiplo', valor: 1, periodo: 'anual_mes', mes: 3, por_nivel: true });
 P('R:SUDESTE', 'periculosidade', { metodo: 'nao' });
 
 // Exceções por filial
 P('CANDIOTA', 'ppr', { metodo: 'multiplo', valor: 1.4, periodo: 'anual_diluido' });
-P('CANDIOTA', 'fretado', { metodo: 'rateio', valor: 75000 });
-P('CANDIOTA', 'horas_extras', { metodo: 'rateio', valor: 26000, rateio: 'salario', quem: OPERACAO });
-P('MAUA 3', 'horas_extras', { metodo: 'rateio', valor: 18000, rateio: 'salario', quem: OPERACAO });
-P('UTE NORTE FLUMINENSE', 'fretado', { metodo: 'rateio', valor: 110000 });
+P('CANDIOTA', 'fretado', { metodo: 'rateio', valor: 75000, periodo: 'mensal' });
+P('CANDIOTA', 'horas_extras', { metodo: 'rateio', valor: 312000, periodo: 'anual_diluido', quem: OPERACAO });
+P('MAUA 3', 'horas_extras', { metodo: 'rateio', valor: 216000, periodo: 'anual_diluido', quem: OPERACAO });
+P('UTE NORTE FLUMINENSE', 'fretado', { metodo: 'rateio', valor: 110000, periodo: 'mensal' });
 P('UTE NORTE FLUMINENSE', 'adic_turno', { metodo: 'pct', valor: 8, quem: ['cc:17150'] });
 P('SANTA CRUZ', 'penosidade', { metodo: 'pct', valor: 6, quem: ['cc:17150'] });
+
+// PPR da matriz (Holding): target por nível do cargo, pago em março. As demais filiais seguem 2,4 salários.
+P('HOLDING', 'ppr', { metodo: 'multiplo', valor: 1, periodo: 'anual_mes', mes: 3, por_nivel: true,
+  niveis: { '09-Administrativo': 1, '08-Especialistas': 2, '06-Coordenação': 3, '05-Gerentes': 5, '04-Gerentes Executivo': 6, '01-Diretores': 10 } });
+
+// Sucedidos (vindos da empresa anterior) com benefícios diferentes da regra da filial
+for (const c of db.prepare("SELECT id FROM colaboradores WHERE filial = 'UTE NORTE FLUMINENSE' AND vaga = 0 LIMIT 4").all()) {
+  db.prepare('UPDATE colaboradores SET excecoes = ? WHERE id = ?')
+    .run(JSON.stringify({ va: { metodo: 'fixo', valor: 2350 }, assist_medica: { metodo: 'fixo', valor: 3100 }, aux_oculos: { metodo: 'fixo', valor: 60 } }), c.id);
+}
 
 // Dissídio por filial (data-base e % de exemplo)
 const dissidio = { NORTE: [4.5, 5], SUL: [4.2, 5], 'CENTRO OESTE': [4.22, 5], 'RIO DE JANEIRO': [4.8, 9], SUDESTE: [4.29, 9] };
@@ -118,9 +127,6 @@ for (const f of db.prepare('SELECT filial, regional FROM filiais').all()) {
   const [pct, mes] = dissidio[f.regional];
   db.prepare('UPDATE filiais SET dissidio_pct = ?, dissidio_mes = ?, reaj_benef_pct = ?, reaj_benef_mes = ? WHERE filial = ?').run(pct, mes, 5, 1, f.filial);
 }
-
-const niveis = { '01-Diretores': 10, '04-Gerentes Executivo': 5, '05-Gerentes': 5, '06-Coordenação': 3, '07-Supervisores': 2, '08-Especialistas': 2, '19-Engenheiros': 2, '09-Administrativo': 1, '11-Operação - Nivel Superior': 1, '15-Operação - Produção': 1 };
-for (const [n, m] of Object.entries(niveis)) db.prepare('INSERT INTO niveis (nivel, multiplo) VALUES (?, ?)').run(n, m);
 
 // Coordenador de demonstração: login "coord.norte", senha "norte123"
 const sal = crypto.randomBytes(16).toString('hex');

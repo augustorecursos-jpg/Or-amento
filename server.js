@@ -139,6 +139,8 @@ function limparPremissa(p) {
     rateio: p.rateio === 'salario' ? 'salario' : 'hc',
     teto: p.teto === '' || p.teto == null ? null : numero(p.teto),
     por_nivel: Boolean(p.por_nivel),
+    niveis: Object.fromEntries(Object.entries(p.niveis && typeof p.niveis === 'object' ? p.niveis : {})
+      .filter(([k, v]) => texto(k) && v !== '' && v != null).slice(0, 100).map(([k, v]) => [texto(k, 120), numero(v)])),
     quem: (Array.isArray(p.quem) ? p.quem : []).map(q => texto(q, 200)).filter(q => /^(cc|cargo):/.test(q)).slice(0, 300),
     // Ao marcar "Não tem", guarda como era cobrado, para voltar igual se marcar "Sim" de novo.
     ultimo_metodo: Motor.METODOS[p.ultimo_metodo] && p.ultimo_metodo !== 'nao' ? p.ultimo_metodo : null,
@@ -224,7 +226,7 @@ app.get('/api/dados', exigirLogin, (req, res) => {
   const filtro = u.admin ? '' : `WHERE regional IN (${u.regionais.map(() => '?').join(',') || "''"})`;
   const params = u.admin ? [] : u.regionais;
   const colaboradores = db.prepare(`SELECT * FROM colaboradores ${filtro} ORDER BY regional, filial, nome`).all(...params)
-    .map(c => ({ ...c, vaga: Boolean(c.vaga) }));
+    .map(c => ({ ...c, vaga: Boolean(c.vaga), excecoes: lerExcecoes(c.excecoes) }));
   const filiais = {};
   for (const f of db.prepare(`SELECT * FROM filiais ${filtro} ORDER BY regional, filial`).all(...params)) filiais[f.filial] = f;
   const premissas = {};
@@ -264,10 +266,23 @@ function lerColaborador(b) {
     mes_inicio: mes(b.mes_inicio, 1),
     mes_fim: mes(b.mes_fim, 12),
     vaga: vaga ? 1 : 0,
+    excecoes: JSON.stringify(lerExcecoes(b.excecoes)),
   };
 }
 
-const CAMPOS_COLAB = ['matricula', 'nome', 'regional', 'filial', 'situacao', 'funcao', 'cargo', 'cc_cod', 'cc_nome', 'salario', 'mes_inicio', 'mes_fim', 'vaga'];
+/** Condições próprias do colaborador por rubrica (ex.: sucedidos): { rubrica: { metodo, valor } }. */
+function lerExcecoes(v) {
+  let obj = v;
+  if (typeof v === 'string') { try { obj = JSON.parse(v || '{}'); } catch { obj = {}; } }
+  const out = {};
+  for (const [rub, e] of Object.entries(obj && typeof obj === 'object' ? obj : {})) {
+    if (!RUBRICAS_VALIDAS.has(rub) || !e || !['nao', 'fixo', 'pct', 'multiplo'].includes(e.metodo)) continue;
+    out[rub] = { metodo: e.metodo, valor: e.metodo === 'nao' ? 0 : numero(e.valor) };
+  }
+  return out;
+}
+
+const CAMPOS_COLAB = ['matricula', 'nome', 'regional', 'filial', 'situacao', 'funcao', 'cargo', 'cc_cod', 'cc_nome', 'salario', 'mes_inicio', 'mes_fim', 'vaga', 'excecoes'];
 
 app.post('/api/colaboradores/importar', exigirAdmin, (req, res) => {
   const linhas = Array.isArray(req.body?.linhas) ? req.body.linhas : [];
@@ -287,6 +302,10 @@ app.post('/api/colaboradores/importar', exigirAdmin, (req, res) => {
   try {
     // "Substituir" troca a base apenas das regionais que vieram no arquivo (cada regional tem a sua planilha).
     if (modo === 'substituir') {
+      // Guarda as condições próprias (sucedidos) já cadastradas, para não perdê-las ao reimportar a base.
+      const antigas = db.prepare(`SELECT matricula, excecoes FROM colaboradores WHERE matricula <> '' AND excecoes <> '{}' AND regional IN (${regionais.map(() => '?').join(',')})`).all(...regionais);
+      const porMatricula = new Map(antigas.map(a => [a.matricula, a.excecoes]));
+      for (const c of validos) if (c.excecoes === '{}' && porMatricula.has(c.matricula)) c.excecoes = porMatricula.get(c.matricula);
       const del = db.prepare('DELETE FROM colaboradores WHERE regional = ?');
       regionais.forEach(r => del.run(r));
     }
