@@ -19,7 +19,7 @@ const E = {
   rascunho: {},       // filial → { dissidio_pct, dissidio_mes }
   filtro: { regional: '', filial: '' },
   aba: 'painel',
-  sim: { visao: 'rubricas', mil: false, fechados: new Set(), busca: '' },
+  sim: { visao: 'rubricas', mil: false, fechados: new Set(), busca: '', abertos: new Set() },
   prem: { escopo: '*', edits: {}, filial: {}, busca: '', visao: 'filial', ocultarVazios: true, quadroReg: '' },
   base: { busca: '', soVagas: false, soProprias: false },
   conf: { filial: '' },
@@ -364,14 +364,42 @@ function linhasSimulacao() {
     const c = v === 'colaboradores' ? porId.get(k) : null;
     return {
       rotulo: c ? c.nome : k,
-      sub: c ? `${c.funcao || ''} · ${c.filial}` : `${a.n} colaborador(es)`,
+      sub: c ? `${c.funcao || ''} · ${c.filial}${c.cc_nome ? ` · ${c.cc_nome}` : ''}` : `${a.n} colaborador(es)`,
       hc: v === 'colaboradores' ? null : Math.max(...a.hc),
       meses: [...a.meses],
       vaga: c?.vaga,
+      colab: c ? c.id : null,
+      proprias: c ? temProprias(c) : false,
     };
   }).sort((a, b) => b.meses.reduce((s, x) => s + x, 0) - a.meses.reduce((s, x) => s + x, 0));
   const total = MESES.map((_, m) => linhas.reduce((s, l) => s + l.meses[m], 0));
-  return { linhas, total, comHc: v !== 'colaboradores' };
+  if (v !== 'colaboradores') return { linhas, total, comHc: true };
+  // Uma pessoa só na busca: já abre o detalhe dela.
+  if (linhas.length === 1) E.sim.abertos.add(linhas[0].colab);
+  const comDetalhe = [];
+  for (const l of linhas) {
+    l.aberto = E.sim.abertos.has(l.colab);
+    comDetalhe.push(l);
+    if (l.aberto) comDetalhe.push(...detalheColaborador(l.colab));
+  }
+  return { linhas: comDetalhe, total, comHc: false };
+}
+
+/** Linhas com o que está orçado para um colaborador: subtotal por grupo e cada rubrica, mês a mês. */
+function detalheColaborador(id) {
+  const i = E.res.colaboradores.findIndex(c => c.id === id);
+  if (i < 0) return [];
+  const c = E.res.colaboradores[i];
+  const out = [];
+  for (const g of GRUPOS) {
+    const filhos = RUBRICAS.map((r, k) => ({ r, k })).filter(x => x.r.grupo === g.id).map(({ r, k }) => ({
+      rotulo: r.nome, meses: MESES.map((_, m) => E.res.valor(i, k, m)), propria: Boolean(c.excecoes?.[r.id]),
+    })).filter(f => f.meses.some(x => x));
+    if (!filhos.length) continue;
+    out.push({ rotulo: g.nome, cor: g.cor, meses: MESES.map((_, m) => filhos.reduce((s, f) => s + f.meses[m], 0)), det: 'grupo' });
+    filhos.forEach(f => out.push({ ...f, det: 'rubrica' }));
+  }
+  return out;
 }
 
 function tabelaSimulacaoHtml() {
@@ -385,13 +413,23 @@ function tabelaSimulacaoHtml() {
   return `<table class="tabela">
     <thead><tr><th class="fixa">${{ rubricas: 'Rubrica', filiais: 'Filial', cc: 'Centro de custo', colaboradores: 'Colaborador' }[E.sim.visao]}</th>${comHc ? '<th class="n">HC</th>' : ''}
       ${MESES.map((m, i) => `<th class="n"${mesesDiss.has(i) ? ' style="color:var(--laranja)" title="Mês do dissídio"' : ''}>${m}${mesesDiss.has(i) ? ' ▲' : ''}</th>`).join('')}<th class="n">Total ano</th><th class="n">%</th></tr></thead>
-    <tbody>${linhas.map(l => {
-      const t = l.meses.reduce((a, b) => a + b, 0);
-      const cls = l.grupo ? `grupo${E.sim.fechados.has(l.grupo) ? ' fechado' : ''}` : l.filho ? 'filho' : l.vaga ? 'vaga' : '';
-      return `<tr class="${cls}" ${l.grupo ? `data-grupo="${l.grupo}"` : ''}>
-        <td class="fixa" title="${esc(l.rotulo)}">${l.grupo ? `<i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}</td>
-        ${comHc ? `<td class="n">${l.hc ?? ''}</td>` : ''}${l.meses.map(cel).join('')}<td class="n"><b>${fmtVal(t)}</b></td><td class="n">${pctFmt(t / totAno)}</td></tr>`;
-    }).join('')}</tbody>
+    <tbody>${(() => {
+      let totColab = 1;
+      return linhas.map(l => {
+        const t = l.meses.reduce((a, b) => a + b, 0);
+        if (l.colab != null) totColab = t || 1;
+        if (l.det) {
+          // Detalhe do colaborador: % é sobre o custo dele
+          return `<tr class="det-${l.det}">
+            <td class="fixa" title="${esc(l.rotulo)}">${l.det === 'grupo' ? `<i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.propria ? ' <span class="etiqueta azul">valor próprio</span>' : ''}</td>
+            ${l.meses.map(cel).join('')}<td class="n"><b>${fmtVal(t)}</b></td><td class="n">${pctFmt(t / totColab)}</td></tr>`;
+        }
+        const cls = l.grupo ? `grupo${E.sim.fechados.has(l.grupo) ? ' fechado' : ''}` : l.filho ? 'filho' : l.colab != null ? `colab${l.aberto ? ' aberto' : ''}${l.vaga ? ' vaga' : ''}` : l.vaga ? 'vaga' : '';
+        return `<tr class="${cls}" ${l.grupo ? `data-grupo="${l.grupo}"` : ''}${l.colab != null ? ` data-colab="${l.colab}" title="Clique para ${l.aberto ? 'fechar' : 'ver'} o detalhe"` : ''}>
+          <td class="fixa" title="${esc(l.rotulo)}">${l.grupo ? `<i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.proprias ? ' <span class="etiqueta azul">condições próprias</span>' : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}</td>
+          ${comHc ? `<td class="n">${l.hc ?? ''}</td>` : ''}${l.meses.map(cel).join('')}<td class="n"><b>${fmtVal(t)}</b></td><td class="n">${pctFmt(t / totAno)}</td></tr>`;
+      }).join('');
+    })()}</tbody>
     <tfoot><tr class="total"><td class="fixa">Total</td>${comHc ? `<td class="n">${linhas.reduce((s, l) => s + (l.hc || 0), 0) || ''}</td>` : ''}${total.map(v => `<td class="n">${fmtVal(v)}</td>`).join('')}<td class="n">${fmtVal(totAno)}</td><td class="n">100%</td></tr></tfoot>
   </table>`;
 }
@@ -427,7 +465,8 @@ function renderSimulacao() {
       <div>
         <div class="ferramentas">
           <div class="segmentos" id="sim-visao">${[['rubricas', 'Rubricas'], ['filiais', 'Filiais'], ['cc', 'Centros de custo'], ['colaboradores', 'Colaboradores']].map(([v, r]) => `<button data-v="${v}" class="${E.sim.visao === v ? 'ativo' : ''}">${r}</button>`).join('')}</div>
-          ${E.sim.visao !== 'rubricas' ? `<input class="campo" id="sim-busca" placeholder="Buscar…" value="${esc(E.sim.busca)}">` : ''}
+          ${E.sim.visao !== 'rubricas' ? `<input class="campo" id="sim-busca" placeholder="${E.sim.visao === 'colaboradores' ? 'Buscar nome, matrícula, função…' : 'Buscar…'}" value="${esc(E.sim.busca)}">` : ''}
+          ${E.sim.visao === 'colaboradores' ? `<button class="btn btn-claro btn-sm" id="sim-abrir-todos">${E.sim.abertos.size ? 'Fechar detalhes' : 'Abrir detalhe de todos'}</button>` : ''}
           <div class="direita">
             <div class="segmentos" id="sim-unid"><button data-u="0" class="${E.sim.mil ? '' : 'ativo'}">R$</button><button data-u="1" class="${E.sim.mil ? 'ativo' : ''}">R$ mil</button></div>
             <button class="btn btn-marinho btn-sm" id="sim-excel">⬇ Exportar Excel</button>
@@ -443,11 +482,26 @@ function renderSimulacao() {
   $('#sim-excel', el).addEventListener('click', exportarExcel);
   const busca = $('#sim-busca', el);
   if (busca) busca.addEventListener('input', () => { E.sim.busca = busca.value; atualizarTabelaSim(); });
+  $('#sim-abrir-todos', el)?.addEventListener('click', () => {
+    if (E.sim.abertos.size) E.sim.abertos.clear();
+    else {
+      const busca = E.sim.busca.toLowerCase();
+      const lista = E.dados.colaboradores.filter(c => noFiltro(c) && (!busca || `${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome}`.toLowerCase().includes(busca)));
+      if (lista.length > 150) return toast(`São ${lista.length} colaboradores. Filtre por filial ou busque um nome para abrir o detalhe de todos (máx. 150).`, 'erro');
+      lista.forEach(c => E.sim.abertos.add(c.id));
+    }
+    renderSimulacao();
+  });
   ligarTabelaSim();
   if (admin) ligarSimulador();
 }
 
 function ligarTabelaSim() {
+  $$('#sim-tabela tr.colab').forEach(tr => tr.addEventListener('click', () => {
+    const id = Number(tr.dataset.colab);
+    E.sim.abertos.has(id) ? E.sim.abertos.delete(id) : E.sim.abertos.add(id);
+    atualizarTabelaSim();
+  }));
   $$('#sim-tabela tr.grupo').forEach(tr => tr.addEventListener('click', () => {
     const g = tr.dataset.grupo;
     E.sim.fechados.has(g) ? E.sim.fechados.delete(g) : E.sim.fechados.add(g);

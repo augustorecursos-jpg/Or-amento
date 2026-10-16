@@ -466,3 +466,15 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 @media (max-width: 1200px) { .hero2 { grid-template-columns: 1fr; } .kpis2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .kpis2 { grid-template-columns: 1fr; } .rosca { grid-template-columns: 1fr; justify-items: center; } .rosca svg { max-width: 200px; } #barra-apresentacao small { display: none; } }
 #niveis-padrao { width: 90px; }
+
+/* Simulação por colaborador: linha clicável com o detalhe do que está orçado */
+.tabela tr.colab { cursor: pointer; }
+.tabela tr.colab td.fixa::before { content: '▸'; display: inline-block; width: 1.1rem; color: var(--laranja); font-weight: 800; transition: transform .15s; }
+.tabela tr.colab.aberto td.fixa::before { transform: rotate(90deg); }
+.tabela tr.colab.aberto td { background: #eef4f9; font-weight: 700; }
+.tabela tr.colab.aberto td.fixa { background: #eef4f9; }
+.tabela tr.det-grupo td { background: #f8fafc; font-weight: 700; color: var(--marinho); font-size: .8rem; }
+.tabela tr.det-grupo td.fixa { padding-left: 1.9rem; background: #f8fafc; }
+.tabela tr.det-rubrica td { font-size: .8rem; color: var(--texto-suave); }
+.tabela tr.det-rubrica td.fixa { padding-left: 3rem; }
+.tabela tr.det-rubrica:last-of-type td, .tabela tr.det-rubrica + tr.colab td { border-top: 0; }

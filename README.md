@@ -46,7 +46,9 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   colaborador, impacto do dissídio, encargos + benefícios), custo mês a mês por grupo, rosca de composição, **ponte do
   salário ao custo total**, cards por regional → filial → centro de custo (clique para descer) e conferência das filiais.
   **Modo apresentação**: tela cheia sem menus; as setas ← → passam pelas regionais.
-- **Simulação mês a mês** – tabela Jan–Dez por rubrica, filial, centro de custo ou colaborador (R$ ou R$ mil) e o
+- **Simulação mês a mês** – tabela Jan–Dez por rubrica, filial, centro de custo ou colaborador (R$ ou R$ mil). Na visão
+  por colaborador, clique na pessoa para abrir o que está orçado para ela (salário, adicionais, provisões, encargos,
+  PPR, convênio, VA…), mês a mês e no ano. Inclui o
   **simulador de dissídio**: altere o % e o mês da data-base de cada filial e o custo muda na hora; nada é salvo até
   clicar em *Aplicar ao orçamento*. Exporta Excel com resumo mensal, por filial, por centro de custo e por colaborador
   (formato próximo da planilha BZO).
