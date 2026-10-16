@@ -74,6 +74,13 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
     **Holding** (matriz) já vem cadastrada: Supervisores 2, Administrativo 1, Coordenação 3, Gerentes 5, Diretores 10,
     Operação – Produção 1, Operação – Nível Superior 1, Engenheiros 2, Especialistas 2, Gerentes Executivo 5. As demais
     filiais seguem 2,4 salários (editável).
+- **Estado (UF)** – filtro de estado junto de regional e filial em todas as telas (topo, premissas e quadro). O estado é
+  sugerido pelo nome da unidade quando ele indica a cidade (Cuiabá → MT, Candiota → RS, UTEs de Manaus → AM…); as demais
+  (PCHs, Holding, Fluxus…) ficam “a definir” e são ajustadas em **Premissas → 🗺 Estado de cada filial**.
+- **Modelo para preenchimento** (no quadro de filiais): Excel com uma linha por filial e item, já preenchido com o que está
+  na ferramenta, colunas amarelas com **listas de seleção** (Tem?, Como é calculado, Quando é pago, Mês) e os 12 meses
+  para valores que variam. Respeita os filtros de regional/estado — dá para gerar um arquivo por regional, enviar para
+  preenchimento e carregar de volta em **⬆ Importar quadro**; só o que mudou é aplicado.
 - **Quadro de todas as filiais** – grade filial × item com o que cada filial tem. **Exporta para Excel**, você preenche
   (`30%`, `1480`, `8000 total`, `2,4 sal`, `Não`, vazio = herda) e **importa de volta**; valores iguais à regra da
   regional/geral não viram exceção.

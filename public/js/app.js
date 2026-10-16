@@ -17,10 +17,10 @@ const E = {
   resSalvo: null,     // cálculo só com o que está salvo (para medir o impacto do rascunho)
   resSemDissidio: null,
   rascunho: {},       // filial → { dissidio_pct, dissidio_mes }
-  filtro: { regional: '', filial: '' },
+  filtro: { regional: '', uf: '', filial: '' },
   aba: 'painel',
   sim: { visao: 'rubricas', mil: false, fechados: new Set(), busca: '', abertos: new Set() },
-  prem: { escopo: '*', edits: {}, filial: {}, propagar: {}, busca: '', visao: 'filial', ocultarVazios: true, quadroReg: '' },
+  prem: { escopo: '*', uf: '', edits: {}, filial: {}, propagar: {}, busca: '', visao: 'filial', ocultarVazios: true, quadroReg: '' },
   base: { busca: '', soVagas: false, soProprias: false, fila: [] },
   conf: { filial: '', modo: 'mes', sel: new Set() },
   solic: [],
@@ -56,9 +56,21 @@ async function carregar() {
   montarFiltros();
 }
 
-const noFiltro = c => (!E.filtro.regional || c.regional === E.filtro.regional) && (!E.filtro.filial || c.filial === E.filtro.filial);
+// Estado (UF) da filial; '_' = ainda não definido
+const ufDe = filial => E.dados.filiais[filial]?.uf || '';
+const bateUf = (filial, uf = E.filtro.uf) => !uf || (uf === '_' ? !ufDe(filial) : ufDe(filial) === uf);
+const noFiltro = c => (!E.filtro.regional || c.regional === E.filtro.regional) && bateUf(c.filial) && (!E.filtro.filial || c.filial === E.filtro.filial);
 const regionais = () => [...new Set(Object.values(E.dados.filiais).map(f => f.regional))].sort();
 const filiaisDa = regional => Object.values(E.dados.filiais).filter(f => !regional || f.regional === regional).map(f => f.filial).sort();
+/** Filiais que passam pelos filtros do topo (regional, estado e filial). */
+const filiaisVisiveis = () => filiaisDa(E.filtro.regional).filter(f => bateUf(f) && (!E.filtro.filial || f === E.filtro.filial));
+const UFS_BR = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
+/** Opções de estado presentes nas filiais (mais "a definir" se houver). */
+function opcoesUf(fils, sel, rotuloTodos = 'Todos os estados') {
+  const ufs = [...new Set(fils.map(ufDe).filter(Boolean))].sort();
+  const semUf = fils.some(f => !ufDe(f));
+  return `<option value="">${rotuloTodos}</option>${ufs.map(u => `<option ${u === sel ? 'selected' : ''}>${u}</option>`).join('')}${semUf ? `<option value="_" ${sel === '_' ? 'selected' : ''}>Estado a definir</option>` : ''}`;
+}
 
 function totalDe(res, filtro = noFiltro) {
   const ag = Motor.agregar(res, () => 'x', filtro).get('x');
@@ -73,7 +85,10 @@ function montarFiltros() {
   const regs = regionais();
   if (!regs.includes(E.filtro.regional)) E.filtro.regional = '';
   r.innerHTML = `<option value="">${E.eu.admin ? 'Todas as regionais' : 'Minhas regionais'}</option>${regs.map(x => `<option ${x === E.filtro.regional ? 'selected' : ''}>${esc(x)}</option>`).join('')}`;
-  const fils = filiaisDa(E.filtro.regional);
+  const doReg = filiaisDa(E.filtro.regional);
+  if (E.filtro.uf && !doReg.some(x => bateUf(x))) E.filtro.uf = '';
+  $('#f-uf').innerHTML = opcoesUf(doReg, E.filtro.uf);
+  const fils = doReg.filter(x => bateUf(x));
   if (!fils.includes(E.filtro.filial)) E.filtro.filial = '';
   f.innerHTML = `<option value="">Todas as filiais</option>${fils.map(x => `<option ${x === E.filtro.filial ? 'selected' : ''}>${esc(x)}</option>`).join('')}`;
 }
@@ -173,7 +188,7 @@ function renderPainel() {
   const fil = filiaisComRascunho();
   const mesesDiss = [...new Set(col.map(c => fil[c.filial]).filter(f => f && f.dissidio_pct).map(f => f.dissidio_mes - 1))].sort((a, b) => a - b);
   const encBen = (somaG('encargos') + somaG('beneficios')) / (ag.total || 1);
-  const escopo = E.filtro.filial || E.filtro.regional || (E.eu.admin ? 'Todas as regionais' : E.eu.regionais.join(' · '));
+  const escopo = E.filtro.filial || [E.filtro.regional, E.filtro.uf && (E.filtro.uf === '_' ? 'estado a definir' : E.filtro.uf)].filter(Boolean).join(' · ') || (E.eu.admin ? 'Todas as regionais' : E.eu.regionais.join(' · '));
   const nivelCards = E.filtro.filial ? 'cc' : E.filtro.regional ? 'filial' : 'regional';
   const tituloCards = { regional: 'Custo por regional', filial: `Filiais da regional ${E.filtro.regional}`, cc: `Centros de custo · ${E.filtro.filial}` }[nivelCards];
 
@@ -263,7 +278,7 @@ function renderPainel() {
   }));
 
   // Conferência das filiais
-  const fils = filiaisDa(E.filtro.regional).filter(f => !E.filtro.filial || f === E.filtro.filial);
+  const fils = filiaisVisiveis();
   const abertas = E.solic.filter(s => s.status === 'aberta' || s.status === 'em_analise');
   const conferidas = fils.filter(f => E.dados.filiais[f].conferencia === 'conferida').length;
   const frac = fils.length ? conferidas / fils.length : 0;
@@ -422,7 +437,7 @@ function tabelaSimulacaoHtml() {
   const { linhas, total, comHc } = linhasSimulacao();
   const totAno = total.reduce((a, b) => a + b, 0) || 1;
   const fil = filiaisComRascunho();
-  const fils = filiaisDa(E.filtro.regional).filter(f => !E.filtro.filial || f === E.filtro.filial);
+  const fils = filiaisVisiveis();
   const mesesDiss = new Set(fils.map(f => fil[f]?.dissidio_pct ? fil[f].dissidio_mes - 1 : null).filter(m => m != null && m > 0));
   if (!linhas.length) return '<div class="vazio"><span>🔍</span>Nada encontrado com esses filtros.</div>';
   const cel = v => `<td class="n${v ? '' : ' zero'}">${v ? fmtVal(v) : '–'}</td>`;
@@ -451,7 +466,7 @@ function tabelaSimulacaoHtml() {
 }
 
 function simuladorHtml() {
-  const fils = filiaisDa(E.filtro.regional).filter(f => !E.filtro.filial || f === E.filtro.filial);
+  const fils = filiaisVisiveis();
   const fil = filiaisComRascunho();
   const dif = totalDe(E.res).total - totalDe(E.resSalvo).total;
   const n = Object.keys(E.rascunho).length;
@@ -598,17 +613,17 @@ function exportarExcel() {
 
   // Formato próximo da planilha BZO: uma linha por colaborador, com o total anual de cada rubrica.
   const fil = filiaisComRascunho();
-  const cab = ['Matrícula', 'Funcionário', 'Regional', 'Filial', 'Situação', 'Função', 'Cargo', 'Cód. C. Custo', 'Centro de custo', 'Salário base', 'Dissídio %', 'Mês dissídio', 'Mês início', 'Mês fim', ...RUBRICAS.map(r => `${r.nome} (ano)`), 'Total ano'];
+  const cab = ['Matrícula', 'Funcionário', 'Regional', 'UF', 'Filial', 'Situação', 'Função', 'Cargo', 'Cód. C. Custo', 'Centro de custo', 'Salário base', 'Dissídio %', 'Mês dissídio', 'Mês início', 'Mês fim', ...RUBRICAS.map(r => `${r.nome} (ano)`), 'Total ano'];
   const linhas = [cab];
   E.res.colaboradores.forEach((c, i) => {
     if (!noFiltro(c)) return;
     const vals = RUBRICAS.map((_, r) => { let s = 0; for (let m = 0; m < 12; m++) s += E.res.valor(i, r, m); return r2(s); });
-    linhas.push([c.matricula, c.nome, c.regional, c.filial, c.situacao, c.funcao, c.cargo, c.cc_cod, c.cc_nome, c.salario,
+    linhas.push([c.matricula, c.nome, c.regional, ufDe(c.filial), c.filial, c.situacao, c.funcao, c.cargo, c.cc_cod, c.cc_nome, c.salario,
       fil[c.filial]?.dissidio_pct ?? 0, fil[c.filial]?.dissidio_mes ?? '', c.mes_inicio, c.mes_fim, ...vals, r2(vals.reduce((a, b) => a + b, 0))]);
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhas), 'Por colaborador');
 
-  const nome = [E.dados.config.ano, E.filtro.regional, E.filtro.filial].filter(Boolean).join('-').replace(/[^\w-]+/g, '_');
+  const nome = [E.dados.config.ano, E.filtro.regional, E.filtro.uf, E.filtro.filial].filter(Boolean).join('-').replace(/[^\w-]+/g, '_');
   XLSX.writeFile(wb, `Orcamento-Pessoal-${nome}.xlsx`);
 }
 
@@ -671,11 +686,12 @@ function renderPremissas() {
         <option value="*" ${regAtual === '*' ? 'selected' : ''}>★ Regra geral (todas as filiais)${marca('*')}</option>
         ${regs.map(r => `<option value="${esc(r)}" ${regAtual === r ? 'selected' : ''}>${esc(r)}${marca('R:' + r)}</option>`).join('')}
       </select></label>
+      <label class="rotulo">Estado<select class="campo" id="prem-uf" ${regAtual === '*' ? 'disabled' : ''}>${regAtual === '*' ? '<option>—</option>' : opcoesUf(filiaisDa(regAtual), E.prem.uf)}</select></label>
       <label class="rotulo">Filial<select class="campo" id="prem-fil" ${regAtual === '*' ? 'disabled' : ''}>
         ${regAtual === '*' ? '<option>— escolha uma regional —</option>' : `<option value="R:${esc(regAtual)}" ${escopo === 'R:' + regAtual ? 'selected' : ''}>Toda a regional ${esc(regAtual)}${marca('R:' + regAtual)}</option>
-        ${filiaisDa(regAtual).map(f => `<option value="${esc(f)}" ${escopo === f ? 'selected' : ''}>${esc(f)}${marca(f)}</option>`).join('')}`}
+        ${filiaisDa(regAtual).filter(f => bateUf(f, E.prem.uf) || f === escopo).map(f => `<option value="${esc(f)}" ${escopo === f ? 'selected' : ''}>${esc(f)}${ufDe(f) ? ` (${ufDe(f)})` : ''}${marca(f)}</option>`).join('')}`}
       </select></label>
-      <p>● = tem regras próprias. A filial herda da regional, que herda da regra geral.</p>
+      <p>● = tem regras próprias. A filial herda da regional, que herda da regra geral.<br><button class="btn-link" id="prem-estados">🗺 Estado de cada filial</button></p>
     </div>`;
 
   const ehFilial = Boolean(E.dados.filiais[escopo]);
@@ -706,7 +722,7 @@ function renderPremissas() {
     <div>
       <div>
         <div class="prem-cab">
-          <div><small>${escopo === '*' ? 'TODAS AS FILIAIS' : escopo.startsWith('R:') ? 'REGIONAL' : `FILIAL · ${esc(cfgF.regional)}`}</small>
+          <div><small>${escopo === '*' ? 'TODAS AS FILIAIS' : escopo.startsWith('R:') ? 'REGIONAL' : `FILIAL · ${esc(cfgF.regional)} · ${esc(cfgF.uf || 'ESTADO A DEFINIR')}`}</small>
             <h2>${esc(nomeEscopo)}</h2>
             <p>${colabs.length} colaborador(es) · custo anual <b id="prem-total"></b></p></div>
           ${escopo === '*' ? `<label class="rotulo" style="width:150px">Ano do orçamento<input class="campo" id="cfg-ano" type="number" value="${esc(E.dados.config.ano)}"></label>` : ''}
@@ -736,6 +752,8 @@ function renderPremissas() {
   ligarVisao();
   $('#prem-reg', el).addEventListener('change', e => trocarEscopo(e.target.value === '*' ? '*' : `R:${e.target.value}`));
   $('#prem-fil', el).addEventListener('change', e => trocarEscopo(e.target.value));
+  $('#prem-uf', el)?.addEventListener('change', e => { E.prem.uf = e.target.value; renderPremissas(); });
+  $('#prem-estados', el).addEventListener('click', editarEstados);
   $$('[data-fcampo]', el).forEach(i => i.addEventListener('input', () => { E.prem.filial[i.dataset.fcampo] = Number(i.value) || 0; atualizarPrevia(); }));
   $('#prem-salvar', el).addEventListener('click', salvarPremissas);
   $('#prem-descartar', el).addEventListener('click', () => { E.prem.edits = {}; E.prem.filial = {}; E.prem.propagar = {}; renderPremissas(); });
@@ -941,6 +959,28 @@ function editarDetalhes(rub) {
   });
 }
 
+/** Estado (UF) de cada filial: sugerido pelo nome da unidade; aqui o admin confirma ou corrige. */
+function editarEstados() {
+  const fils = Object.values(E.dados.filiais).sort((a, b) => a.regional.localeCompare(b.regional) || a.filial.localeCompare(b.filial));
+  const semUf = fils.filter(f => !f.uf).length;
+  const d = abrirModal({
+    titulo: 'Estado de cada filial', sup: 'FILTRO POR ESTADO', largo: true,
+    corpo: `<p class="subtitulo" style="margin:0">O estado foi sugerido pelo nome da unidade quando o nome indica a cidade (ex.: Cuiabá → MT, Candiota → RS). ${semUf ? `<b style="color:#b54d12">${semUf} filial(is) ainda sem estado</b> — o nome não indica onde ficam; escolha abaixo.` : 'Todas as filiais têm estado.'}</p>
+      <div class="tabela-wrap" style="max-height:55vh"><table class="tabela"><thead><tr><th>Regional</th><th>Filial</th><th class="n">Colab.</th><th>Estado</th></tr></thead>
+      <tbody>${fils.map(f => `<tr class="${f.uf ? '' : 'sem-vinculo'}"><td>${esc(f.regional)}</td><td>${esc(f.filial)}</td><td class="n">${E.dados.colaboradores.filter(c => c.filial === f.filial).length}</td>
+        <td><select class="campo" data-uf-filial="${esc(f.filial)}" style="width:150px"><option value="">— a definir —</option>${UFS_BR.map(u => `<option ${u === f.uf ? 'selected' : ''}>${u}</option>`).join('')}</select></td></tr>`).join('')}</tbody></table></div>`,
+    rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="salvar-estados">Salvar estados</button>',
+  });
+  $('#salvar-estados', d).addEventListener('click', async () => {
+    const filiais = $$('[data-uf-filial]', d).filter(s => s.value !== (E.dados.filiais[s.dataset.ufFilial].uf || '')).map(s => ({ filial: s.dataset.ufFilial, uf: s.value || null }));
+    if (filiais.length) await api('/api/filiais', { method: 'PUT', body: { filiais } });
+    d.close();
+    await carregar();
+    renderAba();
+    toast(filiais.length ? `Estado atualizado em ${filiais.length} filial(is).` : 'Nada para alterar.');
+  });
+}
+
 /** Regras próprias abaixo do escopo atual para o item (geral → regionais e filiais; regional → filiais dela). */
 function outrosEscopos(rub) {
   const esc = E.prem.escopo;
@@ -1007,7 +1047,7 @@ function editarNiveis(rub) {
 
 function renderQuadro() {
   const el = $('#prem-conteudo');
-  const fils = Object.values(E.dados.filiais).filter(f => !E.prem.quadroReg || f.regional === E.prem.quadroReg)
+  const fils = Object.values(E.dados.filiais).filter(f => (!E.prem.quadroReg || f.regional === E.prem.quadroReg) && bateUf(f.filial, E.prem.uf))
     .sort((a, b) => a.regional.localeCompare(b.regional) || a.filial.localeCompare(b.filial));
   const rubs = RUBRICAS.filter(r => !r.fixa);
   const efet = (f, r) => Motor.premissaDe(E.dados.premissas, f.filial, f.regional, r.id);
@@ -1015,17 +1055,20 @@ function renderQuadro() {
   el.innerHTML = `
     <div class="ferramentas">
       <select class="campo" id="q-reg" aria-label="Regional"><option value="">Todas as regionais</option>${regionais().map(r => `<option ${r === E.prem.quadroReg ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select>
+      <select class="campo" id="q-uf" aria-label="Estado">${opcoesUf(filiaisDa(E.prem.quadroReg), E.prem.uf)}</select>
       <label class="check"><input type="checkbox" id="q-ocultar" ${E.prem.ocultarVazios ? 'checked' : ''}> Ocultar itens que nenhuma filial tem</label>
       <span class="legenda-quadro"><span class="propria">desta filial</span><span>herdado (regional/geral)</span><span class="nao">não tem</span></span>
       <span class="direita">
+        <button class="btn btn-laranja btn-sm" id="q-modelo">📝 Modelo para preenchimento</button>
         <button class="btn btn-claro btn-sm" id="q-exportar">⬇ Exportar quadro (Excel)</button>
         <label class="btn btn-marinho btn-sm" style="cursor:pointer">⬆ Importar quadro<input type="file" id="q-importar" accept=".xlsx,.xls" hidden></label>
       </span>
     </div>
     ${fils.length ? `<div class="tabela-wrap alta"><table class="tabela quadro">
-      <thead><tr><th class="fixa">Filial</th><th>Dissídio</th>${visiveis.map(r => `<th title="${esc(NOME_GRUPO[r.grupo])}" style="box-shadow:inset 0 3px 0 ${COR_GRUPO[r.grupo]}">${esc(r.nome)}</th>`).join('')}</tr></thead>
-      <tbody>${fils.map((f, k) => `${k === 0 || fils[k - 1].regional !== f.regional ? `<tr class="grupo"><td class="fixa" colspan="${visiveis.length + 2}">${esc(f.regional)}</td></tr>` : ''}
+      <thead><tr><th class="fixa">Filial</th><th>UF</th><th>Dissídio</th>${visiveis.map(r => `<th title="${esc(NOME_GRUPO[r.grupo])}" style="box-shadow:inset 0 3px 0 ${COR_GRUPO[r.grupo]}">${esc(r.nome)}</th>`).join('')}</tr></thead>
+      <tbody>${fils.map((f, k) => `${k === 0 || fils[k - 1].regional !== f.regional ? `<tr class="grupo"><td class="fixa" colspan="${visiveis.length + 3}">${esc(f.regional)}</td></tr>` : ''}
         <tr><td class="fixa"><button class="btn-link" data-ir="${esc(f.filial)}">${esc(f.filial)}</button></td>
+        <td>${esc(f.uf || '—')}</td>
         <td>${fmtN(f.dissidio_pct)}% · ${MESES[f.dissidio_mes - 1]}</td>
         ${visiveis.map(r => {
           const p = efet(f, r);
@@ -1033,13 +1076,15 @@ function renderQuadro() {
           return `<td class="${p.metodo === 'nao' ? 'nao' : ''}${propria ? ' propria' : ''}" data-ir="${esc(f.filial)}" title="${esc(r.nome)} · ${esc(f.filial)}${p.metodo !== 'nao' ? ` · ${esc(resumoDetalhes(p))}` : ''}">${p.metodo === 'nao' ? '—' : esc(textoCurto(p))}${p.quem?.length && p.metodo !== 'nao' ? ' 👥' : ''}</td>`;
         }).join('')}</tr>`).join('')}</tbody></table></div>` : '<div class="cartao vazio"><span>📥</span>Importe a base de colaboradores para listar as filiais.</div>'}`;
   $('#q-reg', el).addEventListener('change', e => { E.prem.quadroReg = e.target.value; renderQuadro(); });
+  $('#q-uf', el).addEventListener('change', e => { E.prem.uf = e.target.value; renderQuadro(); });
   $('#q-ocultar', el).addEventListener('change', e => { E.prem.ocultarVazios = e.target.checked; renderQuadro(); });
   $$('[data-ir]', el).forEach(c => c.addEventListener('click', () => { E.prem.visao = 'filial'; trocarEscopo(c.dataset.ir); }));
   $('#q-exportar', el).addEventListener('click', exportarQuadro);
-  $('#q-importar', el).addEventListener('change', e => e.target.files[0] && importarQuadro(e.target.files[0]));
+  $('#q-importar', el).addEventListener('change', e => { if (e.target.files[0]) importarQuadro(e.target.files[0]); e.target.value = ''; });
+  $('#q-modelo', el).addEventListener('click', pedirModeloPremissas);
 }
 
-const COLS_FIXAS = ['REGIONAL', 'FILIAL', 'DISSÍDIO %', 'MÊS DISSÍDIO', 'REAJ. BENEFÍCIOS %', 'MÊS REAJ. BENEFÍCIOS'];
+const COLS_FIXAS = ['REGIONAL', 'UF', 'FILIAL', 'DISSÍDIO %', 'MÊS DISSÍDIO', 'REAJ. BENEFÍCIOS %', 'MÊS REAJ. BENEFÍCIOS'];
 
 function exportarQuadro() {
   if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
@@ -1047,15 +1092,15 @@ function exportarQuadro() {
   const fils = Object.values(E.dados.filiais).sort((a, b) => a.regional.localeCompare(b.regional) || a.filial.localeCompare(b.filial));
   const linhas = [[...COLS_FIXAS, ...rubs.map(r => r.nome)]];
   for (const f of fils) {
-    linhas.push([f.regional, f.filial, f.dissidio_pct, MESES[f.dissidio_mes - 1], f.reaj_benef_pct, MESES[f.reaj_benef_mes - 1],
+    linhas.push([f.regional, f.uf || '', f.filial, f.dissidio_pct, MESES[f.dissidio_mes - 1], f.reaj_benef_pct, MESES[f.reaj_benef_mes - 1],
       ...rubs.map(r => {
         const p = Motor.premissaDe(E.dados.premissas, f.filial, f.regional, r.id);
         return p.metodo === 'fixo' ? Number(p.valor) : textoCurto(p);
       })]);
   }
   const ws = XLSX.utils.aoa_to_sheet(linhas);
-  ws['!cols'] = linhas[0].map((_, i) => ({ wch: i < 2 ? 24 : 14 }));
-  ws['!freeze'] = { xSplit: 2, ySplit: 1 };
+  ws['!cols'] = linhas[0].map((_, i) => ({ wch: i === 1 ? 6 : i < 3 ? 24 : 14 }));
+  ws['!freeze'] = { xSplit: 3, ySplit: 1 };
   const ajuda = XLSX.utils.aoa_to_sheet([
     ['Como preencher o quadro de premissas'],
     [''],
@@ -1117,6 +1162,218 @@ const mesDe = v => {
 const CAMPOS_REGRA = ['metodo', 'valor', 'base', 'periodo', 'mes', 'rateio', 'teto', 'por_nivel', 'quem'];
 const mesmaRegra = (a, b) => CAMPOS_REGRA.every(k => JSON.stringify(a[k] ?? null) === JSON.stringify(b[k] ?? null));
 
+// ----- Modelo de preenchimento das premissas (uma linha por filial e item, com listas de seleção) -----
+
+const COMO_ROTULO = { pct: '% sobre a base', fixo: 'R$ por colaborador', rateio: 'Total da filial', multiplo: 'Nº de salários', nivel: 'Nº de salários por nível do cargo' };
+const QUANDO_ROTULO = { mensal: 'Todo mês', anual_mes: 'Uma vez no ano', anual_diluido: 'Anual dividido em 12', por_mes: 'Valor diferente por mês' };
+const COL_MODELO = ['Regional', 'UF', 'Filial', 'Grupo', 'Item', 'Tem?', 'Como é calculado', 'Valor', 'Quando é pago', 'Mês (se 1x no ano)', ...MESES, 'Observação', 'código'];
+
+function carregarExcelJS() {
+  if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  return new Promise((ok, falha) => {
+    const s = document.createElement('script');
+    s.src = 'vendor/exceljs.min.js';
+    s.onload = () => ok(window.ExcelJS);
+    s.onerror = () => falha(new Error('Não foi possível carregar o gerador de Excel.'));
+    document.head.appendChild(s);
+  });
+}
+
+function pedirModeloPremissas() {
+  const fils = Object.values(E.dados.filiais).filter(f => (!E.prem.quadroReg || f.regional === E.prem.quadroReg) && bateUf(f.filial, E.prem.uf));
+  const d = abrirModal({
+    titulo: 'Modelo para preenchimento das premissas', sup: 'EXCEL',
+    corpo: `<p style="margin:0">Gera um Excel com <b>uma linha por filial e item</b>, já preenchido com o que está na ferramenta, e com <b>listas de seleção</b> nas colunas amarelas. Envie para quem vai preencher e depois use <b>⬆ Importar quadro</b> para carregar.</p>
+      <p style="margin:0"><b>${fils.length}</b> filial(is) — ${esc([E.prem.quadroReg || 'todas as regionais', E.prem.uf && (E.prem.uf === '_' ? 'estado a definir' : E.prem.uf)].filter(Boolean).join(' · '))} (use os filtros do quadro para mudar).</p>
+      <div class="rotulo">Itens que entram no modelo
+        <div class="regionais-check" style="margin-top:.4rem">${GRUPOS.map(g => `<label class="check"><input type="checkbox" name="grupo" value="${g.id}" ${['provisoes', 'encargos'].includes(g.id) ? '' : 'checked'}> ${g.nome}</label>`).join('')}</div>
+        <small>Provisões e encargos (férias, 13º, FGTS, INSS) costumam ser iguais para todos — por isso vêm desmarcados.</small></div>
+      <label class="check"><input type="checkbox" name="reajustes" checked> Incluir dissídio e reajuste de benefícios de cada filial</label>`,
+    rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="gerar-modelo">⬇ Gerar Excel</button>',
+  });
+  $('#gerar-modelo', d).addEventListener('click', async e => {
+    const grupos = $$('input[name=grupo]:checked', d).map(i => i.value);
+    if (!grupos.length) return toast('Marque ao menos um grupo de itens.', 'erro');
+    e.target.disabled = true;
+    e.target.textContent = 'Gerando…';
+    try {
+      await gerarModeloPremissas(fils.map(f => f.filial), grupos, $('input[name=reajustes]', d).checked);
+      d.close();
+    } catch (err) { toast(err.message, 'erro'); e.target.disabled = false; e.target.textContent = '⬇ Gerar Excel'; }
+  });
+}
+
+async function gerarModeloPremissas(filiais, grupos, comReajustes) {
+  const ExcelJS = await carregarExcelJS();
+  const wb = new ExcelJS.Workbook();
+  wb.creator = 'Orçamento de Pessoal · Âmbar';
+  const ano = E.dados.config.ano;
+  const ws = wb.addWorksheet('Premissas', { views: [{ state: 'frozen', xSplit: 5, ySplit: 3 }] });
+  const listas = wb.addWorksheet('Listas', { state: 'veryHidden' });
+  const opcoes = { tem: ['Sim', 'Não'], como: Object.values(COMO_ROTULO), quando: Object.values(QUANDO_ROTULO), mes: MESES };
+  Object.values(opcoes).forEach((lista, c) => lista.forEach((v, r) => { listas.getCell(r + 1, c + 1).value = v; }));
+  const ref = (c, n) => `Listas!$${String.fromCharCode(65 + c)}$1:$${String.fromCharCode(65 + c)}$${n}`;
+
+  ws.mergeCells(1, 1, 1, 12);
+  ws.getCell(1, 1).value = `Premissas do orçamento de pessoal ${ano} — preencha as colunas amarelas (use as listas). Não altere as colunas cinzas.`;
+  ws.getCell(1, 1).font = { bold: true, size: 13, color: { argb: 'FF0E3B5C' } };
+  ws.getRow(3).values = COL_MODELO;
+  ws.getRow(3).eachCell(c => {
+    c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0E3B5C' } };
+    c.alignment = { vertical: 'middle', wrapText: true };
+  });
+  ws.getRow(3).height = 32;
+  const larguras = [16, 6, 26, 14, 30, 8, 30, 13, 24, 12, ...MESES.map(() => 10), 30, 4];
+  larguras.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+  ws.getColumn(COL_MODELO.length).hidden = true;
+
+  const efet = (f, rid) => Motor.premissaDe(E.dados.premissas, f, E.dados.filiais[f].regional, rid);
+  let r = 4;
+  const amarelo = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF6D6' } };
+  const cinza = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F4F7' } };
+  const linha = (vals, editaveis) => {
+    const row = ws.getRow(r);
+    row.values = vals;
+    for (let c = 1; c <= COL_MODELO.length - 1; c++) row.getCell(c).fill = editaveis.includes(c) ? amarelo : cinza;
+    row.getCell(6).dataValidation = { type: 'list', allowBlank: true, formulae: [ref(0, 2)] };
+    row.getCell(7).dataValidation = { type: 'list', allowBlank: true, formulae: [ref(1, opcoes.como.length)] };
+    row.getCell(9).dataValidation = { type: 'list', allowBlank: true, formulae: [ref(2, opcoes.quando.length)] };
+    row.getCell(10).dataValidation = { type: 'list', allowBlank: true, formulae: [ref(3, 12)] };
+    row.getCell(8).numFmt = '#,##0.00##';
+    for (let m = 0; m < 12; m++) row.getCell(11 + m).numFmt = '#,##0.00';
+    r++;
+  };
+  for (const f of [...filiais].sort()) {
+    const cfg = E.dados.filiais[f];
+    const id = [cfg.regional, cfg.uf || '', f];
+    if (comReajustes) {
+      linha([...id, 'Reajustes', 'Reajuste salarial (dissídio) %', '', '', cfg.dissidio_pct, '', MESES[cfg.dissidio_mes - 1], ...MESES.map(() => null), '', 'dissidio'], [8, 10, 23]);
+      linha([...id, 'Reajustes', 'Reajuste de benefícios %', '', '', cfg.reaj_benef_pct, '', MESES[cfg.reaj_benef_mes - 1], ...MESES.map(() => null), '', 'reaj_benef'], [8, 10, 23]);
+    }
+    for (const rub of RUBRICAS.filter(x => !x.fixa && grupos.includes(x.grupo))) {
+      const p = efet(f, rub.id);
+      const tem = p.metodo !== 'nao';
+      const tipo = tem ? tipoDe(p) : metodoAoLigar(rub.id, p);
+      const porMes = p.periodo === 'por_mes' && (tipo === 'fixo' || tipo === 'rateio');
+      linha([...id, NOME_GRUPO[rub.grupo], rub.nome, tem ? 'Sim' : 'Não', COMO_ROTULO[tipo], tipo === 'nivel' || porMes ? null : Number(p.valor) || 0,
+        tipo === 'pct' ? '' : QUANDO_ROTULO[p.periodo], tipo !== 'pct' && p.periodo === 'anual_mes' ? MESES[p.mes - 1] : '',
+        ...MESES.map((_, m) => (porMes ? Number(p.meses?.[m]) || 0 : null)), '', rub.id], [6, 7, 8, 9, 10, ...MESES.map((_, m) => 11 + m), 23]);
+    }
+  }
+  ws.autoFilter = { from: { row: 3, column: 1 }, to: { row: r - 1, column: COL_MODELO.length - 1 } };
+
+  const ajuda = wb.addWorksheet('Como preencher');
+  [
+    ['Como preencher o modelo de premissas'],
+    [''],
+    ['Coluna', 'O que colocar'],
+    ['Tem?', 'Sim ou Não — a filial tem este item?'],
+    ['Como é calculado', '% sobre a base (ex.: periculosidade 30% do salário) · R$ por colaborador (ex.: VA) · Total da filial (valor da unidade, dividido igualmente entre os colaboradores — ex.: horas extras) · Nº de salários (ex.: PPR) · Nº de salários por nível do cargo (a tabela de níveis é ajustada na ferramenta)'],
+    ['Valor', 'O número: 30 para 30%, 1480 para R$ 1.480,00, 2,4 para 2,4 salários. Em "Total da filial" + "Anual dividido em 12", informe o total do ano.'],
+    ['Quando é pago', 'Todo mês · Uma vez no ano (escolha o mês na coluna seguinte) · Anual dividido em 12 · Valor diferente por mês (preencha os 12 meses, Jan a Dez, e deixe "Valor" em branco)'],
+    ['Reajustes', 'Linhas de dissídio e reajuste de benefícios: só "Valor" (%) e o mês em que passa a valer.'],
+    ['Observação', 'Livre, para comentários. Não é lido pela ferramenta.'],
+    [''],
+    ['Não altere as colunas cinzas (regional, filial, item). Linhas apagadas não mudam nada na ferramenta.'],
+  ].forEach((l, i) => { ajuda.getRow(i + 1).values = l; });
+  ajuda.getCell(1, 1).font = { bold: true, size: 13, color: { argb: 'FF0E3B5C' } };
+  ajuda.getRow(3).font = { bold: true };
+  ajuda.getColumn(1).width = 22;
+  ajuda.getColumn(2).width = 120;
+
+  const buf = await wb.xlsx.writeBuffer();
+  const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Modelo-premissas-${ano}${E.prem.quadroReg ? `-${E.prem.quadroReg}` : ''}${E.prem.uf && E.prem.uf !== '_' ? `-${E.prem.uf}` : ''}.xlsx`.replace(/\s+/g, '_');
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+  toast(`Modelo gerado: ${filiais.length} filial(is), ${r - 4} linha(s).`);
+}
+
+/** Lê o modelo de preenchimento (formato em linhas) e devolve os itens para /api/premissas/lote. */
+function lerModeloPremissas(linhas, h) {
+  const cab = linhas[h].map(c => chaveNome(c));
+  const col = nome => cab.indexOf(chaveNome(nome));
+  const ic = { filial: col('Filial'), regional: col('Regional'), uf: col('UF'), item: col('Item'), tem: col('Tem?'), como: col('Como é calculado'), valor: col('Valor'),
+    quando: col('Quando é pago'), mes: col('Mês (se 1x no ano)'), cod: col('código') };
+  const iMeses = MESES.map(m => col(m));
+  const porNome = new Map();
+  RUBRICAS.filter(r => !r.fixa).forEach(r => [r.nome, ...(APELIDOS[r.id] || [])].forEach(n => porNome.set(chaveNome(n), r.id)));
+  const comoDe = Object.fromEntries(Object.entries(COMO_ROTULO).map(([k, v]) => [chaveNome(v), k]));
+  const quandoDe = Object.fromEntries(Object.entries(QUANDO_ROTULO).map(([k, v]) => [chaveNome(v), k]));
+  const num = v => (v == null || v === '' ? null : typeof v === 'number' ? v : Number(String(v).replace(/[R$%\s]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')));
+  const porFilial = new Map();
+  const avisos = [];
+  let mudancas = 0;
+  for (const l of linhas.slice(h + 1)) {
+    const filial = String(l?.[ic.filial] ?? '').trim().toUpperCase();
+    if (!filial) continue;
+    const cfg = E.dados.filiais[filial];
+    const regional = cfg?.regional || String(l[ic.regional] ?? '').trim().toUpperCase();
+    if (!porFilial.has(filial)) porFilial.set(filial, { escopo: filial, rubricas: {}, filial: {}, existe: Boolean(cfg) });
+    const it = porFilial.get(filial);
+    const uf = String(l[ic.uf] ?? '').trim().toUpperCase();
+    if (cfg && UFS_BR.includes(uf) && uf !== (cfg.uf || '')) it.filial.uf = uf;
+    const cod = String(l[ic.cod] ?? '').trim();
+    if (cod === 'dissidio' || cod === 'reaj_benef') {
+      const v = num(l[ic.valor]);
+      const m = mesDe(l[ic.mes]);
+      const pref = cod === 'dissidio' ? 'dissidio' : 'reaj_benef';
+      if (v != null && !Number.isNaN(v) && (!cfg || Number(cfg[`${pref}_pct`]) !== v)) it.filial[`${pref}_pct`] = v;
+      if (m && (!cfg || Number(cfg[`${pref}_mes`]) !== m)) it.filial[`${pref}_mes`] = m;
+      continue;
+    }
+    const rub = RUBRICAS_IDS.has(cod) ? cod : porNome.get(chaveNome(l[ic.item]));
+    if (!rub) { if (l[ic.item]) avisos.push(`Item não reconhecido: “${l[ic.item]}” (${filial}).`); continue; }
+    const tem = normCab(l[ic.tem]);
+    if (!tem) continue; // linha sem resposta: não mexe
+    let lido;
+    if (tem.startsWith('N')) lido = { metodo: 'nao' };
+    else {
+      const tipo = comoDe[chaveNome(l[ic.como])] || null;
+      const periodo = quandoDe[chaveNome(l[ic.quando])] || undefined;
+      lido = {};
+      if (tipo === 'nivel') Object.assign(lido, { metodo: 'multiplo', por_nivel: true });
+      else if (tipo) Object.assign(lido, { metodo: tipo, por_nivel: false });
+      const v = num(l[ic.valor]);
+      if (v != null && !Number.isNaN(v)) lido.valor = v;
+      if (periodo && tipo !== 'pct') lido.periodo = periodo;
+      const m = mesDe(l[ic.mes]);
+      if (m) lido.mes = m;
+      if (periodo === 'por_mes') lido.meses = iMeses.map(i => num(l[i]) || 0);
+      if (!lido.metodo) lido.sim = true;
+    }
+    const decisao = decidirRegra(filial, regional, rub, lido);
+    if (decisao !== undefined) { it.rubricas[rub] = decisao; mudancas++; }
+  }
+  const itens = [...porFilial.values()].map(({ escopo, rubricas, filial, existe }) => {
+    const temFilial = existe && Object.keys(filial).length;
+    if (temFilial) mudancas += Object.keys(filial).length;
+    return { escopo, rubricas, filial: temFilial ? filial : null };
+  });
+  return { itens, mudancas, avisos, novas: [...porFilial.values()].filter(x => !x.existe).map(x => x.escopo) };
+}
+
+/** Compara o que veio do Excel com a regra atual: undefined = sem mudança, null = volta a herdar, objeto = regra própria. */
+function decidirRegra(filial, regional, rub, lido) {
+  const padrao = RUBRICAS[IDX[rub]].padrao;
+  const propriaAtual = E.dados.premissas[filial]?.[rub];
+  const herdada = premHerdadaDe(filial, regional, rub);
+  const efetiva = propriaAtual ? { ...padrao, ...propriaAtual } : herdada;
+  let novo;
+  if (lido.sim) novo = efetiva.metodo !== 'nao' ? efetiva : { ...efetiva, metodo: metodoAoLigar(rub, efetiva) };
+  else if (lido.metodo === 'nao') novo = { ...efetiva, metodo: 'nao', ultimo_metodo: efetiva.metodo !== 'nao' ? efetiva.metodo : efetiva.ultimo_metodo };
+  else novo = { ...(efetiva.metodo === lido.metodo ? efetiva : herdada.metodo === lido.metodo ? herdada : padrao), ...lido };
+  if (mesmaRegra(novo, herdada)) return propriaAtual ? null : undefined;
+  if (propriaAtual && mesmaRegra(novo, { ...padrao, ...propriaAtual })) return undefined;
+  return novo;
+}
+const RUBRICAS_IDS = new Set(RUBRICAS.filter(r => !r.fixa).map(r => r.id));
+
 async function importarQuadro(arquivo) {
   if (!window.XLSX) return toast('Carregando o leitor de Excel… tente de novo.', 'erro');
   const wb = XLSX.read(await arquivo.arrayBuffer(), { type: 'array' });
@@ -1124,6 +1381,10 @@ async function importarQuadro(arquivo) {
   const linhas = XLSX.utils.sheet_to_json(wb.Sheets[aba], { header: 1, raw: true, defval: null });
   const h = linhas.findIndex(l => (l || []).some(c => normCab(c) === 'FILIAL'));
   if (h < 0) return toast('Não encontrei a coluna FILIAL na planilha.', 'erro');
+  if (linhas[h].some(c => normCab(c) === 'ITEM') && linhas[h].some(c => normCab(c) === 'TEM?')) {
+    const lido = lerModeloPremissas(linhas, h);
+    return confirmarImportacaoPremissas(arquivo.name, lido.itens, lido.mudancas, lido.novas, lido.avisos, 'modelo de preenchimento');
+  }
   const cab = linhas[h].map(c => chaveNome(c));
   const col = nome => cab.indexOf(chaveNome(nome));
   const rubCol = {};
@@ -1163,16 +1424,28 @@ async function importarQuadro(arquivo) {
     if (mesDe(val('MÊS DISSÍDIO'))) filialCfg.dissidio_mes = mesDe(val('MÊS DISSÍDIO'));
     if (val('REAJ. BENEFÍCIOS %') != null && val('REAJ. BENEFÍCIOS %') !== '') filialCfg.reaj_benef_pct = Number(String(val('REAJ. BENEFÍCIOS %')).replace('%', '').replace(',', '.')) || 0;
     if (mesDe(val('MÊS REAJ. BENEFÍCIOS'))) filialCfg.reaj_benef_mes = mesDe(val('MÊS REAJ. BENEFÍCIOS'));
+    const ufLida = String(val('UF') ?? val('ESTADO') ?? '').trim().toUpperCase();
+    if (UFS_BR.includes(ufLida)) filialCfg.uf = ufLida;
+    // Só o que mudou em dissídio / reajuste / estado conta como alteração
+    for (const k of Object.keys(filialCfg)) if (!cfg || String(filialCfg[k]) === String(cfg[k] ?? '')) delete filialCfg[k];
+    mudancas += Object.keys(filialCfg).length;
     itens.push({ escopo: filial, rubricas, filial: cfg && Object.keys(filialCfg).length ? filialCfg : null });
   }
   const faltando = RUBRICAS.filter(r => !r.fixa && !(r.id in rubCol)).map(r => r.nome);
+  const avisos = faltando.length ? [`Colunas não encontradas (continuam como estão): ${faltando.join(', ')}.`] : [];
+  confirmarImportacaoPremissas(arquivo.name, itens, mudancas, novas, avisos, `quadro · ${Object.keys(rubCol).length} itens reconhecidos`);
+}
+
+/** Prévia e confirmação da importação de premissas (quadro ou modelo de preenchimento). */
+function confirmarImportacaoPremissas(nome, itens, mudancas, novas, avisos, tipo) {
   const d = abrirModal({
-    titulo: arquivo.name, sup: 'IMPORTAR QUADRO DE PREMISSAS',
-    corpo: `<p style="margin:0"><b>${itens.length}</b> filial(is) na planilha · <b>${mudancas}</b> regra(s) a alterar · <b>${Object.keys(rubCol).length}</b> itens reconhecidos.</p>
-      ${novas.length ? `<p style="margin:0;color:#b54d12">⚠ ${novas.length} filial(is) ainda não estão na base de colaboradores: ${esc(novas.join(', '))}. As regras ficam guardadas e passam a valer quando a base for importada (o dissídio delas é ignorado).</p>` : ''}
-      ${faltando.length ? `<p style="margin:0;color:var(--texto-suave)">Colunas não encontradas (continuam como estão): ${esc(faltando.join(', '))}.</p>` : ''}
+    titulo: nome, sup: 'IMPORTAR PREMISSAS',
+    corpo: `<p style="margin:0"><b>${itens.length}</b> filial(is) na planilha · <b>${mudancas}</b> alteração(ões) · ${esc(tipo)}.</p>
+      ${!mudancas ? '<p style="margin:0;color:var(--texto-suave)">Nada diferente do que já está na ferramenta.</p>' : ''}
+      ${novas.length ? `<p style="margin:0;color:#b54d12">⚠ ${novas.length} filial(is) ainda não estão na base de colaboradores: ${esc(novas.join(', '))}. As regras ficam guardadas e passam a valer quando a base for importada (o dissídio e o estado delas são ignorados).</p>` : ''}
+      ${avisos.slice(0, 8).map(a => `<p style="margin:0;color:var(--texto-suave)">${esc(a)}</p>`).join('')}
       <p style="margin:0;color:var(--texto-suave)">Valores iguais à regra da regional/geral ficam como herdados, sem criar exceção na filial.</p>`,
-    rodape: `<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="ok-quadro" ${itens.length ? '' : 'disabled'}>Importar</button>`,
+    rodape: `<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="ok-quadro" ${mudancas ? '' : 'disabled'}>Importar</button>`,
   });
   $('#ok-quadro', d).addEventListener('click', async () => {
     try {
@@ -1180,7 +1453,7 @@ async function importarQuadro(arquivo) {
       d.close();
       await carregar();
       renderPremissas();
-      toast(`Quadro importado: ${mudancas} regra(s) alterada(s).`);
+      toast(`Premissas importadas: ${mudancas} alteração(ões).`);
     } catch (e) { toast(e.message, 'erro'); }
   });
 }
@@ -1746,7 +2019,7 @@ const descreverComQuem = p => `${descreverPremissa(p)}${p.quem?.length ? ' · s�
 
 function renderConferencia() {
   const el = painel('conferencia');
-  const fils = filiaisDa(E.filtro.regional).filter(f => !E.filtro.filial || f === E.filtro.filial);
+  const fils = filiaisVisiveis();
   if (!fils.includes(E.conf.filial)) E.conf.filial = fils[0] || '';
   const porFilial = Motor.agregar(E.res, c => c.filial, c => fils.includes(c.filial));
   const abertas = E.solic.filter(s => s.status === 'aberta' || s.status === 'em_analise');
@@ -2145,7 +2418,7 @@ async function renderContabil() {
   const semCc = ccsBase.filter(([cod]) => ccContabil(cfg, cod).como === 'sem');
   const opcoes = (lista, sel, vazio) => `<option value="">${vazio}</option>${[...new Set([...lista, sel].filter(Boolean))].map(x => `<option ${x === sel ? 'selected' : ''}>${esc(x)}</option>`).join('')}`;
   const anualRub = k => { let s = 0; E.res.colaboradores.forEach((c, i) => { if (noFiltro(c)) for (let m = 0; m < 12; m++) s += E.res.valor(i, k, m); }); return s; };
-  const escopo = E.filtro.filial || E.filtro.regional || 'Todas as regionais';
+  const escopo = E.filtro.filial || [E.filtro.regional, E.filtro.uf && (E.filtro.uf === '_' ? 'estado a definir' : E.filtro.uf)].filter(Boolean).join(' · ') || 'Todas as regionais';
 
   el.innerHTML = `
     <div class="cab-pagina"><div><h1 class="titulo-pagina">Relatório <em>contábil</em></h1>
@@ -2260,7 +2533,7 @@ function baixarContabil(cfg) {
   ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: 15 } }) };
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Pessoal');
-  const nome = [ano, E.filtro.regional, E.filtro.filial].filter(Boolean).join('-').replace(/[^\w-]+/g, '_');
+  const nome = [ano, E.filtro.regional, E.filtro.uf, E.filtro.filial].filter(Boolean).join('-').replace(/[^\w-]+/g, '_');
   XLSX.writeFile(wb, `Orcamento-Contabil-${nome}.xlsx`);
 }
 
@@ -2362,6 +2635,7 @@ async function iniciar() {
   $('#btn-menu').addEventListener('click', () => $('#lateral').classList.toggle('aberta'));
   $('#sair').addEventListener('click', async () => { await api('/api/logout', { method: 'POST' }); location.replace('index.html'); });
   $('#f-regional').addEventListener('change', e => { E.filtro.regional = e.target.value; E.filtro.filial = ''; montarFiltros(); renderAba(); });
+  $('#f-uf').addEventListener('change', e => { E.filtro.uf = e.target.value; E.filtro.filial = ''; montarFiltros(); renderAba(); });
   $('#f-filial').addEventListener('change', e => { E.filtro.filial = e.target.value; renderAba(); });
   window.addEventListener('beforeunload', e => {
     if (Object.keys(E.rascunho).length || Object.keys(E.prem.edits).length) { e.preventDefault(); e.returnValue = ''; }

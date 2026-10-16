@@ -378,6 +378,8 @@ app.delete('/api/colaboradores/:id', exigirAdmin, (req, res) => {
 
 // ----- filiais (dissídio e reajuste de benefícios) -----
 
+const UFS = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
+
 function salvarFilial(nome, b) {
   const atual = db.prepare('SELECT * FROM filiais WHERE filial = ?').get(nome);
   if (!atual) return false;
@@ -386,9 +388,10 @@ function salvarFilial(nome, b) {
     dissidio_mes: mes(b.dissidio_mes, atual.dissidio_mes),
     reaj_benef_pct: b.reaj_benef_pct != null ? numero(b.reaj_benef_pct) : atual.reaj_benef_pct,
     reaj_benef_mes: mes(b.reaj_benef_mes, atual.reaj_benef_mes),
+    uf: b.uf !== undefined ? (UFS.includes(String(b.uf).toUpperCase()) ? String(b.uf).toUpperCase() : null) : atual.uf,
   };
-  db.prepare('UPDATE filiais SET dissidio_pct = ?, dissidio_mes = ?, reaj_benef_pct = ?, reaj_benef_mes = ? WHERE filial = ?')
-    .run(novo.dissidio_pct, novo.dissidio_mes, novo.reaj_benef_pct, novo.reaj_benef_mes, nome);
+  db.prepare('UPDATE filiais SET dissidio_pct = ?, dissidio_mes = ?, reaj_benef_pct = ?, reaj_benef_mes = ?, uf = ? WHERE filial = ?')
+    .run(novo.dissidio_pct, novo.dissidio_mes, novo.reaj_benef_pct, novo.reaj_benef_mes, novo.uf, nome);
   return true;
 }
 

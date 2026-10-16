@@ -107,6 +107,8 @@ CREATE TABLE IF NOT EXISTS historico (
 // Atualizações de esquema em bancos já existentes.
 const colunas = db.prepare('PRAGMA table_info(colaboradores)').all().map(c => c.name);
 if (!colunas.includes('excecoes')) db.exec("ALTER TABLE colaboradores ADD COLUMN excecoes TEXT NOT NULL DEFAULT '{}'");
+const colFiliais = db.prepare('PRAGMA table_info(filiais)').all().map(c => c.name);
+if (!colFiliais.includes('uf')) db.exec('ALTER TABLE filiais ADD COLUMN uf TEXT');
 
 if (!db.prepare("SELECT 1 FROM config WHERE chave = 'ano'").get()) {
   db.prepare("INSERT INTO config (chave, valor) VALUES ('ano', ?)").run(String(new Date().getFullYear() + 1));
@@ -131,6 +133,22 @@ function registrar(quem, acao, detalhe = '') {
 }
 
 /** Garante uma linha em `filiais` para cada filial que aparece na base de colaboradores. */
+// Estado (UF) sugerido pelo nome da filial — só quando o nome indica a cidade; o resto fica "a definir" para ajuste na tela.
+const UF_POR_NOME = [
+  ['HOLDING NORTE', 'AM'], ['CUIABA', 'MT'], ['CACERES', 'MT'], ['GOIANIA', 'GO'],
+  ['ANAMA', 'AM'], ['ANORI', 'AM'], ['APARECIDA', 'AM'], ['CAAPIRANGA', 'AM'], ['CODAJAS', 'AM'], ['JAPIIM', 'AM'], ['JARAQUI', 'AM'],
+  ['MAUA', 'AM'], ['PIRARUCU', 'AM'], ['PORAQUE', 'AM'], ['TAMBAQUI', 'AM'], ['TUCUNARE', 'AM'], ['MANACAPURU', 'AM'],
+  ['CRUZEIRO DO SUL', 'AC'], ['FEIJO', 'AC'], ['TARAUACA', 'AC'], ['UTE FLORESTA', 'AC'], ['MONTE CRISTO', 'RR'],
+  ['ARAUCARIA', 'PR'], ['CANDIOTA', 'RS'], ['URUGUAIANA', 'RS'], ['LAGES BIO', 'SC'], ['SANTA CATARINA', 'SC'],
+  ['SANTA CRUZ', 'RJ'], ['NORTE FLUMINENSE', 'RJ'], ['ANDRADINA', 'SP'],
+];
+const UF_POR_REGIONAL = { 'RIO DE JANEIRO': 'RJ' };
+function ufSugerida(filial, regional) {
+  const n = String(filial || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+  const achado = UF_POR_NOME.find(([chave]) => n.includes(chave));
+  return achado ? achado[1] : UF_POR_REGIONAL[String(regional || '').toUpperCase()] || null;
+}
+
 function sincronizarFiliais() {
   db.exec(`
     INSERT OR IGNORE INTO filiais (filial, regional)
@@ -138,6 +156,13 @@ function sincronizarFiliais() {
     UPDATE filiais SET regional = (SELECT MIN(regional) FROM colaboradores c WHERE c.filial = filiais.filial)
      WHERE EXISTS (SELECT 1 FROM colaboradores c WHERE c.filial = filiais.filial);
   `);
+  // Estado sugerido só para quem ainda não tem (não sobrescreve o que foi ajustado na tela)
+  const sem = db.prepare("SELECT filial, regional FROM filiais WHERE uf IS NULL OR uf = ''").all();
+  const gravar = db.prepare('UPDATE filiais SET uf = ? WHERE filial = ?');
+  for (const f of sem) { const uf = ufSugerida(f.filial, f.regional); if (uf) gravar.run(uf, f.filial); }
 }
 
-module.exports = { db, DATA_DIR, registrar, sincronizarFiliais, PPR_HOLDING };
+module.exports = { db, DATA_DIR, registrar, sincronizarFiliais, ufSugerida, PPR_HOLDING };
+
+// Bancos que já existiam antes da coluna de estado: preenche a sugestão uma vez.
+sincronizarFiliais();
