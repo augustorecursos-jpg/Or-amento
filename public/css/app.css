@@ -479,3 +479,12 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .tabela tr.det-rubrica td.fixa { padding-left: 3rem; }
 .tabela tr.det-rubrica:last-of-type td, .tabela tr.det-rubrica + tr.colab td { border-top: 0; }
 .tabela tr.det-rubrica .sub.conta { color: #b54d12; font-weight: 700; white-space: normal; max-width: 300px; }
+
+/* Relatório contábil */
+.contabil-passos { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 1.2rem; }
+.contabil-passos .chips { display: flex; gap: .4rem; flex-wrap: wrap; }
+.tabela tr.sem-vinculo td { background: var(--laranja-suave); }
+.tabela select.campo { padding: .35rem .5rem; font-size: .8rem; max-width: 420px; }
+.tabela-contabil td, .tabela-contabil th { font-size: .78rem; }
+@media (max-width: 1000px) { .contabil-passos { grid-template-columns: 1fr; } }
+.contabil-itens tr.grupo td::before { content: none !important; } .contabil-itens tr.grupo td { cursor: default; }

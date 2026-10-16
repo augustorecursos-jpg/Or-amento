@@ -25,6 +25,7 @@ const E = {
   conf: { filial: '' },
   solic: [],
   solicFiltro: 'pendentes',
+  contabil: { cfg: null, zeradas: false },
 };
 
 const $ = (sel, raiz = document) => raiz.querySelector(sel);
@@ -79,7 +80,7 @@ function montarFiltros() {
 
 const TITULOS = {
   painel: 'Painel', simulacao: 'Simulação mês a mês', premissas: 'Premissas e regras', base: 'Base de colaboradores',
-  conferencia: 'Conferência', solicitacoes: 'Pedidos de ajuste', coordenadores: 'Acessos dos coordenadores', historico: 'Histórico',
+  conferencia: 'Conferência', contabil: 'Relatório contábil', solicitacoes: 'Pedidos de ajuste', coordenadores: 'Acessos dos coordenadores', historico: 'Histórico',
 };
 
 function irPara(aba) {
@@ -87,7 +88,7 @@ function irPara(aba) {
   $$('.lateral-item[data-aba]').forEach(b => b.classList.toggle('ativo', b.dataset.aba === aba));
   $$('[data-painel]').forEach(s => { s.hidden = s.dataset.painel !== aba; });
   $('#barra-pagina').textContent = TITULOS[aba];
-  $('#barra-filtros').style.visibility = ['painel', 'simulacao', 'base', 'conferencia'].includes(aba) ? '' : 'hidden';
+  $('#barra-filtros').style.visibility = ['painel', 'simulacao', 'base', 'conferencia', 'contabil'].includes(aba) ? '' : 'hidden';
   $('#lateral').classList.remove('aberta');
   history.replaceState(null, '', `#${aba}`);
   renderAba();
@@ -97,7 +98,7 @@ function irPara(aba) {
 function renderAba() {
   ({
     painel: renderPainel, simulacao: renderSimulacao, premissas: renderPremissas, base: renderBase,
-    conferencia: renderConferencia, solicitacoes: renderSolicitacoes, coordenadores: renderCoordenadores, historico: renderHistorico,
+    conferencia: renderConferencia, contabil: renderContabil, solicitacoes: renderSolicitacoes, coordenadores: renderCoordenadores, historico: renderHistorico,
   })[E.aba]();
 }
 
@@ -410,8 +411,11 @@ function contaDoItem(c, rub) {
   const mult = Motor.multiploDe(p, c.cargo, E.dados.niveis);
   const quando = p.periodo === 'anual_mes' ? `pago em ${MESES[p.mes - 1]}` : p.periodo === 'anual_diluido' ? 'diluído em 12 meses' : 'todo mês';
   const alvo = `${fmtN(mult)} salário${mult === 1 ? '' : 's'}${p.por_nivel && c.cargo ? ` (${c.cargo})` : ''}`;
-  if (p.com_dissidio) return `salário com dissídio × ${alvo} · ${quando}`;
-  return `${brl.format(c.salario)} × ${alvo} = ${brl.format(c.salario * mult)} no ano · ${quando}`;
+  const f = filiaisComRascunho()[c.filial] || {};
+  const pct = !p.sem_dissidio && Number(f.dissidio_pct) ? Number(f.dissidio_pct) : 0;
+  const sal = c.salario * (1 + pct / 100);
+  const base = pct ? `${brl.format(sal)} (salário com dissídio de ${fmtN(pct)}%)` : brl.format(sal);
+  return `${base} × ${alvo} = ${brl.format(sal * mult)} no ano · ${quando}`;
 }
 
 function tabelaSimulacaoHtml() {
@@ -879,8 +883,8 @@ function editarDetalhes(rub) {
       : `
         <label class="rotulo">Quando é pago${sel('periodo', PERIODOS, p.periodo)}<small>“Uma vez no ano” lança o valor inteiro no mês escolhido (ex.: cesta natalina em dezembro).</small></label>
         <label class="rotulo">Mês (se for uma vez no ano)<select class="campo" name="mes">${opcoesMes(p.mes)}</select></label>`}
-      ${m === 'multiplo' ? `<label class="check inteiro"><input type="checkbox" name="com_dissidio" ${p.com_dissidio ? 'checked' : ''}> Calcular sobre o salário <b>já com o dissídio</b></label>
-        <p class="inteiro" style="margin:0;font-size:.8rem;color:var(--texto-suave)">Desmarcado (padrão): salário da base × nº de salários. Ex.: R$ 13.780 × 2 = R$ 27.560 no ano, lançado inteiro no mês escolhido ou diluído em 12 meses.</p>` : ''}
+      ${m === 'multiplo' ? `<label class="check inteiro"><input type="checkbox" name="sem_dissidio" ${p.sem_dissidio ? 'checked' : ''}> Ignorar o dissídio (usar o salário da base)</label>
+        <p class="inteiro" style="margin:0;font-size:.8rem;color:var(--texto-suave)">Padrão: novo salário (com o dissídio da filial) × nº de salários. Ex.: R$ 13.780 com dissídio de 5% = R$ 14.469 × 2 = R$ 28.938 no ano, lançado inteiro no mês escolhido ou diluído em 12 meses.</p>` : ''}
       ${m === 'rateio' ? `<label class="rotulo inteiro">Como dividir o total entre os colaboradores${sel('rateio', { hc: 'Igual por pessoa (headcount)', salario: 'Proporcional ao salário' }, p.rateio)}</label>` : ''}
     </form>`,
     rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="ok-detalhes">Aplicar</button>',
@@ -893,7 +897,7 @@ function editarDetalhes(rub) {
     if (f.periodo) novo.periodo = f.periodo.value;
     if (f.mes) novo.mes = Number(f.mes.value);
     if (f.rateio) novo.rateio = f.rateio.value;
-    if (f.com_dissidio) novo.com_dissidio = f.com_dissidio.checked;
+    if (f.sem_dissidio) novo.sem_dissidio = f.sem_dissidio.checked;
     E.prem.edits[rub] = novo;
     d.close();
     desenharTabelaPrem();
@@ -1801,6 +1805,189 @@ function abrirItem(s) {
     return;
   }
   irPara('premissas');
+}
+
+// ---------- Relatório contábil ----------
+
+// Vínculo sugerido item → conta contábil (pelo código da conta); pode ser trocado na tela.
+const CONTA_SUGERIDA = {
+  salario: '218 - SALÁRIOS E ORDENADOS', periculosidade: '1833725 - INSALUBRIDADE / PERICULOSIDADE', insalubridade: '1833725 - INSALUBRIDADE / PERICULOSIDADE',
+  penosidade: '1833725 - INSALUBRIDADE / PERICULOSIDADE', adic_turno: '1833726 - ADICIONAL NOTURNO', horas_extras: '219 - HORAS EXTRAS',
+  ferias: '223 - PROV.TRABALHISTAS-FÉRIAS', decimo: '118516 - PROV.TRABALHISTAS-13º SALÁRIO', rescisao: '220 - DESPESAS COM RESCISÃO DE FUNCIONÁRIOS',
+  fgts: '221 - F.G.T.S.', fgts_ferias: '118519 - PROV.TRABALHISTAS-FGTS S/FÉRIAS', fgts_13: '118520 - PROV.TRABALHISTAS-FGTS S/13º SALÁRIO',
+  inss: '222 - I.N.S.S.', inss_ferias: '118517 - PROV.TRABALHISTAS-INSS S/FÉRIAS', inss_13: '118518 - PROV.TRABALHISTAS-INSS S/13º SALÁRIO',
+  ppr: '2821595 - PROVISÃO PARA PARTICIPAÇÃO NOS RESULTADOS', va: '255 - PAT-PROGRAMA ALIMENTAÇÃO TRABALHADOR', va_natal: '247 - CESTAS BÁSICAS/TICKETS',
+  vt: '236 - VALE TRANSPORTE', aux_creche: '67994 - DESPESAS COM CRECHES E LAZER', educacional: '3447914 - OUTROS BENEFICIOS SOCIAIS',
+  material_escolar: '3447914 - OUTROS BENEFICIOS SOCIAIS', aux_oculos: '3447914 - OUTROS BENEFICIOS SOCIAIS', oftalmo: '67996 - DESPESAS MÉDICAS/HOSPITALARES/ODONTOLÓGICAS',
+  assist_medica: '147480 - PLANO DE SAUDE', coparticipacao: '147480 - PLANO DE SAUDE', assist_odonto: '67996 - DESPESAS MÉDICAS/HOSPITALARES/ODONTOLÓGICAS',
+  farmacia: '163562 - MEDICAMENTOS', seguro_vida: '78061 - SEGUROS DE FUNCIONÁRIOS', refeitorio: '1291020 - ALIMENTOS PARA REFEITÓRIO',
+  fretado: '67975 - TRANSPORTE CONTRATADO/PRÓPRIO', fretado_overall: '67975 - TRANSPORTE CONTRATADO/PRÓPRIO', cesta_natalina: '67993 - CESTAS NATALINAS',
+  saude_ocupacional: '67980 - EXAMES PERIÓDICOS', endomarketing: '105278 - ENDOMARKETING', treinamento: '246 - CURSOS E TREINAMENTOS DE PESSOAL',
+  viagens: '68420 - DIÁRIAS', confraternizacoes: '251 - CONFRATERNIZAÇÕES',
+};
+const codigoDe = rotulo => String(rotulo || '').split(' - ')[0].trim();
+
+/** Conta contábil de um item: escolhida na tela → sugerida (achando na lista pelo código). */
+function contaDoItem2(cfg, rub) {
+  if (cfg.mapa_rubricas[rub] === '-') return '';
+  if (cfg.mapa_rubricas[rub]) return cfg.mapa_rubricas[rub];
+  const sug = CONTA_SUGERIDA[rub];
+  if (!sug) return '';
+  return cfg.contas.find(c => codigoDe(c) === codigoDe(sug)) || sug;
+}
+
+/** Centro de custo contábil de um CÓD. C. CUSTO da base: escolhido → mesmo código na lista → padrão. */
+function ccContabil(cfg, cod) {
+  if (cfg.mapa_cc[cod]) return { cc: cfg.mapa_cc[cod], como: 'manual' };
+  const achado = cod && cfg.ccs.find(c => codigoDe(c) === String(cod).trim());
+  if (achado) return { cc: achado, como: 'auto' };
+  return { cc: cfg.cc_padrao || 'N/A Centro de Custo', como: 'sem' };
+}
+
+/** Linhas do relatório: Pacote · Centro de custo contábil · Conta contábil · Terceiro · 12 meses. */
+function linhasContabeis(cfg) {
+  const porChave = new Map();
+  E.res.colaboradores.forEach((c, i) => {
+    if (!noFiltro(c)) return;
+    const cc = ccContabil(cfg, c.cc_cod).cc;
+    RUBRICAS.forEach((r, k) => {
+      const conta = contaDoItem2(cfg, r.id);
+      if (!conta) return;
+      const chave = `${cc}\u0000${conta}`;
+      if (!porChave.has(chave)) porChave.set(chave, { cc, conta, meses: new Float64Array(12) });
+      const l = porChave.get(chave);
+      for (let m = 0; m < 12; m++) l.meses[m] += E.res.valor(i, k, m);
+    });
+  });
+  const ordemConta = new Map(cfg.contas.map((c, i) => [c, i]));
+  return [...porChave.values()]
+    .filter(l => E.contabil.zeradas || l.meses.some(v => Math.abs(v) >= 0.005))
+    .sort((a, b) => a.cc.localeCompare(b.cc, 'pt-BR', { numeric: true }) || (ordemConta.get(a.conta) ?? 999) - (ordemConta.get(b.conta) ?? 999) || a.conta.localeCompare(b.conta));
+}
+
+async function renderContabil() {
+  const el = painel('contabil');
+  if (!E.contabil.cfg) E.contabil.cfg = await api('/api/contabil');
+  const cfg = E.contabil.cfg;
+  const ano = String(E.dados.config.ano);
+  const meses = MESES.map(m => `${m}/${ano.slice(-2)}`);
+  const linhas = linhasContabeis(cfg);
+  const colabs = E.dados.colaboradores.filter(noFiltro);
+  const ccsBase = [...new Map(E.dados.colaboradores.map(c => [String(c.cc_cod || ''), c.cc_nome || ''])).entries()].sort((a, b) => a[0].localeCompare(b[0], 'pt-BR', { numeric: true }));
+  const semCc = ccsBase.filter(([cod]) => ccContabil(cfg, cod).como === 'sem');
+  const opcoes = (lista, sel, vazio) => `<option value="">${vazio}</option>${[...new Set([...lista, sel].filter(Boolean))].map(x => `<option ${x === sel ? 'selected' : ''}>${esc(x)}</option>`).join('')}`;
+  const anualRub = k => { let s = 0; E.res.colaboradores.forEach((c, i) => { if (noFiltro(c)) for (let m = 0; m < 12; m++) s += E.res.valor(i, k, m); }); return s; };
+  const escopo = E.filtro.filial || E.filtro.regional || 'Todas as regionais';
+
+  el.innerHTML = `
+    <div class="cab-pagina"><div><h1 class="titulo-pagina">Relatório <em>contábil</em></h1>
+      <p class="subtitulo">Gera o arquivo no formato da contabilidade (Pacote · Centro de Custo · Conta Contábil · Terceiro · meses). Cada item do orçamento vai para uma conta contábil e cada CÓD. C. CUSTO da base vai para o centro de custo contábil.</p></div>
+      <button class="btn btn-laranja" id="ct-baixar">⬇ Baixar relatório (Excel)</button></div>
+
+    <div class="contabil-passos">
+      <section class="cartao">
+        <h3>1 · Listas da contabilidade</h3>
+        <p class="subtitulo" style="margin:0 0 .8rem">Suba a planilha com as abas <b>Conta contabil</b> e <b>Centro de Custo Contabil</b>.</p>
+        <label class="btn btn-marinho btn-sm" style="cursor:pointer">⬆ Importar listas (Excel)<input type="file" id="ct-listas" accept=".xlsx,.xls" hidden></label>
+        <div class="chips" style="margin-top:.7rem"><span class="chip ${cfg.contas.length ? 'ok' : 'falta'}">${cfg.contas.length} contas contábeis</span><span class="chip ${cfg.ccs.length ? 'ok' : 'falta'}">${cfg.ccs.length} centros de custo</span></div>
+        <div class="form-grade" style="margin-top:.9rem">
+          <label class="rotulo">Pacote<input class="campo" id="ct-pacote" value="${esc(cfg.pacote)}"></label>
+          <label class="rotulo">Terceiro<input class="campo" id="ct-terceiro" value="${esc(cfg.terceiro)}"></label>
+        </div>
+      </section>
+      <section class="cartao">
+        <h3>2 · Centros de custo <small>· ${ccsBase.length} na base · ${semCc.length ? `<b style="color:#b54d12">${semCc.length} sem vínculo</b>` : 'todos vinculados'}</small></h3>
+        <p class="subtitulo" style="margin:0 0 .8rem">O vínculo é automático pelo código (ex.: 17093 → “17093 - RECURSOS HUMANOS”). Ajuste só o que não bater.</p>
+        <div class="tabela-wrap" style="max-height:300px"><table class="tabela"><thead><tr><th>CÓD. C. CUSTO da base</th><th class="n">Colab.</th><th>Centro de custo contábil</th></tr></thead>
+        <tbody>${ccsBase.map(([cod, nome]) => {
+          const v = ccContabil(cfg, cod);
+          return `<tr class="${v.como === 'sem' ? 'sem-vinculo' : ''}"><td>${esc(cod || '—')}<span class="sub">${esc(nome)}</span></td><td class="n">${E.dados.colaboradores.filter(c => String(c.cc_cod || '') === cod).length}</td>
+            <td><select class="campo" data-cc="${esc(cod)}">${opcoes(cfg.ccs, cfg.mapa_cc[cod] || '', v.como === 'auto' ? `Automático: ${esc(v.cc)}` : `— ${esc(cfg.cc_padrao)} —`)}</select></td></tr>`;
+        }).join('')}</tbody></table></div>
+      </section>
+    </div>
+
+    <section class="cartao" style="margin-top:1.2rem">
+      <h3>3 · Item do orçamento → Conta contábil <small>· sugestão inicial pelo nome da conta; troque o que precisar</small></h3>
+      <div class="tabela-wrap" style="max-height:420px"><table class="tabela contabil-itens"><thead><tr><th>Item</th><th class="n">Custo anual (${esc(escopo)})</th><th>Conta contábil</th></tr></thead>
+      <tbody>${GRUPOS.map(g => `<tr class="grupo"><td colspan="3" style="cursor:default">${g.nome}</td></tr>${RUBRICAS.map((r, k) => ({ r, k })).filter(x => x.r.grupo === g.id).map(({ r, k }) => `
+        <tr><td>${esc(r.nome)}</td><td class="n">${brl0.format(anualRub(k))}</td>
+        <td><select class="campo" data-rub="${r.id}">${opcoes(cfg.contas.length ? cfg.contas : Object.values(CONTA_SUGERIDA), contaDoItem2(cfg, r.id), '— não enviar —')}</select></td></tr>`).join('')}`).join('')}</tbody></table></div>
+    </section>
+
+    <section class="cartao" style="margin-top:1.2rem">
+      <div class="ferramentas" style="margin-bottom:.8rem"><h3 style="margin:0">Prévia · ${esc(escopo)} <small>· ${linhas.length} linha(s) · ${colabs.length} colaborador(es)</small></h3>
+        <span class="direita"><label class="check"><input type="checkbox" id="ct-zeradas" ${E.contabil.zeradas ? 'checked' : ''}> incluir linhas zeradas</label></span></div>
+      <div class="tabela-wrap alta"><table class="tabela tabela-contabil"><thead><tr><th>Pacote</th><th>Centro de Custo</th><th>Conta Contábil</th><th>Terceiro</th>${meses.map(m => `<th class="n">${m}</th>`).join('')}</tr></thead>
+      <tbody>${linhas.slice(0, 400).map(l => `<tr><td>${esc(cfg.pacote)}</td><td>${esc(l.cc)}</td><td>${esc(l.conta)}</td><td>${esc(cfg.terceiro)}</td>${[...l.meses].map(v => `<td class="n">${Math.round(v) ? num0.format(Math.round(v)) : '-'}</td>`).join('')}</tr>`).join('')
+        || '<tr><td colspan="16" class="vazio">Nada para mostrar com esses filtros.</td></tr>'}</tbody></table></div>
+      ${linhas.length > 400 ? `<p class="subtitulo" style="margin:.6rem 0 0">Mostrando 400 de ${linhas.length} linhas — o Excel traz todas.</p>` : ''}
+    </section>`;
+
+  const salvar = async parcial => {
+    try { E.contabil.cfg = await api('/api/contabil', { method: 'PUT', body: parcial }); renderContabil(); } catch (e) { toast(e.message, 'erro'); }
+  };
+  $('#ct-pacote', el).addEventListener('change', e => salvar({ pacote: e.target.value }));
+  $('#ct-terceiro', el).addEventListener('change', e => salvar({ terceiro: e.target.value }));
+  $('#ct-zeradas', el).addEventListener('change', e => { E.contabil.zeradas = e.target.checked; renderContabil(); });
+  $$('[data-cc]', el).forEach(s => s.addEventListener('change', () => {
+    const mapa = { ...cfg.mapa_cc };
+    if (s.value) mapa[s.dataset.cc] = s.value; else delete mapa[s.dataset.cc];
+    salvar({ mapa_cc: mapa });
+  }));
+  $$('[data-rub]', el).forEach(s => s.addEventListener('change', () => {
+    const mapa = { ...cfg.mapa_rubricas };
+    // "não enviar" fica guardado como '-' para não voltar à sugestão automática
+    mapa[s.dataset.rub] = s.value || '-';
+    salvar({ mapa_rubricas: mapa });
+  }));
+  $('#ct-listas', el).addEventListener('change', e => e.target.files[0] && importarListasContabeis(e.target.files[0]));
+  $('#ct-baixar', el).addEventListener('click', () => baixarContabil(cfg));
+}
+
+async function importarListasContabeis(arquivo) {
+  if (!window.XLSX) return toast('Carregando o leitor de Excel… tente de novo.', 'erro');
+  const wb = XLSX.read(await arquivo.arrayBuffer(), { type: 'array' });
+  const coluna = teste => {
+    const aba = wb.SheetNames.find(n => teste(normCab(n)));
+    if (!aba) return null;
+    return XLSX.utils.sheet_to_json(wb.Sheets[aba], { header: 1, raw: false, defval: null }).map(l => String(l?.[0] ?? '').trim())
+      .filter(v => v && !/^(CONTA CONTABIL|CENTRO DE CUSTO)$/.test(normCab(v)));
+  };
+  const contas = coluna(n => n.startsWith('CONTA'));
+  const ccs = coluna(n => n.startsWith('CENTRO'));
+  if (!contas && !ccs) return toast('Não encontrei as abas "Conta contabil" e "Centro de Custo Contabil".', 'erro');
+  const body = {};
+  if (contas) body.contas = contas;
+  if (ccs) {
+    body.ccs = ccs;
+    const na = ccs.find(c => /^N\/?A/i.test(c));
+    if (na) body.cc_padrao = na;
+  }
+  E.contabil.cfg = await api('/api/contabil', { method: 'PUT', body });
+  toast(`Listas importadas: ${contas?.length ?? 0} contas e ${ccs?.length ?? 0} centros de custo.`);
+  renderContabil();
+}
+
+function baixarContabil(cfg) {
+  if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
+  const ano = String(E.dados.config.ano);
+  const meses = MESES.map(m => `${m}/${ano.slice(-2)}`);
+  const linhas = linhasContabeis(cfg);
+  const aoa = [['Pacote', 'Centro de Custo', 'Conta Contábil', 'Terceiro', ...meses],
+    ...linhas.map(l => [cfg.pacote, l.cc, l.conta, cfg.terceiro, ...[...l.meses].map(v => Math.round(v * 100) / 100)])];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  // Formato da contabilidade: milhar sem centavos e "-" no zero
+  for (let r = 1; r < aoa.length; r++) for (let c = 4; c < 16; c++) {
+    const ref = XLSX.utils.encode_cell({ r, c });
+    if (ws[ref]) ws[ref].z = '#,##0;-#,##0;"-"';
+  }
+  ws['!cols'] = [{ wch: 12 }, { wch: 46 }, { wch: 56 }, { wch: 14 }, ...meses.map(() => ({ wch: 12 }))];
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: 15 } }) };
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Pessoal');
+  const nome = [ano, E.filtro.regional, E.filtro.filial].filter(Boolean).join('-').replace(/[^\w-]+/g, '_');
+  XLSX.writeFile(wb, `Orcamento-Contabil-${nome}.xlsx`);
 }
 
 // ---------- Coordenadores ----------

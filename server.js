@@ -139,7 +139,7 @@ function limparPremissa(p) {
     rateio: p.rateio === 'salario' ? 'salario' : 'hc',
     teto: p.teto === '' || p.teto == null ? null : numero(p.teto),
     por_nivel: Boolean(p.por_nivel),
-    com_dissidio: Boolean(p.com_dissidio),
+    sem_dissidio: Boolean(p.sem_dissidio),
     niveis: Object.fromEntries(Object.entries(p.niveis && typeof p.niveis === 'object' ? p.niveis : {})
       .filter(([k, v]) => texto(k) && v !== '' && v != null).slice(0, 100).map(([k, v]) => [texto(k, 120), numero(v)])),
     quem: (Array.isArray(p.quem) ? p.quem : []).map(q => texto(q, 200)).filter(q => /^(cc|cargo):/.test(q)).slice(0, 300),
@@ -441,6 +441,38 @@ app.put('/api/niveis', exigirAdmin, (req, res) => {
   db.exec('COMMIT');
   registrar('Administrador', 'Alterou a tabela de PPR por nível', `${Object.keys(niveis).length} nível(is)`);
   res.json({ ok: true });
+});
+
+// ----- relatório contábil: listas da contabilidade e vínculos (item → conta, centro de custo → CC contábil) -----
+
+function lerContabil() {
+  const linha = db.prepare("SELECT valor FROM config WHERE chave = 'contabil'").get();
+  let c = {};
+  try { c = JSON.parse(linha?.valor || '{}'); } catch { c = {}; }
+  return { pacote: 'PESSOAL', terceiro: 'N/A Custom1', cc_padrao: 'N/A Centro de Custo', contas: [], ccs: [], mapa_rubricas: {}, mapa_cc: {}, ...c };
+}
+
+app.get('/api/contabil', exigirAdmin, (req, res) => res.json(lerContabil()));
+
+app.put('/api/contabil', exigirAdmin, (req, res) => {
+  const atual = lerContabil();
+  const b = req.body || {};
+  const lista = v => (Array.isArray(v) ? [...new Set(v.map(x => texto(x, 160)).filter(Boolean))].slice(0, 2000) : null);
+  const mapa = (v, chaveOk) => (v && typeof v === 'object'
+    ? Object.fromEntries(Object.entries(v).filter(([k]) => chaveOk(k)).map(([k, x]) => [texto(k, 60), texto(x, 160)]).filter(([, x]) => x))
+    : null);
+  const novo = {
+    pacote: b.pacote != null ? texto(b.pacote, 60) : atual.pacote,
+    terceiro: b.terceiro != null ? texto(b.terceiro, 60) : atual.terceiro,
+    cc_padrao: b.cc_padrao != null ? texto(b.cc_padrao, 160) : atual.cc_padrao,
+    contas: lista(b.contas) ?? atual.contas,
+    ccs: lista(b.ccs) ?? atual.ccs,
+    mapa_rubricas: mapa(b.mapa_rubricas, k => RUBRICAS_VALIDAS.has(k)) ?? atual.mapa_rubricas,
+    mapa_cc: mapa(b.mapa_cc, k => texto(k) !== '') ?? atual.mapa_cc,
+  };
+  db.prepare("INSERT INTO config (chave, valor) VALUES ('contabil', ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").run(JSON.stringify(novo));
+  registrar('Administrador', 'Alterou a configuração do relatório contábil', `${novo.contas.length} contas · ${novo.ccs.length} centros de custo`);
+  res.json(novo);
 });
 
 // ----- coordenadores -----

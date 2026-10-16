@@ -61,8 +61,8 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   início. Copiar regras de uma filial para outras e dissídio em lote.
   - **Horas extras, treinamento e viagens**: lance o **custo total do ano** da filial; a ferramenta divide por 12 e faz a
     média por colaborador (só entre quem recebe). Dá para trocar para total por mês no ⚙.
-  - **PPR = salário × target**: ex.: R$ 13.780 × 2 = R$ 27.560 no ano. Usa o salário da base (sem dissídio), como nas
-    planilhas; no ⚙ dá para calcular sobre o salário já reajustado. O valor do ano é lançado no mês escolhido ou
+  - **PPR = salário × target**: ex.: R$ 13.780 × 2 = R$ 27.560 no ano. Se a filial tem dissídio, usa o **novo salário**
+    (ex.: 13.780 × 1,05 × 2); no ⚙ dá para ignorar o dissídio. O valor do ano é lançado no mês escolhido ou
     diluído em 12 meses, e a conta aparece no detalhe do colaborador na Simulação.
   - **PPR**: em “Como é calculado”, a opção **Nº de salários por nível do cargo** abre a tabela de target por nível, que
     aceita **colar do Excel** (NÍVEL CARGO · TARGET). Cada regra (geral, regional ou filial) tem a sua. A regra da
@@ -80,6 +80,11 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
     próprios de qualquer benefício (R$ por mês, %, nº de salários ou “não recebe”), no lugar da regra da filial. Também
     pela aba opcional *Condições próprias* do modelo (MATRÍCULA · ITEM · VALOR). Reimportar a base mantém essas condições
     pela matrícula.
+- **Relatório contábil** – arquivo no formato da contabilidade: *Pacote · Centro de Custo · Conta Contábil · Terceiro ·
+  Jan/AA … Dez/AA*. Importe a planilha com as abas *Conta contabil* e *Centro de Custo Contabil*; cada item do orçamento
+  (salário, férias, 13º, FGTS, PPR, plano de saúde, creche…) é ligado a uma conta contábil (sugestão inicial pelo nome,
+  editável) e cada CÓD. C. CUSTO da base ao centro de custo contábil de mesmo código (automático, com ajuste manual e
+  “N/A Centro de Custo” para o que não bater). Respeita os filtros de regional e filial.
 - **Pedidos de ajuste** – caixa de entrada com status (aberta, em análise, ajustada, recusada), resposta ao coordenador
   e botão **Abrir item**, que leva direto ao colaborador ou à premissa da filial.
 - **Acessos dos coordenadores** – login, senha e regionais de cada coordenador.
