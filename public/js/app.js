@@ -21,7 +21,7 @@ const E = {
   aba: 'painel',
   sim: { visao: 'rubricas', mil: false, fechados: new Set(), busca: '', abertos: new Set() },
   prem: { escopo: '*', edits: {}, filial: {}, busca: '', visao: 'filial', ocultarVazios: true, quadroReg: '' },
-  base: { busca: '', soVagas: false, soProprias: false },
+  base: { busca: '', soVagas: false, soProprias: false, fila: [] },
   conf: { filial: '', modo: 'mes', sel: new Set() },
   solic: [],
   solicFiltro: 'pendentes',
@@ -1331,7 +1331,7 @@ function renderBase() {
         <div><b>3</b><span>Suba o arquivo aqui embaixo e confira a prévia antes de importar.</span></div>
       </div>
       <label class="zona-arquivo" id="zona"><input type="file" id="arquivo" accept=".xlsx,.xls,.csv" multiple hidden>
-        <strong>Clique ou arraste a planilha aqui</strong>Matrícula · Funcionário · Regional · Filial · Situação · Função · Cargo · Cód. C. Custo · Centro de custo · Salário · Mês início · Mês fim
+        <strong>Clique ou arraste as planilhas aqui</strong><span class="zona-dica">Pode adicionar uma de cada vez — elas vão se juntando numa lista e você importa todas juntas.</span>Matrícula · Funcionário · Regional · Filial · Situação · Função · Cargo · Cód. C. Custo · Centro de custo · Salário · Mês início · Mês fim
         <br><small>Colunas a mais na planilha são ignoradas.</small></label>
       <div id="previa" class="previa"></div>
     </section>
@@ -1346,14 +1346,15 @@ function renderBase() {
     </section>`;
   const inp = $('#arquivo', el);
   const zona = $('#zona', el);
-  inp.addEventListener('change', () => previaImportacao([...inp.files]));
+  inp.addEventListener('change', () => { adicionarArquivos([...inp.files]); inp.value = ''; });
   zona.addEventListener('dragover', e => { e.preventDefault(); zona.classList.add('sobre'); });
   zona.addEventListener('dragleave', () => zona.classList.remove('sobre'));
-  zona.addEventListener('drop', e => { e.preventDefault(); zona.classList.remove('sobre'); previaImportacao([...e.dataTransfer.files]); });
+  zona.addEventListener('drop', e => { e.preventDefault(); zona.classList.remove('sobre'); adicionarArquivos([...e.dataTransfer.files]); });
   $('#base-busca', el).addEventListener('input', e => { E.base.busca = e.target.value; desenharBase(); });
   $('#base-vagas', el).addEventListener('change', e => { E.base.soVagas = e.target.checked; desenharBase(); });
   $('#base-proprias', el).addEventListener('change', e => { E.base.soProprias = e.target.checked; desenharBase(); });
   $('#baixar-modelo', el).addEventListener('click', baixarModeloBase);
+  if (E.base.fila.length) previaImportacao(E.base.fila);
   $('#nova-vaga', el).addEventListener('click', () => editarColaborador(null, { vaga: true }));
   $('#novo-colab', el).addEventListener('click', () => editarColaborador(null, {}));
   desenharBase();
@@ -1431,6 +1432,15 @@ function baixarModeloBase() {
   XLSX.writeFile(wb, 'Modelo-base-orcamento.xlsx');
 }
 
+/** Junta os arquivos escolhidos à lista (um de cada vez ou vários juntos); o mesmo nome substitui o anterior. */
+function adicionarArquivos(novos) {
+  for (const arq of novos) {
+    if (!/\.(xlsx|xls|csv)$/i.test(arq.name)) { toast(`${arq.name}: use arquivos .xlsx, .xls ou .csv.`, 'erro'); continue; }
+    E.base.fila = [...E.base.fila.filter(a => a.name !== arq.name), arq];
+  }
+  if (E.base.fila.length) previaImportacao(E.base.fila);
+}
+
 async function previaImportacao(arquivos) {
   const prev = $('#previa');
   if (!window.XLSX) return toast('Carregando leitor de Excel… tente de novo.', 'erro');
@@ -1453,8 +1463,12 @@ async function previaImportacao(arquivos) {
   linhas.forEach(l => { (porReg[l.regional || '?'] ||= new Set()).add(l.filial); });
   const totalSal = linhas.reduce((s, l) => s + l.salario, 0);
   prev.innerHTML = `
-    ${lidas.map(l => l.erro ? `<p>❌ <b>${esc(l.arquivo)}</b>: não encontrei uma linha de cabeçalho com Funcionário, Filial e Salário.</p>`
-      : `<div><b>📄 ${esc(l.arquivo)}</b> · aba “${esc(l.aba)}” · ${l.linhas.length} linha(s)<div class="chips" style="margin-top:.35rem">${Object.entries(l.mapa).map(([k, i]) => `<span class="chip ${i >= 0 ? 'ok' : 'falta'}">${i >= 0 ? '✓' : '–'} ${ROTULO_CAMPO[k]}</span>`).join('')}</div></div>`).join('')}
+    <div class="fila-cab"><b>${lidas.length} arquivo(s) na lista</b><button class="btn btn-claro btn-sm" id="add-arquivo">+ Adicionar outra planilha</button><button class="btn-link" id="limpar-fila">Limpar lista</button></div>
+    ${lidas.map((l, i) => l.erro ? `<p class="fila-item">❌ <b>${esc(l.arquivo)}</b>: não encontrei uma linha de cabeçalho com Funcionário, Filial e Salário. <button class="btn-ic" data-tirar="${i}" title="Tirar da lista">✕</button></p>`
+      : `<div class="fila-item"><b>📄 ${esc(l.arquivo)}</b> · aba “${esc(l.aba)}” · ${l.linhas.length} linha(s) <button class="btn-ic" data-tirar="${i}" title="Tirar da lista">✕</button><div class="chips" style="margin-top:.35rem">${Object.entries(l.mapa).map(([k, i]) => {
+        const opcional = k === 'mes_inicio' || k === 'mes_fim' || k === 'matricula';
+        return `<span class="chip ${i >= 0 ? 'ok' : opcional ? '' : 'falta'}">${i >= 0 ? '✓' : '–'} ${ROTULO_CAMPO[k]}${i < 0 && opcional ? ' (opcional)' : ''}</span>`;
+      }).join('')}</div></div>`).join('')}
     ${linhas.length ? `
       <div><b>${linhas.length}</b> colaboradores · <b>${linhas.filter(l => l.vaga).length}</b> vaga(s) · folha base de <b>${brl0.format(totalSal)}</b>/mês${linhas.some(l => l.excecoes) ? ` · <b>${linhas.filter(l => l.excecoes).length}</b> com condições próprias` : ''}</div>
       ${lidas.flatMap(l => l.avisosCond || []).map(a => `<p style="color:#b54d12;margin:0">⚠ ${esc(a)}</p>`).join('')}
@@ -1465,14 +1479,27 @@ async function previaImportacao(arquivos) {
         <label class="check"><input type="radio" name="modo" value="adicionar"> Adicionar à base atual</label>
         <button class="btn btn-laranja" id="confirmar-import" style="margin-left:auto">Importar ${linhas.length} linhas</button>
       </div>` : ''}`;
-  $('#confirmar-import')?.addEventListener('click', async () => {
+  $('#add-arquivo')?.addEventListener('click', () => $('#arquivo').click());
+  $('#limpar-fila')?.addEventListener('click', () => { E.base.fila = []; prev.innerHTML = ''; });
+  $$('[data-tirar]', prev).forEach(b => b.addEventListener('click', () => {
+    E.base.fila = E.base.fila.filter((_, i) => i !== Number(b.dataset.tirar));
+    if (E.base.fila.length) previaImportacao(E.base.fila); else prev.innerHTML = '';
+  }));
+  $('#confirmar-import')?.addEventListener('click', async e => {
     const modo = $('input[name="modo"]:checked').value;
+    e.target.disabled = true;
+    e.target.textContent = 'Importando…';
     try {
       const r = await api('/api/colaboradores/importar', { method: 'POST', body: { modo, linhas: linhas.filter(l => l.regional) } });
+      E.base.fila = [];
       await carregar();
       toast(`${r.importados} colaboradores importados (${r.regionais.join(', ')}).`);
       renderBase();
-    } catch (e) { toast(e.message, 'erro'); }
+    } catch (err) {
+      e.target.disabled = false;
+      e.target.textContent = `Importar ${linhas.length} linhas`;
+      toast(`Não foi possível importar: ${err.message}`, 'erro');
+    }
   });
 }
 

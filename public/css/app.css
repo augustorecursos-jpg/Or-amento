@@ -530,3 +530,7 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .btn-ajustar:hover { background: var(--laranja); color: #fff; border-color: var(--laranja); }
 .resumo-prem div { padding-right: .7rem; }
 .resumo-prem div .btn-ajustar { position: static; transform: none; justify-self: start; margin-top: .35rem; }
+.zona-dica { display: block; font-size: .8rem; margin: .1rem 0 .3rem; color: var(--laranja); font-weight: 700; }
+.fila-cab { display: flex; align-items: center; gap: .8rem; flex-wrap: wrap; padding-bottom: .4rem; border-bottom: 1px solid var(--linha); }
+.fila-item { margin: 0; padding: .4rem 0; border-bottom: 1px dashed var(--fundo-2); }
+.fila-item .btn-ic { color: var(--vermelho); }
