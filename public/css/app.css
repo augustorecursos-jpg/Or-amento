@@ -507,3 +507,26 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .tabela-conf td.fixa .btn-ic { font-size: .78rem; }
 .tabela-conf td.fixa .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
 .tabela-conf td.fixa { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Conferência: seleção de colaboradores para ajuste */
+.aviso-ajuste { padding: .65rem .9rem; margin-bottom: .7rem; border-radius: 10px; background: #fff8f2; border: 1px solid #f6cfb2; color: #8a3a0c; font-size: .86rem; }
+.tabela-conf tr.linha-sel { cursor: pointer; }
+.tabela-conf tr.linha-sel:hover td { background: #fff8f2; }
+.tabela-conf tr.marcada td, .tabela-conf tr.marcada td.fixa { background: #fdeee2 !important; }
+.tabela-conf input.marca, .marcar input { width: 17px; height: 17px; accent-color: var(--laranja); vertical-align: middle; margin: 0 .35rem 0 0; cursor: pointer; }
+.marcar { display: inline-flex; align-items: center; cursor: pointer; }
+.barra-selecao {
+  position: sticky; bottom: 14px; z-index: 6; margin-top: .9rem; display: flex; align-items: center; gap: .8rem; flex-wrap: wrap;
+  padding: .7rem .9rem .7rem 1.1rem; border-radius: 14px; background: var(--marinho); color: #fff; box-shadow: 0 16px 36px -16px rgba(10, 44, 69, .7);
+}
+.barra-selecao span { margin-right: auto; font-size: .95rem; }
+.barra-selecao .btn-claro { background: transparent; color: #fff; border-color: rgba(255, 255, 255, .35); }
+.ajuste-pessoa { border: 1px solid var(--linha); border-radius: 12px; padding: .8rem 1rem 1rem; margin: 0; }
+.ajuste-pessoa legend { font-weight: 800; color: var(--marinho); padding: 0 .4rem; font-size: .92rem; }
+.ajuste-pessoa legend small { font-weight: 400; color: var(--texto-suave); font-size: .76rem; margin-left: .3rem; }
+.resumo-prem div { padding-right: 5.6rem; }
+.resumo-prem div .btn-ajustar { position: absolute; top: 50%; right: .45rem; transform: translateY(-50%); }
+.btn-ajustar { border: 1px solid #f6cfb2; background: #fff; color: #b54d12; font-weight: 800; font-size: .74rem; padding: .3rem .55rem; border-radius: 8px; white-space: nowrap; }
+.btn-ajustar:hover { background: var(--laranja); color: #fff; border-color: var(--laranja); }
+.resumo-prem div { padding-right: .7rem; }
+.resumo-prem div .btn-ajustar { position: static; transform: none; justify-self: start; margin-top: .35rem; }

@@ -22,7 +22,7 @@ const E = {
   sim: { visao: 'rubricas', mil: false, fechados: new Set(), busca: '', abertos: new Set() },
   prem: { escopo: '*', edits: {}, filial: {}, busca: '', visao: 'filial', ocultarVazios: true, quadroReg: '' },
   base: { busca: '', soVagas: false, soProprias: false },
-  conf: { filial: '', modo: 'mes' },
+  conf: { filial: '', modo: 'mes', sel: new Set() },
   solic: [],
   solicFiltro: 'pendentes',
   contabil: { cfg: null, zeradas: false },
@@ -1622,7 +1622,7 @@ function renderConferencia() {
   const abertas = E.solic.filter(s => s.status === 'aberta' || s.status === 'em_analise');
   el.innerHTML = `
     <div class="cab-pagina"><div><h1 class="titulo-pagina">Conferência do <em>orçamento</em></h1>
-      <p class="subtitulo">Confira colaboradores, salários, vagas e premissas de cada filial. Encontrou algo errado? Clique em <b>💬 Solicitar ajuste</b> — o pedido vai direto para o time de orçamento.</p></div></div>
+      <p class="subtitulo">Confira colaboradores, salários, vagas e premissas de cada filial. Encontrou algo errado? Use os botões <b>✏️ Ajustar</b> nas premissas ou marque os colaboradores na tabela — o pedido vai direto para o time de orçamento.</p></div></div>
     ${fils.length ? `<div class="filiais-cards">${fils.map(f => {
       const a = porFilial.get(f);
       const cfg = E.dados.filiais[f];
@@ -1633,7 +1633,7 @@ function renderConferencia() {
         <span>${cfg.conferencia === 'conferida' ? '<span class="etiqueta ok">✓ Conferida</span>' : '<span class="etiqueta neutra">Pendente</span>'} ${n ? `<span class="etiqueta pend">${n} pedido(s)</span>` : ''}</span>
       </button>`;
     }).join('')}</div><div id="conf-detalhe"></div>` : '<div class="cartao vazio"><span>📭</span>Nenhuma filial disponível para você.</div>'}`;
-  $$('.filial-card', el).forEach(b => b.addEventListener('click', () => { E.conf.filial = b.dataset.filial; renderConferencia(); }));
+  $$('.filial-card', el).forEach(b => b.addEventListener('click', () => { E.conf.filial = b.dataset.filial; E.conf.sel.clear(); renderConferencia(); }));
   if (E.conf.filial) detalheConferencia();
 }
 
@@ -1659,16 +1659,16 @@ function detalheConferencia() {
         <div><small>${esc(cfg.regional)}</small><h2>${esc(f)}</h2>
           <p>${cfg.conferencia === 'conferida' ? `✓ Conferida por ${esc(cfg.conferida_por || '')} em ${esc(dataBr(cfg.conferida_em))}` : 'Ainda não conferida'}</p></div>
         <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-          <button class="btn btn-claro btn-sm" id="conf-geral">💬 Pedido geral</button>
+          <button class="btn btn-claro btn-sm" id="conf-geral">✏️ Outro ajuste</button>
           <button class="btn btn-claro btn-sm" id="conf-vaga">+ Solicitar vaga</button>
           ${cfg.conferencia === 'conferida' ? '<button class="btn btn-claro btn-sm" id="conf-status" data-s="pendente">Reabrir conferência</button>' : '<button class="btn btn-laranja btn-sm" id="conf-status" data-s="conferida">✓ Marcar como conferida</button>'}
         </div>
       </div>
       <h3 style="margin:.4rem 0 .7rem;font-size:.95rem">Premissas aplicadas</h3>
       <div class="resumo-prem">
-        <div><span>Dissídio</span><b>${num2.format(cfg.dissidio_pct)}% a partir de ${MESES[cfg.dissidio_mes - 1]}</b><button class="btn-ic" data-pedir-prem="dissidio" title="Solicitar ajuste">💬</button></div>
-        <div><span>Reajuste de benefícios</span><b>${num2.format(cfg.reaj_benef_pct)}% a partir de ${MESES[cfg.reaj_benef_mes - 1]}</b><button class="btn-ic" data-pedir-prem="reaj_benef" title="Solicitar ajuste">💬</button></div>
-        ${ativas.map(({ r, p }) => `<div><span>${esc(r.nome)}</span><b>${esc(descreverComQuem(p))}</b><button class="btn-ic" data-pedir-prem="${r.id}" title="Solicitar ajuste">💬</button></div>`).join('')}
+        <div><span>Dissídio</span><b>${num2.format(cfg.dissidio_pct)}% a partir de ${MESES[cfg.dissidio_mes - 1]}</b><button class="btn-ajustar" data-pedir-prem="dissidio">✏️ Ajustar</button></div>
+        <div><span>Reajuste de benefícios</span><b>${num2.format(cfg.reaj_benef_pct)}% a partir de ${MESES[cfg.reaj_benef_mes - 1]}</b><button class="btn-ajustar" data-pedir-prem="reaj_benef">✏️ Ajustar</button></div>
+        ${ativas.map(({ r, p }) => `<div><span>${esc(r.nome)}</span><b>${esc(descreverComQuem(p))}</b><button class="btn-ajustar" data-pedir-prem="${r.id}">✏️ Ajustar</button></div>`).join('')}
       </div>
       <div class="ferramentas" style="margin:1.4rem 0 .7rem">
         <h3 style="margin:0;font-size:.95rem">Colaboradores e vagas <small>· ${colabs.length} · ${porMes ? 'valores por mês (média dos meses no ano)' : 'valores do ano'}</small></h3>
@@ -1677,9 +1677,10 @@ function detalheConferencia() {
           <button class="btn btn-marinho btn-sm" id="conf-excel">⬇ Excel</button>
         </span>
       </div>
+      <div class="aviso-ajuste">☑️ <b>Algo errado com algum colaborador?</b> Marque a caixa ao lado do nome (pode marcar vários) e clique em <b>Solicitar ajuste</b>.</div>
       <div class="tabela-wrap alta"><table class="tabela tabela-conf">
         <thead>
-          <tr class="cab-grupos"><th class="fixa" rowspan="2">Colaborador</th><th rowspan="2">Período</th><th class="n" rowspan="2">Salário base<br><small>(sem dissídio)</small></th>
+          <tr class="cab-grupos"><th class="fixa" rowspan="2"><label class="marcar"><input type="checkbox" id="conf-todos" title="Marcar todos"> Colaborador</label></th><th rowspan="2">Período</th><th class="n" rowspan="2">Salário base<br><small>(sem dissídio)</small></th>
             ${GRUPOS.map(g => { const n = cols.filter(x => x.r.grupo === g.id).length; return n ? `<th colspan="${n}" class="cab-grupo" style="--c:${g.cor}">${g.nome}</th>` : ''; }).join('')}
             <th class="n" rowspan="2">Total ${porMes ? '/ mês' : 'ano'}</th></tr>
           <tr>${cols.map(({ r }) => `<th class="n" style="box-shadow:inset 0 3px 0 ${COR_GRUPO[r.grupo]}">${esc(r.id === 'salario' ? 'Salário c/ dissídio' : r.nome)}</th>`).join('')}</tr>
@@ -1687,7 +1688,7 @@ function detalheConferencia() {
         <tbody>${colabs.map(c => {
           const meses = mesesAtivos(c);
           const tot = totalColab(c);
-          return `<tr class="${c.vaga ? 'vaga' : ''}"><td class="fixa"><button class="btn-ic" data-pedir-colab="${c.id}" title="Solicitar ajuste">💬</button> ${esc(c.nome)}${c.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${etiquetaProprias(c)}<span class="sub" title="${esc(`${[c.matricula, c.funcao, c.cargo].filter(Boolean).join(' · ')} — CC ${[c.cc_cod, c.cc_nome].filter(Boolean).join(' · ')}`)}">${esc([c.funcao, c.cc_cod ? `CC ${c.cc_cod} ${c.cc_nome || ''}` : ''].filter(Boolean).join(' · '))}</span></td>
+          return `<tr class="linha-sel${c.vaga ? ' vaga' : ''}${E.conf.sel.has(c.id) ? ' marcada' : ''}" data-sel="${c.id}"><td class="fixa"><input type="checkbox" class="marca" data-marca="${c.id}" ${E.conf.sel.has(c.id) ? 'checked' : ''} aria-label="Selecionar ${esc(c.nome)} para ajuste"> ${esc(c.nome)}${c.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${etiquetaProprias(c)}<span class="sub" title="${esc(`${[c.matricula, c.funcao, c.cargo].filter(Boolean).join(' · ')} — CC ${[c.cc_cod, c.cc_nome].filter(Boolean).join(' · ')}`)}">${esc([c.funcao, c.cc_cod ? `CC ${c.cc_cod} ${c.cc_nome || ''}` : ''].filter(Boolean).join(' · '))}</span></td>
             <td>${meses === 12 ? 'Ano todo' : `${MESES[c.mes_inicio - 1]} – ${MESES[c.mes_fim - 1]}`}</td>
             <td class="n">${brl.format(c.salario)}</td>
             ${cols.map(({ k }) => { const v = valorCel(c, k); return `<td class="n${v ? '' : ' zero'}${c.excecoes?.[RUBRICAS[k].id] ? ' propria-cel' : ''}">${v ? num2.format(v) : '–'}</td>`; }).join('')}
@@ -1697,7 +1698,8 @@ function detalheConferencia() {
           ${cols.map(({ k }) => `<td class="n">${num2.format(somaCol(k))}</td>`).join('')}
           <td class="n">${num2.format(colabs.reduce((s, c) => s + totalColab(c), 0) / (porMes ? 12 : 1))}</td></tr></tfoot>
       </table></div>
-      <p class="subtitulo" style="margin:.6rem 0 0;font-size:.8rem">“Salário c/ dissídio” já considera o reajuste a partir do mês da data-base; no modo “Por mês” é a média dos meses. Valores em azul são condições próprias do colaborador. Clique em 💬 para pedir ajuste.</p>
+      <p class="subtitulo" style="margin:.6rem 0 0;font-size:.8rem">“Salário c/ dissídio” já considera o reajuste a partir do mês da data-base; no modo “Por mês” é a média dos meses. Valores em azul são condições próprias do colaborador.</p>
+      <div class="barra-selecao" id="barra-selecao" hidden></div>
     </section>`;
   $$('#conf-modo button', el).forEach(b => b.addEventListener('click', () => { E.conf.modo = b.dataset.m; detalheConferencia(); }));
   $('#conf-excel', el).addEventListener('click', () => {
@@ -1726,20 +1728,104 @@ function detalheConferencia() {
     const atual = b.parentElement.querySelector('b').textContent;
     pedirAjuste({ tipo: id === 'dissidio' || id === 'reaj_benef' ? 'dissidio' : 'premissa', filial: f, regional: cfg.regional, alvo_id: id, alvo_desc: `${nome} · ${f}`, campo: nome, valor_atual: atual });
   }));
-  $$('[data-pedir-colab]', el).forEach(b => b.addEventListener('click', () => {
-    const c = colabs.find(x => x.id === Number(b.dataset.pedirColab));
-    pedirAjuste({ tipo: 'colaborador', filial: f, regional: cfg.regional, alvo_id: String(c.id), alvo_desc: `${c.nome} · ${c.funcao || ''}`, colab: c, itens: E.conf.valoresColab(c) });
+  // Seleção de colaboradores para ajuste: caixa na linha (ou clique em qualquer ponto da linha) + barra com o botão.
+  const atualizarBarra = () => {
+    const n = E.conf.sel.size;
+    const barra = $('#barra-selecao', el);
+    barra.hidden = !n;
+    barra.innerHTML = n ? `<span><b>${n}</b> colaborador${n > 1 ? 'es' : ''} selecionado${n > 1 ? 's' : ''}</span>
+      <button class="btn btn-claro btn-sm" id="sel-limpar">Limpar seleção</button>
+      <button class="btn btn-laranja" id="sel-ajustar">✏️ Solicitar ajuste</button>` : '';
+    if (!n) return;
+    $('#sel-limpar', barra).addEventListener('click', () => { E.conf.sel.clear(); detalheConferencia(); });
+    $('#sel-ajustar', barra).addEventListener('click', () => pedirAjusteColaboradores(colabs.filter(c => E.conf.sel.has(c.id)), cfg));
+  };
+  const marcar = (id, on) => {
+    on ? E.conf.sel.add(id) : E.conf.sel.delete(id);
+    const tr = el.querySelector(`tr[data-sel="${id}"]`);
+    tr?.classList.toggle('marcada', on);
+    const cb = tr?.querySelector('[data-marca]');
+    if (cb) cb.checked = on;
+    $('#conf-todos', el).checked = colabs.length > 0 && colabs.every(c => E.conf.sel.has(c.id));
+    atualizarBarra();
+  };
+  $$('tr[data-sel]', el).forEach(tr => tr.addEventListener('click', e => {
+    const id = Number(tr.dataset.sel);
+    if (e.target.matches('[data-marca]')) marcar(id, e.target.checked);
+    else marcar(id, !E.conf.sel.has(id));
   }));
+  $('#conf-todos', el).checked = colabs.length > 0 && colabs.every(c => E.conf.sel.has(c.id));
+  $('#conf-todos', el).addEventListener('change', e => colabs.forEach(c => marcar(c.id, e.target.checked)));
+  atualizarBarra();
+}
+
+/** Formulário de ajuste para os colaboradores marcados: um bloco por pessoa + explicação opcional para todos. */
+function pedirAjusteColaboradores(lista, cfg) {
+  const blocos = lista.map(c => {
+    const campos = camposDoColab(c, E.conf.valoresColab(c));
+    return `<fieldset class="ajuste-pessoa" data-id="${c.id}">
+      <legend>${esc(c.nome)} <small>${esc([c.funcao, c.cc_cod && `CC ${c.cc_cod}`].filter(Boolean).join(' · '))}</small></legend>
+      <div class="form-grade">
+        <label class="rotulo">O que precisa mudar?<select class="campo" name="campo">${Object.keys(campos).map(k => `<option>${esc(k)}</option>`).join('')}</select></label>
+        <label class="rotulo">Como está hoje<input class="campo" name="valor_atual" readonly value="${esc(campos['Salário'])}"></label>
+        <label class="rotulo">Como deveria ser<input class="campo" name="valor_sugerido" placeholder="ex.: R$ 5.300,00"></label>
+        <label class="rotulo">Motivo <small>(se for diferente do geral)</small><input class="campo" name="mensagem" placeholder="ex.: promoção em setembro"></label>
+      </div>
+    </fieldset>`;
+  }).join('');
+  const d = abrirModal({
+    titulo: lista.length === 1 ? lista[0].nome : `${lista.length} colaboradores`, sup: 'SOLICITAR AJUSTE', largo: lista.length > 1,
+    corpo: `
+      <p style="margin:0;color:var(--texto-suave);font-size:.9rem">Para cada pessoa, escolha <b>o que precisa mudar</b> e diga <b>como deveria ser</b>. O pedido vai para o time de orçamento, e a resposta aparece em <b>Meus pedidos</b>.</p>
+      ${lista.length > 1 ? '<label class="rotulo">Motivo geral <small>(vale para todos que não tiverem um motivo próprio)</small><textarea class="campo" id="motivo-geral" rows="2" placeholder="ex.: dados desatualizados na base"></textarea></label>' : ''}
+      ${blocos}`,
+    rodape: `<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="enviar-ajustes">Enviar ${lista.length > 1 ? `${lista.length} pedidos` : 'pedido'}</button>`,
+  });
+  $$('.ajuste-pessoa', d).forEach(fs => {
+    const c = lista.find(x => x.id === Number(fs.dataset.id));
+    const campos = camposDoColab(c, E.conf.valoresColab(c));
+    fs.querySelector('[name=campo]').addEventListener('change', e => { fs.querySelector('[name=valor_atual]').value = campos[e.target.value]; });
+  });
+  $('#enviar-ajustes', d).addEventListener('click', async () => {
+    const geral = $('#motivo-geral', d)?.value.trim() || '';
+    const pedidos = $$('.ajuste-pessoa', d).map(fs => {
+      const c = lista.find(x => x.id === Number(fs.dataset.id));
+      const v = n => fs.querySelector(`[name=${n}]`).value.trim();
+      return { c, campo: v('campo'), valor_atual: v('valor_atual'), valor_sugerido: v('valor_sugerido'), mensagem: v('mensagem') || geral };
+    });
+    const faltando = pedidos.filter(p => !p.mensagem && !p.valor_sugerido);
+    if (faltando.length) return toast(`Preencha "Como deveria ser" ou o motivo de: ${faltando.map(p => p.c.nome).join(', ')}.`, 'erro');
+    const btn = $('#enviar-ajustes', d);
+    btn.disabled = true;
+    try {
+      for (const p of pedidos) {
+        await api('/api/solicitacoes', { method: 'POST', body: {
+          tipo: 'colaborador', filial: p.c.filial, regional: cfg.regional, alvo_id: String(p.c.id), alvo_desc: `${p.c.nome} · ${p.c.funcao || ''}`,
+          campo: p.campo, valor_atual: p.valor_atual, valor_sugerido: p.valor_sugerido, mensagem: p.mensagem || `${p.campo}: ${p.valor_sugerido}`,
+        } });
+      }
+      d.close();
+      E.conf.sel.clear();
+      await carregarSolicitacoes();
+      renderConferencia();
+      toast(pedidos.length > 1 ? `${pedidos.length} pedidos enviados ao time de orçamento.` : 'Pedido enviado ao time de orçamento.');
+    } catch (e) { btn.disabled = false; toast(e.message, 'erro'); }
+  });
+}
+
+/** Opções de "o que precisa mudar" para um colaborador, com o valor atual de cada uma. */
+function camposDoColab(c, itens = {}) {
+  return {
+    'Salário': brl.format(c.salario), 'Centro de custo': `${c.cc_cod || ''} ${c.cc_nome || ''}`.trim(), 'Função / cargo': `${c.funcao || ''} · ${c.cargo || ''}`,
+    'Desligamento previsto': c.mes_fim === 12 ? 'Sem previsão' : MESES[c.mes_fim - 1], 'Transferência de filial': c.filial,
+    ...Object.fromEntries(Object.entries(itens).filter(([k]) => k !== 'Salário')),
+    'Excluir do orçamento': '', 'Outro': '',
+  };
 }
 
 function pedirAjuste(ctx) {
   const c = ctx.colab;
-  const camposColab = c ? {
-    'Salário': brl.format(c.salario), 'Centro de custo': `${c.cc_cod || ''} ${c.cc_nome || ''}`.trim(), 'Função / cargo': `${c.funcao || ''} · ${c.cargo || ''}`,
-    'Desligamento previsto': c.mes_fim === 12 ? 'Sem previsão' : MESES[c.mes_fim - 1], 'Transferência de filial': c.filial,
-    ...Object.fromEntries(Object.entries(ctx.itens || {}).filter(([k]) => k !== 'Salário')),
-    'Excluir do orçamento': '', 'Outro': '',
-  } : null;
+  const camposColab = c ? camposDoColab(c, ctx.itens) : null;
   const d = abrirModal({
     titulo: ctx.alvo_desc, sup: 'SOLICITAR AJUSTE',
     corpo: `<form class="form-grade" id="form-pedido">
