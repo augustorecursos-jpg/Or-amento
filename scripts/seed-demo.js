@@ -1,7 +1,7 @@
 // Dados de demonstração (fictícios): colaboradores, premissas, dissídio e um coordenador.
 // Uso: npm run seed   (apaga a base atual de colaboradores, premissas e pedidos)
 const crypto = require('node:crypto');
-const { db, sincronizarFiliais } = require('../db');
+const { db, sincronizarFiliais, PPR_HOLDING } = require('../db');
 
 const NOMES = ['Ana', 'Bruno', 'Carla', 'Diego', 'Elisa', 'Fábio', 'Gabriela', 'Heitor', 'Isabela', 'João', 'Karina', 'Lucas', 'Marina', 'Nicolas', 'Olívia', 'Paulo', 'Rafaela', 'Sérgio', 'Tatiane', 'Vinícius'];
 const SOBRENOMES = ['Almeida', 'Barbosa', 'Cardoso', 'Duarte', 'Esteves', 'Freitas', 'Gomes', 'Henriques', 'Lima', 'Moraes', 'Nogueira', 'Oliveira', 'Pereira', 'Queiroz', 'Ribeiro', 'Santos', 'Teixeira', 'Vieira'];
@@ -111,9 +111,8 @@ P('UTE NORTE FLUMINENSE', 'fretado', { metodo: 'rateio', valor: 110000, periodo:
 P('UTE NORTE FLUMINENSE', 'adic_turno', { metodo: 'pct', valor: 8, quem: ['cc:17150'] });
 P('SANTA CRUZ', 'penosidade', { metodo: 'pct', valor: 6, quem: ['cc:17150'] });
 
-// PPR da matriz (Holding): target por nível do cargo, pago em março. As demais filiais seguem 2,4 salários.
-P('HOLDING', 'ppr', { metodo: 'multiplo', valor: 1, periodo: 'anual_mes', mes: 3, por_nivel: true,
-  niveis: { '09-Administrativo': 1, '08-Especialistas': 2, '06-Coordenação': 3, '05-Gerentes': 5, '04-Gerentes Executivo': 6, '01-Diretores': 10 } });
+// PPR da matriz (Holding): target por nível do cargo. As demais filiais seguem 2,4 salários.
+P('HOLDING', 'ppr', { metodo: 'multiplo', valor: 1, periodo: 'anual_diluido', por_nivel: true, niveis: PPR_HOLDING });
 
 // Sucedidos (vindos da empresa anterior) com benefícios diferentes da regra da filial
 for (const c of db.prepare("SELECT id FROM colaboradores WHERE filial = 'UTE NORTE FLUMINENSE' AND vaga = 0 LIMIT 4").all()) {

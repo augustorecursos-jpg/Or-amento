@@ -114,5 +114,105 @@ const Graficos = (() => {
     ligarDicas(el, k => `<b>${esc(visiveis[k].nome)}</b><br>${brl.format(visiveis[k].valor)} · ${((visiveis[k].valor / total) * 100).toFixed(1)}%`);
   }
 
-  return { colunasEmpilhadas, barras, composicao, curto, brl };
+  /** Rosca com o total no centro e legenda ao lado. partes: [{ nome, cor, valor }] */
+  function rosca(el, partes, { centro = '', sub = '' } = {}) {
+    const total = partes.reduce((s, p) => s + p.valor, 0) || 1;
+    const R = 80, C = 2 * Math.PI * R, folga = 3;
+    let acum = 0;
+    const visiveis = partes.filter(p => p.valor > 0);
+    const arcos = visiveis.map((p, k) => {
+      const frac = p.valor / total;
+      const tam = Math.max(0, frac * C - folga);
+      const arco = `<circle class="rosca-arco" data-dica="${k}" cx="110" cy="110" r="${R}" fill="none" stroke="${p.cor}" stroke-width="30"
+        stroke-dasharray="${tam} ${C - tam}" stroke-dashoffset="${-acum * C}" transform="rotate(-90 110 110)"/>`;
+      acum += frac;
+      return arco;
+    }).join('');
+    el.innerHTML = `<div class="rosca">
+      <svg viewBox="0 0 220 220" role="img" aria-label="Composição do custo">${arcos}
+        <text x="110" y="106" text-anchor="middle" class="rosca-valor">${esc(centro)}</text>
+        <text x="110" y="128" text-anchor="middle" class="rosca-sub">${esc(sub)}</text></svg>
+      <div class="comp-lista">${partes.map(p => `
+        <div class="comp-item"><i style="background:${p.cor}"></i><span>${esc(p.nome)}</span><b>${curto(p.valor)}</b><small>${((p.valor / total) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</small></div>`).join('')}</div>
+    </div>`;
+    ligarDicas(el, k => `<b>${esc(visiveis[k].nome)}</b><br>${brl.format(visiveis[k].valor)} · ${((visiveis[k].valor / total) * 100).toFixed(1)}%`);
+  }
+
+  /** Área do custo mês a mês sobre fundo escuro (destaque do painel). */
+  function areaAno(el, valores, rotulos, { destaque = [] } = {}) {
+    const L = 640, A = 190, me = 8, md = 8, mt = 26, mb = 24;
+    const max = Math.max(...valores, 1), min = Math.min(...valores);
+    const piso = Math.max(0, min - (max - min) * 1.2 - max * 0.02);
+    const x = i => me + ((L - me - md) * i) / (valores.length - 1);
+    const y = v => mt + (A - mt - mb) * (1 - (v - piso) / (max - piso || 1));
+    const pts = valores.map((v, i) => [x(i), y(v)]);
+    let linha = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i];
+      const cx = (x0 + x1) / 2;
+      linha += ` C${cx},${y0} ${cx},${y1} ${x1},${y1}`;
+    }
+    const area = `${linha} L${pts.at(-1)[0]},${A - mb} L${pts[0][0]},${A - mb} Z`;
+    const iMax = valores.indexOf(max);
+    el.innerHTML = `<svg class="area-ano" viewBox="0 0 ${L} ${A}" role="img" aria-label="Custo mês a mês">
+      <defs><linearGradient id="grad-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f39a4a" stop-opacity=".55"/><stop offset="1" stop-color="#f39a4a" stop-opacity="0"/></linearGradient></defs>
+      ${destaque.map(m => `<line x1="${x(m)}" x2="${x(m)}" y1="${mt - 12}" y2="${A - mb}" class="area-dissidio"/><text x="${x(m)}" y="${mt - 16}" text-anchor="middle" class="area-rot-diss">dissídio</text>`).join('')}
+      <path d="${area}" fill="url(#grad-area)"/>
+      <path d="${linha}" fill="none" stroke="#f39a4a" stroke-width="2.5" stroke-linecap="round"/>
+      ${pts.map(([px, py], i) => `<circle cx="${px}" cy="${py}" r="${i === iMax ? 5 : 3.5}" class="area-ponto${i === iMax ? ' max' : ''}"/>`).join('')}
+      <text x="${pts[iMax][0]}" y="${pts[iMax][1] - 10}" text-anchor="middle" class="area-max">${curto(max)}</text>
+      ${rotulos.map((r, i) => `<text x="${x(i)}" y="${A - 6}" text-anchor="middle" class="area-mes">${r}</text>`).join('')}
+      ${pts.map(([px], i) => `<rect class="alvo" data-dica="${i}" x="${px - (L / valores.length) / 2}" y="0" width="${L / valores.length}" height="${A}"/>`).join('')}
+    </svg>`;
+    ligarDicas(el, i => `<b>${rotulos[i]}</b><br>${brl.format(valores[i])}`);
+  }
+
+  /** Ponte do custo: do salário até o total, somando cada grupo. passos: [{ nome, valor, cor }] */
+  function ponte(el, passos, { total }) {
+    const L = 760, A = 260, me = 10, md = 10, mt = 30, mb = 46;
+    const cols = [...passos, { nome: 'Total', valor: total, cor: '#0e3b5c', total: true }];
+    const larg = (L - me - md) / cols.length;
+    const bw = Math.min(70, larg * 0.62);
+    const y = v => mt + (A - mt - mb) * (1 - v / (total || 1));
+    let acum = 0;
+    let svg = `<svg class="grafico-svg" viewBox="0 0 ${L} ${A}" role="img" aria-label="Composição do custo do salário ao total">`;
+    cols.forEach((c, k) => {
+      const cx = me + larg * k + larg / 2;
+      const base = c.total ? 0 : acum;
+      const topo = base + c.valor;
+      const y0 = y(base), y1 = y(topo);
+      svg += `<rect x="${cx - bw / 2}" y="${y1}" width="${bw}" height="${Math.max(2, y0 - y1)}" rx="4" fill="${c.cor}"/>`;
+      if (k < cols.length - 1) svg += `<line x1="${cx + bw / 2}" x2="${cx + larg - bw / 2}" y1="${y1}" y2="${y1}" class="ponte-liga"/>`;
+      svg += `<text x="${cx}" y="${y1 - 8}" text-anchor="middle" class="rot-total">${c.total ? '' : '+'}${curto(c.valor)}</text>`;
+      svg += `<text x="${cx}" y="${A - mb + 18}" text-anchor="middle" class="ponte-nome">${esc(c.nome)}</text>`;
+      svg += `<text x="${cx}" y="${A - mb + 34}" text-anchor="middle">${((c.valor / (total || 1)) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</text>`;
+      svg += `<rect class="alvo" data-dica="${k}" x="${me + larg * k}" y="${mt}" width="${larg}" height="${A - mt - mb}"/>`;
+      if (!c.total) acum = topo;
+    });
+    svg += `<line class="eixo" x1="${me}" x2="${L - md}" y1="${y(0)}" y2="${y(0)}"/></svg>`;
+    el.innerHTML = svg;
+    ligarDicas(el, k => `<b>${esc(cols[k].nome)}</b><br>${brl.format(cols[k].valor)} no ano`);
+  }
+
+  /** Minigráfico de linha (12 meses). */
+  function minilinha(valores, cor = '#2f6fa3') {
+    const L = 120, A = 34, max = Math.max(...valores, 1), min = Math.min(...valores);
+    const pts = valores.map((v, i) => `${(L * i) / (valores.length - 1)},${A - 4 - ((v - min) / (max - min || 1)) * (A - 8)}`);
+    return `<svg class="minilinha" viewBox="0 0 ${L} ${A}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${pts.join(' ')}" fill="none" stroke="${cor}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
+  }
+
+  /** Conta de 0 até o valor (efeito de apresentação); respeita "reduzir movimento". */
+  function contar(el, valor, formato) {
+    if (!el) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { el.textContent = formato(valor); return; }
+    const t0 = performance.now(), dur = 900;
+    const passo = t => {
+      const k = Math.min(1, (t - t0) / dur);
+      el.textContent = formato(valor * (1 - (1 - k) ** 3));
+      if (k < 1) requestAnimationFrame(passo);
+    };
+    requestAnimationFrame(passo);
+  }
+
+  return { colunasEmpilhadas, barras, composicao, rosca, areaAno, ponte, minilinha, contar, curto, brl };
 })();

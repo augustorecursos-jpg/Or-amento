@@ -42,8 +42,10 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
 ## Telas
 
 **Admin**
-- **Painel** – custo anual, média mensal, headcount, custo médio por colaborador, impacto do dissídio, gráfico mês a mês
-  por grupo, composição, ranking por filial (ou por centro de custo) e status da conferência das filiais.
+- **Painel** – feito para apresentação: custo anual com a evolução mês a mês, indicadores (headcount, custo médio por
+  colaborador, impacto do dissídio, encargos + benefícios), custo mês a mês por grupo, rosca de composição, **ponte do
+  salário ao custo total**, cards por regional → filial → centro de custo (clique para descer) e conferência das filiais.
+  **Modo apresentação**: tela cheia sem menus; as setas ← → passam pelas regionais.
 - **Simulação mês a mês** – tabela Jan–Dez por rubrica, filial, centro de custo ou colaborador (R$ ou R$ mil) e o
   **simulador de dissídio**: altere o % e o mês da data-base de cada filial e o custo muda na hora; nada é salvo até
   clicar em *Aplicar ao orçamento*. Exporta Excel com resumo mensal, por filial, por centro de custo e por colaborador
@@ -57,9 +59,11 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   início. Copiar regras de uma filial para outras e dissídio em lote.
   - **Horas extras, treinamento e viagens**: lance o **custo total do ano** da filial; a ferramenta divide por 12 e faz a
     média por colaborador (só entre quem recebe). Dá para trocar para total por mês no ⚙.
-  - **PPR**: cada regra (geral, regional ou filial) pode ter a sua **tabela de nº de salários por nível do cargo** — ex.:
-    Holding (matriz) com 1 salário até Administrativo, 2 para Especialista, 3 Coordenação, 5 Gerentes… e as demais
-    filiais com 2,4 salários.
+  - **PPR**: em “Como é calculado”, a opção **Nº de salários por nível do cargo** abre a tabela de target por nível, que
+    aceita **colar do Excel** (NÍVEL CARGO · TARGET). Cada regra (geral, regional ou filial) tem a sua. A regra da
+    **Holding** (matriz) já vem cadastrada: Supervisores 2, Administrativo 1, Coordenação 3, Gerentes 5, Diretores 10,
+    Operação – Produção 1, Operação – Nível Superior 1, Engenheiros 2, Especialistas 2, Gerentes Executivo 5. As demais
+    filiais seguem 2,4 salários (editável).
 - **Quadro de todas as filiais** – grade filial × item com o que cada filial tem. **Exporta para Excel**, você preenche
   (`30%`, `1480`, `8000 total`, `2,4 sal`, `Não`, vazio = herda) e **importa de volta**; valores iguais à regra da
   regional/geral não viram exceção.

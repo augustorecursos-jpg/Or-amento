@@ -156,7 +156,7 @@ function renderPainel() {
   const col = E.dados.colaboradores.filter(noFiltro);
   if (!E.dados.colaboradores.length) {
     el.innerHTML = `<div class="cartao vazio"><span>📥</span><h3>Nenhum colaborador na base ainda</h3>
-      <p>${E.eu.admin ? 'Comece importando as planilhas das regionais em <b>Base de colaboradores</b> (até a coluna salário).' : 'O time de orçamento ainda não carregou a base da sua regional.'}</p>
+      <p>${E.eu.admin ? 'Comece importando a base em <b>Base de colaboradores</b> (até a coluna salário).' : 'O time de orçamento ainda não carregou a base da sua regional.'}</p>
       ${E.eu.admin ? '<button class="btn btn-laranja" data-ir="base">Importar base</button>' : ''}</div>`;
     el.querySelector('[data-ir]')?.addEventListener('click', () => irPara('base'));
     return;
@@ -164,64 +164,175 @@ function renderPainel() {
   const ag = totalDe(E.res);
   const semD = totalDe(E.resSemDissidio);
   const grupos = Motor.porGrupo(ag);
+  const somaG = id => grupos[id].reduce((a, b) => a + b, 0);
   const hcMedio = ag.hc.reduce((a, b) => a + b, 0) / 12;
   const colabMes = ag.hc.reduce((a, b) => a + b, 0);
   const vagas = col.filter(c => c.vaga).length;
   const impacto = ag.total - semD.total;
   const fil = filiaisComRascunho();
-  const mesesDiss = [...new Set(col.map(c => fil[c.filial]).filter(f => f && f.dissidio_pct).map(f => f.dissidio_mes - 1))];
-  const encBen = (Motor.porGrupo(ag).encargos.reduce((a, b) => a + b, 0) + grupos.beneficios.reduce((a, b) => a + b, 0)) / (ag.total || 1);
-  const escopo = E.filtro.filial || E.filtro.regional || (E.eu.admin ? 'Todas as regionais' : E.eu.regionais.join(', '));
+  const mesesDiss = [...new Set(col.map(c => fil[c.filial]).filter(f => f && f.dissidio_pct).map(f => f.dissidio_mes - 1))].sort((a, b) => a - b);
+  const encBen = (somaG('encargos') + somaG('beneficios')) / (ag.total || 1);
+  const escopo = E.filtro.filial || E.filtro.regional || (E.eu.admin ? 'Todas as regionais' : E.eu.regionais.join(' · '));
+  const nivelCards = E.filtro.filial ? 'cc' : E.filtro.regional ? 'filial' : 'regional';
+  const tituloCards = { regional: 'Custo por regional', filial: `Filiais da regional ${E.filtro.regional}`, cc: `Centros de custo · ${E.filtro.filial}` }[nivelCards];
+
+  // Ponte: salário → adicionais e HE → provisões → encargos → benefícios → demais = total
+  const salAno = [...ag.porRubrica.slice(0, 12)].reduce((a, b) => a + b, 0);
+  const passos = [
+    { nome: 'Salários', valor: salAno, cor: '#164d74' },
+    { nome: 'Adicionais e HE', valor: somaG('remuneracao') - salAno, cor: COR_GRUPO.remuneracao },
+    { nome: 'Provisões', valor: somaG('provisoes'), cor: COR_GRUPO.provisoes },
+    { nome: 'Encargos', valor: somaG('encargos'), cor: COR_GRUPO.encargos },
+    { nome: 'Benefícios', valor: somaG('beneficios'), cor: COR_GRUPO.beneficios },
+    { nome: 'Demais', valor: somaG('demais'), cor: COR_GRUPO.demais },
+  ];
+
+  const kpi = (ic, cor, rotulo, valor, nota, id = '') => `<div class="kpi2"><span class="kpi2-ic" style="--c:${cor}">${ic}</span><div><span>${rotulo}</span><strong${id ? ` id="${id}"` : ''}>${valor}</strong><small>${nota}</small></div></div>`;
 
   el.innerHTML = `
     ${faixaRascunho()}
-    <div class="hero">
+    <div class="painel-topo">
+      <div><small>ORÇAMENTO DE PESSOAL · ${esc(ano)}</small><h1>${esc(escopo)}</h1></div>
+      <button class="btn btn-marinho" id="btn-apresentar">▶ Modo apresentação</button>
+    </div>
+    <section class="hero2">
       <div class="pontilhado"></div>
-      <div>
-        <small>ORÇAMENTO ${esc(ano)} · ${esc(escopo.toUpperCase())}</small>
-        <div class="hero-total">${brl0.format(ag.total)}</div>
-        <div class="hero-sub">custo anual de pessoal · média de <b>${brl0.format(ag.total / 12)}</b> por mês</div>
+      <div class="hero2-num">
+        <small>CUSTO ANUAL DE PESSOAL</small>
+        <div class="hero2-total" id="hero-total">${brl0.format(ag.total)}</div>
+        <p>média de <b>${brl0.format(ag.total / 12)}</b> por mês · <b>${num0.format(hcMedio)}</b> colaboradores em média</p>
+        <div class="hero2-chips">
+          ${impacto ? `<span class="chip-claro">📈 dissídio <b>+${Graficos.curto(impacto)}</b> no ano</span>` : ''}
+          ${vagas ? `<span class="chip-claro">🧑‍💼 <b>${vagas}</b> vaga(s) prevista(s)</span>` : ''}
+          <span class="chip-claro">🏢 <b>${new Set(col.map(c => c.filial)).size}</b> filiais</span>
+        </div>
       </div>
-      <div class="hero-kpis">
-        <div class="hero-kpi"><span>Headcount médio</span><strong>${num0.format(hcMedio)}</strong><em>${vagas ? `${vagas} vaga(s) prevista(s)` : 'sem vagas previstas'}</em></div>
-        <div class="hero-kpi"><span>Custo médio / colaborador</span><strong>${brl0.format(colabMes ? ag.total / colabMes : 0)}</strong><em>por mês</em></div>
-        <div class="hero-kpi"><span>Impacto do dissídio</span><strong>${impacto >= 0 ? '+' : ''}${brl0.format(impacto)}</strong><em>${semD.total ? pctFmt(impacto / semD.total) : '–'} no ano</em></div>
-        <div class="hero-kpi"><span>Encargos + benefícios</span><strong>${pctFmt(encBen)}</strong><em>do custo total</em></div>
-      </div>
+      <div class="hero2-graf"><small>EVOLUÇÃO MÊS A MÊS</small><div id="g-area"></div></div>
+    </section>
+    <div class="kpis2">
+      ${kpi('👥', '#2f6fa3', 'Headcount médio', num0.format(hcMedio), vagas ? `${vagas} vaga(s) no ano` : 'sem vagas previstas')}
+      ${kpi('💼', '#8b5fbf', 'Custo médio por colaborador', brl0.format(colabMes ? ag.total / colabMes : 0), 'por mês, com encargos e benefícios')}
+      ${kpi('📈', '#ec6b24', 'Impacto do dissídio', `${impacto >= 0 ? '+' : ''}${brl0.format(impacto)}`, semD.total ? `${pctFmt(impacto / semD.total)} sobre o custo sem reajuste` : '–')}
+      ${kpi('🧾', '#2a9d8f', 'Encargos + benefícios', pctFmt(encBen), 'do custo total')}
     </div>
     <div class="grade-2">
-      <section class="cartao"><h3>Custo mês a mês <small>· por grupo de rubricas${mesesDiss.length ? ' · mês do dissídio em laranja' : ''}</small></h3><div id="g-meses"></div></section>
-      <section class="cartao"><h3>Composição do custo anual</h3><div id="g-comp"></div></section>
+      <section class="cartao"><h3>Custo mês a mês <small>· por grupo${mesesDiss.length ? ' · meses de dissídio em laranja' : ''}</small></h3><div id="g-meses"></div></section>
+      <section class="cartao"><h3>Para onde vai o custo</h3><div id="g-comp"></div></section>
     </div>
-    <div class="grade-2-igual">
-      <section class="cartao"><h3>${E.filtro.filial ? 'Custo anual por centro de custo' : 'Custo anual por filial'}</h3><div id="g-ranking"></div></section>
-      <section class="cartao"><h3>Conferência das filiais <small>· status informado pelos coordenadores</small></h3><div id="g-conf"></div></section>
-    </div>`;
+    <section class="cartao" style="margin-top:1.2rem"><h3>Do salário ao custo total <small>· quanto cada grupo soma ao ano</small></h3><div id="g-ponte"></div></section>
+    <section style="margin-top:1.4rem">
+      <h2 class="titulo-bloco">${esc(tituloCards)}</h2>
+      <div class="cards-escopo" id="g-cards"></div>
+    </section>
+    <section class="cartao" style="margin-top:1.2rem" id="g-conf"></section>`;
   ligarFaixa(el);
+  $('#btn-apresentar', el).addEventListener('click', alternarApresentacao);
+  Graficos.contar($('#hero-total', el), ag.total, v => brl0.format(v));
 
+  Graficos.areaAno($('#g-area', el), [...ag.meses], MESES, { destaque: mesesDiss });
   Graficos.colunasEmpilhadas($('#g-meses', el), {
     rotulos: MESES,
     series: GRUPOS.map(g => ({ nome: g.nome, cor: g.cor, valores: [...grupos[g.id]] })),
     destaque: mesesDiss,
   });
-  Graficos.composicao($('#g-comp', el), GRUPOS.map(g => ({ nome: g.nome, cor: g.cor, valor: grupos[g.id].reduce((a, b) => a + b, 0) })));
+  Graficos.rosca($('#g-comp', el), GRUPOS.map(g => ({ nome: g.nome, cor: g.cor, valor: somaG(g.id) })), { centro: Graficos.curto(ag.total), sub: 'no ano' });
+  Graficos.ponte($('#g-ponte', el), passos, { total: ag.total });
 
-  const chave = E.filtro.filial ? c => `${c.cc_cod || '—'} · ${c.cc_nome || 'Sem centro de custo'}` : c => c.filial;
-  const porChave = Motor.agregar(E.res, chave, noFiltro);
-  Graficos.barras($('#g-ranking', el), [...porChave].map(([k, a]) => ({ rotulo: k, valor: a.total, sub: `${a.n} colaborador(es) · ${brl0.format(a.total / 12)}/mês` })).sort((a, b) => b.valor - a.valor));
+  // Cards por regional / filial / centro de custo, com minigráfico do ano
+  const chave = { regional: c => c.regional, filial: c => c.filial, cc: c => `${c.cc_cod || '—'} · ${c.cc_nome || 'Sem centro de custo'}` }[nivelCards];
+  const itens = [...Motor.agregar(E.res, chave, noFiltro)].sort((a, b) => b[1].total - a[1].total);
+  $('#g-cards', el).innerHTML = itens.map(([k, a], i) => {
+    const hc = a.hc.reduce((x, y) => x + y, 0);
+    const clicavel = nivelCards !== 'cc';
+    return `<${clicavel ? 'button' : 'div'} class="card-escopo" ${clicavel ? `data-ir="${esc(k)}"` : ''}>
+      <div class="card-escopo-topo"><span class="card-pos">${i + 1}</span><strong title="${esc(k)}">${esc(k)}</strong></div>
+      <div class="card-escopo-valor">${brl0.format(a.total)}</div>
+      <div class="card-escopo-barra"><i style="width:${(a.total / (ag.total || 1)) * 100}%"></i></div>
+      <div class="card-escopo-info"><span>${pctFmt(a.total / (ag.total || 1))} do total</span><span>${num0.format(hc / 12)} colab. · ${brl0.format(hc ? a.total / hc : 0)}/mês</span></div>
+      ${Graficos.minilinha([...a.meses], '#ec6b24')}
+    </${clicavel ? 'button' : 'div'}>`;
+  }).join('');
+  $$('#g-cards [data-ir]', el).forEach(b => b.addEventListener('click', () => {
+    if (nivelCards === 'regional') { E.filtro.regional = b.dataset.ir; E.filtro.filial = ''; }
+    else E.filtro.filial = b.dataset.ir;
+    montarFiltros();
+    renderPainel();
+    desenharBarraApresentacao();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }));
 
+  // Conferência das filiais
   const fils = filiaisDa(E.filtro.regional).filter(f => !E.filtro.filial || f === E.filtro.filial);
   const abertas = E.solic.filter(s => s.status === 'aberta' || s.status === 'em_analise');
   const conferidas = fils.filter(f => E.dados.filiais[f].conferencia === 'conferida').length;
+  const frac = fils.length ? conferidas / fils.length : 0;
+  const C = 2 * Math.PI * 34;
   $('#g-conf', el).innerHTML = `
-    <p class="subtitulo" style="margin:0 0 .8rem"><b>${conferidas}</b> de <b>${fils.length}</b> filiais conferidas · <b>${abertas.length}</b> pedido(s) de ajuste em aberto</p>
-    <div class="status-lista">${fils.map(f => {
+    <div class="conf-resumo">
+      <svg viewBox="0 0 84 84" class="conf-anel"><circle cx="42" cy="42" r="34" class="trilho"/><circle cx="42" cy="42" r="34" class="carga" stroke-dasharray="${C * frac} ${C}" transform="rotate(-90 42 42)"/>
+        <text x="42" y="47" text-anchor="middle">${Math.round(frac * 100)}%</text></svg>
+      <div><h3>Conferência pelos coordenadores</h3><p><b>${conferidas}</b> de <b>${fils.length}</b> filiais conferidas · <b>${abertas.filter(s => fils.includes(s.filial)).length}</b> pedido(s) de ajuste em aberto</p></div>
+    </div>
+    <div class="conf-chips">${fils.map(f => {
       const cfg = E.dados.filiais[f];
       const n = abertas.filter(s => s.filial === f).length;
-      return `<div class="status-item"><span title="${esc(f)}">${esc(f)}</span>${n ? `<span class="etiqueta pend" style="flex:none">${n} pedido(s)</span>` : ''}
-        ${cfg.conferencia === 'conferida' ? `<span class="etiqueta ok" style="flex:none" title="${esc(cfg.conferida_por || '')}">✓ Conferida</span>` : '<span class="etiqueta neutra" style="flex:none">Pendente</span>'}</div>`;
+      const ok = cfg.conferencia === 'conferida';
+      return `<span class="conf-chip ${ok ? 'ok' : ''}" title="${ok ? `Conferida por ${esc(cfg.conferida_por || '')}` : 'Pendente'}">${ok ? '✓' : '○'} ${esc(f)}${n ? ` <b>${n}</b>` : ''}</span>`;
     }).join('')}</div>`;
 }
+
+// ----- Modo apresentação: tela cheia, sem menus; setas trocam de regional -----
+
+function alternarApresentacao() {
+  const ligado = document.body.classList.toggle('apresentacao');
+  if (ligado) {
+    if (E.aba !== 'painel') irPara('painel');
+    document.documentElement.requestFullscreen?.().catch(() => {});
+    let barra = $('#barra-apresentacao');
+    if (!barra) {
+      barra = document.createElement('div');
+      barra.id = 'barra-apresentacao';
+      document.body.appendChild(barra);
+    }
+    desenharBarraApresentacao();
+  } else {
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
+    $('#barra-apresentacao')?.remove();
+  }
+  renderPainel();
+}
+
+function desenharBarraApresentacao() {
+  const barra = $('#barra-apresentacao');
+  if (!barra) return;
+  const opcoes = ['', ...regionais()];
+  const i = opcoes.indexOf(E.filtro.regional);
+  barra.innerHTML = `<button data-dir="-1" aria-label="Anterior">◀</button><span>${esc(E.filtro.filial || E.filtro.regional || 'Todas as regionais')}</span><button data-dir="1" aria-label="Próxima">▶</button><small>use ← → para navegar</small><button data-sair aria-label="Sair da apresentação">✕</button>`;
+  barra.querySelectorAll('[data-dir]').forEach(b => b.addEventListener('click', () => navegarApresentacao(Number(b.dataset.dir))));
+  barra.querySelector('[data-sair]').addEventListener('click', alternarApresentacao);
+  barra.dataset.pos = i;
+}
+
+function navegarApresentacao(dir) {
+  const opcoes = ['', ...regionais()];
+  const i = opcoes.indexOf(E.filtro.regional);
+  E.filtro.regional = opcoes[(i + dir + opcoes.length) % opcoes.length];
+  E.filtro.filial = '';
+  montarFiltros();
+  renderPainel();
+  desenharBarraApresentacao();
+  window.scrollTo(0, 0);
+}
+
+document.addEventListener('keydown', e => {
+  if (!document.body.classList.contains('apresentacao')) return;
+  if (e.key === 'ArrowRight') navegarApresentacao(1);
+  else if (e.key === 'ArrowLeft') navegarApresentacao(-1);
+  else if (e.key === 'Escape' && !document.fullscreenElement) alternarApresentacao();
+});
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && document.body.classList.contains('apresentacao')) alternarApresentacao();
+});
 
 // ---------- Simulação ----------
 
@@ -585,7 +696,9 @@ function trocarEscopo(escopo) {
   window.scrollTo(0, 0);
 }
 
-const TIPOS = { pct: '% sobre base', fixo: 'R$ por colaborador', rateio: 'Total da filial (média por colab.)', multiplo: 'Nº de salários' };
+const TIPOS = { pct: '% sobre base', fixo: 'R$ por colaborador', rateio: 'Total da filial (média por colab.)', multiplo: 'Nº de salários', nivel: 'Nº de salários por nível do cargo' };
+// "Por nível do cargo" é o método nº de salários com a tabela de níveis ligada.
+const tipoDe = p => (p.metodo === 'multiplo' && p.por_nivel ? 'nivel' : p.metodo);
 const fmtN = v => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 4 });
 
 function unidadeValor(metodo, periodo) {
@@ -608,7 +721,7 @@ function resumoDetalhes(p) {
   if (p.metodo === 'pct') return `s/ ${BASES[p.base].toLowerCase()}${p.teto ? ` · teto ${brl0.format(p.teto)}` : ''}`;
   const per = { mensal: 'todo mês', anual_mes: `1x no ano · ${MESES[p.mes - 1]}`, anual_diluido: 'anual ÷ 12' }[p.periodo];
   if (p.metodo === 'rateio') return `${{ mensal: 'total do mês', anual_mes: `total em ${MESES[p.mes - 1]}`, anual_diluido: 'total do ano ÷ 12' }[p.periodo]} · ${p.rateio === 'salario' ? 'proporcional ao salário' : 'média por colaborador'}`;
-  if (p.metodo === 'multiplo') return `${per}${p.por_nivel ? ` · por nível do cargo (${Object.keys(p.niveis || {}).length})` : ''}`;
+  if (p.metodo === 'multiplo') return per;
   return per;
 }
 
@@ -630,14 +743,18 @@ function linhaPremHtml(rub, previa) {
   let anual = 0;
   for (let i = 0; i < previa.n; i++) for (let m = 0; m < 12; m++) anual += previa.valor(i, r, m);
   const tem = p.metodo !== 'nao';
-  const tipo = tem ? p.metodo : metodoAoLigar(rub.id, p);
+  const tipo = tem ? tipoDe(p) : metodoAoLigar(rub.id, p);
   const tipos = rub.adicional ? { pct: TIPOS.pct, fixo: TIPOS.fixo, rateio: TIPOS.rateio } : TIPOS;
+  const nNiveis = Object.keys(p.niveis || {}).length;
+  const valorHtml = tipo === 'nivel'
+    ? `<button class="btn-detalhe btn-niveis" data-niveis title="Target de salários por nível do cargo">📋 Tabela por nível · ${nNiveis ? `${nNiveis} nível(is)` : 'preencher'}</button>`
+    : `<span class="valor-un"><input class="campo" type="number" step="any" data-campo="valor" value="${p.valor ?? 0}"><small>${unidadeValor(tipo, p.periodo)}</small></span>`;
   const desab = tem ? '' : ' desab';
   return `<tr class="${propria ? 'propria' : 'herdada'}${tem ? '' : ' nao-tem'}" data-rub="${rub.id}">
     <td class="rub fixa">${esc(rub.nome)}<small>${propria ? (escopo === '*' ? 'regra geral' : escopo.startsWith('R:') ? 'regra da regional' : 'regra desta filial') : `herdada · ${esc(origem)}`}</small></td>
     <td><label class="chave" title="A filial tem este item?"><input type="checkbox" data-tem ${tem ? 'checked' : ''}><span></span><b>${tem ? 'Sim' : 'Não'}</b></label></td>
     <td class="${desab}"><select class="campo" data-campo="metodo">${Object.entries(tipos).map(([k, v]) => `<option value="${k}" ${k === tipo ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
-    <td class="${desab}"><span class="valor-un"><input class="campo" type="number" step="any" data-campo="valor" value="${p.valor ?? 0}"><small>${unidadeValor(tipo, p.periodo)}</small></span></td>
+    <td class="${desab}">${valorHtml}</td>
     <td class="${desab}"><button class="btn-detalhe" data-detalhes title="Base, periodicidade, rateio e teto">⚙ ${esc(resumoDetalhes({ ...p, metodo: tipo }))}</button></td>
     <td class="${desab}"><button class="btn-detalhe" data-quem title="Quem recebe esta rubrica">👥 ${p.quem?.length ? `${p.quem.length} grupo(s)` : 'Todos'}</button></td>
     <td class="n" data-anual>${anual ? brl0.format(anual) : '–'}</td>
@@ -662,10 +779,13 @@ function desenharTabelaPrem() {
       desenharTabelaPrem();
     });
     tr.querySelector('[data-campo="metodo"]').addEventListener('change', e => {
-      E.prem.edits[rub] = { ...atual(), metodo: e.target.value };
+      const v = e.target.value;
+      E.prem.edits[rub] = v === 'nivel' ? { ...atual(), metodo: 'multiplo', por_nivel: true } : { ...atual(), metodo: v, por_nivel: false };
       desenharTabelaPrem();
+      if (v === 'nivel' && !Object.keys(E.prem.edits[rub].niveis || {}).length) editarNiveis(rub);
     });
-    tr.querySelector('[data-campo="valor"]').addEventListener('input', e => {
+    tr.querySelector('[data-niveis]')?.addEventListener('click', () => editarNiveis(rub));
+    tr.querySelector('[data-campo="valor"]')?.addEventListener('input', e => {
       E.prem.edits[rub] = { ...atual(), valor: Number(e.target.value) || 0 };
       atualizarPrevia();
     });
@@ -685,7 +805,7 @@ function editarDetalhes(rub) {
   const sel = (nome, opcoes, valor) => `<select class="campo" name="${nome}">${Object.entries(opcoes).map(([k, v]) => `<option value="${k}" ${String(k) === String(valor) ? 'selected' : ''}>${v}</option>`).join('')}</select>`;
   const bases = rubrica.adicional ? { salario: BASES.salario } : BASES;
   const d = abrirModal({
-    titulo: rubrica.nome, sup: `DETALHES · ${TIPOS[m].toUpperCase()}`,
+    titulo: rubrica.nome, sup: `DETALHES · ${TIPOS[tipoDe({ ...p, metodo: m })].toUpperCase()}`,
     corpo: `<form class="form-grade" id="form-detalhes">
       ${m === 'pct' ? `
         <label class="rotulo">% calculado sobre${sel('base', bases, p.base)}<small>Remuneração = salário + adicionais. Folha = remuneração + horas extras.</small></label>
@@ -694,7 +814,6 @@ function editarDetalhes(rub) {
         <label class="rotulo">Quando é pago${sel('periodo', PERIODOS, p.periodo)}<small>“Uma vez no ano” lança o valor inteiro no mês escolhido (ex.: cesta natalina em dezembro).</small></label>
         <label class="rotulo">Mês (se for uma vez no ano)<select class="campo" name="mes">${opcoesMes(p.mes)}</select></label>`}
       ${m === 'rateio' ? `<label class="rotulo inteiro">Como dividir o total entre os colaboradores${sel('rateio', { hc: 'Igual por pessoa (headcount)', salario: 'Proporcional ao salário' }, p.rateio)}</label>` : ''}
-      ${m === 'multiplo' ? tabelaNiveisHtml(p) : ''}
     </form>`,
     rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="ok-detalhes">Aplicar</button>',
   });
@@ -706,31 +825,63 @@ function editarDetalhes(rub) {
     if (f.periodo) novo.periodo = f.periodo.value;
     if (f.mes) novo.mes = Number(f.mes.value);
     if (f.rateio) novo.rateio = f.rateio.value;
-    if (f.por_nivel) {
-      novo.por_nivel = f.por_nivel.checked;
-      novo.niveis = {};
-      $$('[data-nivel]', f).forEach(i => { if (i.value !== '') novo.niveis[i.dataset.nivel] = Number(i.value); });
-    }
     E.prem.edits[rub] = novo;
     d.close();
     desenharTabelaPrem();
   });
 }
 
-/** Tabela de PPR por nível do cargo, guardada na própria regra (ex.: Holding com target por cargo). */
-function tabelaNiveisHtml(p) {
+/** Tabela de nº de salários (target) por nível do cargo, guardada na própria regra — ex.: Holding/matriz. */
+function editarNiveis(rub) {
+  const p = { ...premEfetiva(E.prem.escopo, rub).p };
   const colabs = E.dados.colaboradores.filter(colabsDoEscopo(E.prem.escopo));
-  const herdada = E.prem.escopo === '*' ? {} : premHerdada(E.prem.escopo, 'ppr').p.niveis || {};
-  const tabela = { ...E.dados.niveis, ...herdada, ...(p.niveis || {}) };
-  const niveis = [...new Set([...E.dados.colaboradores.map(c => c.cargo).filter(Boolean), ...Object.keys(p.niveis || {})])].sort();
-  return `<div class="inteiro niveis-ppr">
-    <label class="check"><input type="checkbox" name="por_nivel" ${p.por_nivel ? 'checked' : ''}> O nº de salários varia por <b>nível do cargo</b></label>
-    <p>Preencha o target de cada nível (ex.: até Administrativo = 1, Especialista = 2, Coordenação = 3, Gerentes = 5…). Nível em branco usa o valor padrão da regra (${fmtN(p.valor)} salário(s)).</p>
-    <div class="tabela-wrap" style="max-height:300px"><table class="tabela"><thead><tr><th>Nível do cargo</th><th class="n">Colaboradores</th><th>Nº de salários</th></tr></thead>
-    <tbody>${niveis.map(n => `<tr><td>${esc(n)}</td><td class="n">${colabs.filter(c => c.cargo === n).length}</td>
-      <td><input class="campo" style="width:90px;padding:.35rem .5rem" type="number" step="any" data-nivel="${esc(n)}" value="${p.niveis?.[n] ?? (p.por_nivel ? tabela[n] ?? '' : '')}" placeholder="${fmtN(p.valor)}"></td></tr>`).join('')
-      || '<tr><td colspan="3" class="vazio">Importe a base para listar os níveis de cargo.</td></tr>'}</tbody></table></div>
-  </div>`;
+  const tabela = { ...(p.niveis || {}) };
+  const todos = () => [...new Set([...E.dados.colaboradores.map(c => c.cargo).filter(Boolean), ...Object.keys(tabela)])].sort();
+  const nomeEscopo = E.prem.escopo === '*' ? 'Regra geral' : E.prem.escopo.startsWith('R:') ? `Regional ${E.prem.escopo.slice(2)}` : E.prem.escopo;
+  const d = abrirModal({
+    titulo: `${RUBRICAS[IDX[rub]].nome} por nível do cargo · ${nomeEscopo}`, sup: 'TARGET DE SALÁRIOS', largo: true,
+    corpo: `
+      <div class="niveis-grade">
+        <div>
+          <div class="tabela-wrap" style="max-height:52vh"><table class="tabela"><thead><tr><th>Nível do cargo</th><th class="n">Colaboradores aqui</th><th>Nº de salários</th></tr></thead><tbody id="niveis-corpo"></tbody></table></div>
+          <label class="rotulo" style="margin-top:.8rem;max-width:340px">Níveis sem valor na tabela recebem<span class="valor-un"><input class="campo" type="number" step="any" id="niveis-padrao" value="${p.valor ?? 1}"><small>salário(s)</small></span></label>
+        </div>
+        <div class="niveis-colar">
+          <h4>📋 Colar do Excel</h4>
+          <p>Copie as duas colunas da sua planilha (<b>NÍVEL CARGO</b> e <b>TARGET</b>) e cole aqui. Pode incluir o cabeçalho.</p>
+          <textarea class="campo" id="niveis-texto" rows="9" placeholder="07-Supervisores&#9;2&#10;09-Administrativo&#9;1&#10;06-Coordenação&#9;3&#10;05-Gerentes&#9;5"></textarea>
+          <button type="button" class="btn btn-marinho btn-sm" id="niveis-aplicar-colado">Preencher a tabela</button>
+          <small id="niveis-msg"></small>
+        </div>
+      </div>`,
+    rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="ok-niveis">Aplicar</button>',
+  });
+  const desenhar = () => {
+    $('#niveis-corpo', d).innerHTML = todos().map(n => `<tr><td>${esc(n)}</td><td class="n">${colabs.filter(c => c.cargo === n).length}</td>
+      <td><input class="campo" style="width:90px;padding:.35rem .5rem" type="number" step="any" data-nivel="${esc(n)}" value="${tabela[n] ?? ''}" placeholder="${esc($('#niveis-padrao', d)?.value ?? '')}"></td></tr>`).join('')
+      || '<tr><td colspan="3" class="vazio">Importe a base ou cole a tabela ao lado.</td></tr>';
+    $$('[data-nivel]', d).forEach(i => i.addEventListener('input', () => { if (i.value === '') delete tabela[i.dataset.nivel]; else tabela[i.dataset.nivel] = Number(i.value); }));
+  };
+  desenhar();
+  $('#niveis-padrao', d).addEventListener('input', () => $$('[data-nivel]', d).forEach(i => { i.placeholder = $('#niveis-padrao', d).value; }));
+  $('#niveis-aplicar-colado', d).addEventListener('click', () => {
+    const existentes = new Map(todos().map(n => [normCab(n), n]));
+    let ok = 0;
+    for (const linha of $('#niveis-texto', d).value.split(/\r?\n/)) {
+      const m = linha.trim().match(/^(.+?)[\t;]+\s*([\d.,]+)\s*$/) || linha.trim().match(/^(.+?)\s+([\d.,]+)\s*$/);
+      if (!m) continue;
+      const nome = existentes.get(normCab(m[1])) || m[1].trim();
+      tabela[nome] = Number(m[2].replace(',', '.')) || 0;
+      ok++;
+    }
+    $('#niveis-msg', d).textContent = ok ? `✓ ${ok} nível(is) preenchido(s).` : 'Não reconheci nenhuma linha. Use “nível” e “target” separados por tabulação.';
+    desenhar();
+  });
+  $('#ok-niveis', d).addEventListener('click', () => {
+    E.prem.edits[rub] = { ...p, metodo: 'multiplo', por_nivel: true, niveis: { ...tabela }, valor: Number($('#niveis-padrao', d).value) || 0 };
+    d.close();
+    desenharTabelaPrem();
+  });
 }
 
 // ----- Quadro de todas as filiais -----

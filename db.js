@@ -112,6 +112,20 @@ if (!db.prepare("SELECT 1 FROM config WHERE chave = 'ano'").get()) {
   db.prepare("INSERT INTO config (chave, valor) VALUES ('ano', ?)").run(String(new Date().getFullYear() + 1));
 }
 
+// PPR da Holding (matriz, regional Sudeste): target de salários por nível do cargo.
+// Gravado uma única vez; depois disso a regra é editada pela tela de Premissas (filial HOLDING) e não é sobrescrita.
+const PPR_HOLDING = {
+  '07-Supervisores': 2, '09-Administrativo': 1, '06-Coordenação': 3, '05-Gerentes': 5, '01-Diretores': 10,
+  '15-Operação - Produção': 1, '11-Operação - Nivel Superior': 1, '19-Engenheiros': 2, '08-Especialistas': 2, '04-Gerentes Executivo': 5,
+};
+if (!db.prepare("SELECT 1 FROM config WHERE chave = 'ppr_holding'").get()) {
+  db.prepare("INSERT OR IGNORE INTO premissas (escopo, rubrica, dados) VALUES ('HOLDING', 'ppr', ?)").run(JSON.stringify({
+    metodo: 'multiplo', valor: 1, base: 'salario', periodo: 'anual_diluido', mes: 12, rateio: 'hc', teto: null,
+    por_nivel: true, niveis: PPR_HOLDING, quem: [], ultimo_metodo: null,
+  }));
+  db.prepare("INSERT INTO config (chave, valor) VALUES ('ppr_holding', 'ok')").run();
+}
+
 function registrar(quem, acao, detalhe = '') {
   db.prepare('INSERT INTO historico (quem, acao, detalhe) VALUES (?, ?, ?)').run(quem, acao, String(detalhe).slice(0, 500));
 }
@@ -126,4 +140,4 @@ function sincronizarFiliais() {
   `);
 }
 
-module.exports = { db, DATA_DIR, registrar, sincronizarFiliais };
+module.exports = { db, DATA_DIR, registrar, sincronizarFiliais, PPR_HOLDING };
