@@ -497,3 +497,13 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .tabela-conf td.fixa { min-width: 250px; max-width: 320px; white-space: normal; }
 .tabela-conf td.fixa .btn-ic { padding: .1rem .3rem; }
 .tabela-conf td.propria-cel { color: var(--marinho-2); font-weight: 800; background: #eef4f9; }
+/* Conferência mais compacta (mais colunas e linhas por tela) */
+.tabela-conf th, .tabela-conf td { font-size: .7rem; padding: .32rem .45rem; }
+.tabela-conf thead tr:first-child th { padding: .3rem .45rem; }
+.tabela-conf thead tr:nth-child(2) th { top: 24px; min-width: 74px; font-size: .62rem; letter-spacing: .03em; }
+.tabela-conf .cab-grupo { font-size: .6rem; }
+.tabela-conf td.fixa { min-width: 210px; max-width: 260px; line-height: 1.3; }
+.tabela-conf .sub { font-size: .62rem; }
+.tabela-conf td.fixa .btn-ic { font-size: .78rem; }
+.tabela-conf td.fixa .sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; }
+.tabela-conf td.fixa { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

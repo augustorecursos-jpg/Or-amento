@@ -1687,7 +1687,7 @@ function detalheConferencia() {
         <tbody>${colabs.map(c => {
           const meses = mesesAtivos(c);
           const tot = totalColab(c);
-          return `<tr class="${c.vaga ? 'vaga' : ''}"><td class="fixa"><button class="btn-ic" data-pedir-colab="${c.id}" title="Solicitar ajuste">💬</button> ${esc(c.nome)}${c.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${etiquetaProprias(c)}<span class="sub">${esc([c.matricula, c.funcao, c.cargo].filter(Boolean).join(' · '))}</span><span class="sub">CC ${esc([c.cc_cod, c.cc_nome].filter(Boolean).join(' · ') || '—')}</span></td>
+          return `<tr class="${c.vaga ? 'vaga' : ''}"><td class="fixa"><button class="btn-ic" data-pedir-colab="${c.id}" title="Solicitar ajuste">💬</button> ${esc(c.nome)}${c.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${etiquetaProprias(c)}<span class="sub" title="${esc(`${[c.matricula, c.funcao, c.cargo].filter(Boolean).join(' · ')} — CC ${[c.cc_cod, c.cc_nome].filter(Boolean).join(' · ')}`)}">${esc([c.funcao, c.cc_cod ? `CC ${c.cc_cod} ${c.cc_nome || ''}` : ''].filter(Boolean).join(' · '))}</span></td>
             <td>${meses === 12 ? 'Ano todo' : `${MESES[c.mes_inicio - 1]} – ${MESES[c.mes_fim - 1]}`}</td>
             <td class="n">${brl.format(c.salario)}</td>
             ${cols.map(({ k }) => { const v = valorCel(c, k); return `<td class="n${v ? '' : ' zero'}${c.excecoes?.[RUBRICAS[k].id] ? ' propria-cel' : ''}">${v ? num2.format(v) : '–'}</td>`; }).join('')}
