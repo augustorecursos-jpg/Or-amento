@@ -95,7 +95,8 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
 
 **Coordenador** (só as regionais liberadas, sem alterar valores)
 - Painel e simulação da regional.
-- **Conferência** – cards por filial; premissas aplicadas e lista de colaboradores/vagas com custo mensal e anual.
+- **Conferência** – cards por filial; premissas aplicadas e a tabela de colaboradores/vagas com **uma coluna por item**
+  (salário, periculosidade, HE, férias, 13º, FGTS, PPR, VA, VT, creche, saúde…), por mês ou no ano, com download em Excel.
   Botão **💬** em cada linha para pedir ajuste (salário, centro de custo, desligamento, transferência…), pedido de vaga,
   pedido geral e **Marcar como conferida**.
 - **Meus pedidos** – status e resposta do admin.

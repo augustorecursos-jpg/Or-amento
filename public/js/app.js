@@ -22,7 +22,7 @@ const E = {
   sim: { visao: 'rubricas', mil: false, fechados: new Set(), busca: '', abertos: new Set() },
   prem: { escopo: '*', edits: {}, filial: {}, busca: '', visao: 'filial', ocultarVazios: true, quadroReg: '' },
   base: { busca: '', soVagas: false, soProprias: false },
-  conf: { filial: '' },
+  conf: { filial: '', modo: 'mes' },
   solic: [],
   solicFiltro: 'pendentes',
   contabil: { cfg: null, zeradas: false },
@@ -1643,7 +1643,15 @@ function detalheConferencia() {
   const el = $('#conf-detalhe');
   const idx = new Map(E.res.colaboradores.map((c, i) => [c.id, i]));
   const colabs = E.dados.colaboradores.filter(c => c.filial === f);
-  const anual = c => { const i = idx.get(c.id); let s = 0; for (let k = 0; k < RN * 12; k++) s += E.res.valores[i * RN * 12 + k]; return s; };
+  const anualRub = (c, r) => { const i = idx.get(c.id); let s = 0; for (let m = 0; m < 12; m++) s += E.res.valor(i, r, m); return s; };
+  const mesesAtivos = c => c.mes_fim - c.mes_inicio + 1;
+  // Uma coluna por item que alguém da filial tem (como na planilha BZO); o salário base fica em coluna própria.
+  const cols = RUBRICAS.map((r, k) => ({ r, k })).filter(({ k }) => colabs.some(c => anualRub(c, k)));
+  const porMes = E.conf.modo === 'mes';
+  const valorCel = (c, k) => { const a = anualRub(c, k); return porMes ? a / mesesAtivos(c) : a; };
+  const totalColab = c => cols.reduce((s, { k }) => s + anualRub(c, k), 0);
+  const somaCol = k => colabs.reduce((s, c) => s + (porMes ? anualRub(c, k) / 12 : anualRub(c, k)), 0);
+  E.conf.valoresColab = c => Object.fromEntries([[RUBRICAS[0].nome, brl.format(anualRub(c, 0) / mesesAtivos(c))], ...cols.map(({ r, k }) => [r.nome, `${brl.format(anualRub(c, k) / mesesAtivos(c))} / mês`])]);
   const ativas = RUBRICAS.filter(r => !r.fixa).map(r => ({ r, p: Motor.premissaDe(E.dados.premissas, f, cfg.regional, r.id) })).filter(x => x.p.metodo !== 'nao');
   el.innerHTML = `
     <section class="cartao">
@@ -1662,19 +1670,48 @@ function detalheConferencia() {
         <div><span>Reajuste de benefícios</span><b>${num2.format(cfg.reaj_benef_pct)}% a partir de ${MESES[cfg.reaj_benef_mes - 1]}</b><button class="btn-ic" data-pedir-prem="reaj_benef" title="Solicitar ajuste">💬</button></div>
         ${ativas.map(({ r, p }) => `<div><span>${esc(r.nome)}</span><b>${esc(descreverComQuem(p))}</b><button class="btn-ic" data-pedir-prem="${r.id}" title="Solicitar ajuste">💬</button></div>`).join('')}
       </div>
-      <h3 style="margin:1.4rem 0 .7rem;font-size:.95rem">Colaboradores e vagas <small>· ${colabs.length}</small></h3>
-      <div class="tabela-wrap alta"><table class="tabela">
-        <thead><tr><th class="fixa">Colaborador</th><th>Função</th><th>Centro de custo</th><th class="n">Salário</th><th>Período</th><th class="n">Custo médio / mês</th><th class="n">Custo anual</th><th></th></tr></thead>
+      <div class="ferramentas" style="margin:1.4rem 0 .7rem">
+        <h3 style="margin:0;font-size:.95rem">Colaboradores e vagas <small>· ${colabs.length} · ${porMes ? 'valores por mês (média dos meses no ano)' : 'valores do ano'}</small></h3>
+        <span class="direita">
+          <div class="segmentos" id="conf-modo"><button data-m="mes" class="${porMes ? 'ativo' : ''}">Por mês</button><button data-m="ano" class="${porMes ? '' : 'ativo'}">No ano</button></div>
+          <button class="btn btn-marinho btn-sm" id="conf-excel">⬇ Excel</button>
+        </span>
+      </div>
+      <div class="tabela-wrap alta"><table class="tabela tabela-conf">
+        <thead>
+          <tr class="cab-grupos"><th class="fixa" rowspan="2">Colaborador</th><th rowspan="2">Período</th><th class="n" rowspan="2">Salário base<br><small>(sem dissídio)</small></th>
+            ${GRUPOS.map(g => { const n = cols.filter(x => x.r.grupo === g.id).length; return n ? `<th colspan="${n}" class="cab-grupo" style="--c:${g.cor}">${g.nome}</th>` : ''; }).join('')}
+            <th class="n" rowspan="2">Total ${porMes ? '/ mês' : 'ano'}</th></tr>
+          <tr>${cols.map(({ r }) => `<th class="n" style="box-shadow:inset 0 3px 0 ${COR_GRUPO[r.grupo]}">${esc(r.id === 'salario' ? 'Salário c/ dissídio' : r.nome)}</th>`).join('')}</tr>
+        </thead>
         <tbody>${colabs.map(c => {
-          const a = anual(c);
-          const meses = c.mes_fim - c.mes_inicio + 1;
-          return `<tr class="${c.vaga ? 'vaga' : ''}"><td class="fixa">${esc(c.nome)}${c.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${etiquetaProprias(c)}<span class="sub">${esc(c.matricula || '')}</span></td>
-            <td>${esc(c.funcao || '')}<span class="sub">${esc(c.cargo || '')}</span></td><td>${esc(c.cc_cod || '')}<span class="sub">${esc(c.cc_nome || '')}</span></td>
-            <td class="n">${brl.format(c.salario)}</td><td>${meses === 12 ? 'Ano todo' : `${MESES[c.mes_inicio - 1]} – ${MESES[c.mes_fim - 1]}`}</td>
-            <td class="n">${brl0.format(a / meses)}</td><td class="n">${brl0.format(a)}</td>
-            <td><button class="btn btn-claro btn-sm" data-pedir-colab="${c.id}">💬 Ajuste</button></td></tr>`;
-        }).join('')}</tbody></table></div>
+          const meses = mesesAtivos(c);
+          const tot = totalColab(c);
+          return `<tr class="${c.vaga ? 'vaga' : ''}"><td class="fixa"><button class="btn-ic" data-pedir-colab="${c.id}" title="Solicitar ajuste">💬</button> ${esc(c.nome)}${c.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${etiquetaProprias(c)}<span class="sub">${esc([c.matricula, c.funcao, c.cargo].filter(Boolean).join(' · '))}</span><span class="sub">CC ${esc([c.cc_cod, c.cc_nome].filter(Boolean).join(' · ') || '—')}</span></td>
+            <td>${meses === 12 ? 'Ano todo' : `${MESES[c.mes_inicio - 1]} – ${MESES[c.mes_fim - 1]}`}</td>
+            <td class="n">${brl.format(c.salario)}</td>
+            ${cols.map(({ k }) => { const v = valorCel(c, k); return `<td class="n${v ? '' : ' zero'}${c.excecoes?.[RUBRICAS[k].id] ? ' propria-cel' : ''}">${v ? num2.format(v) : '–'}</td>`; }).join('')}
+            <td class="n"><b>${num2.format(porMes ? tot / meses : tot)}</b></td></tr>`;
+        }).join('')}</tbody>
+        <tfoot><tr class="total"><td class="fixa">Total da filial${porMes ? ' / mês' : ''}</td><td></td><td class="n">${num2.format(colabs.reduce((s, c) => s + c.salario, 0))}</td>
+          ${cols.map(({ k }) => `<td class="n">${num2.format(somaCol(k))}</td>`).join('')}
+          <td class="n">${num2.format(colabs.reduce((s, c) => s + totalColab(c), 0) / (porMes ? 12 : 1))}</td></tr></tfoot>
+      </table></div>
+      <p class="subtitulo" style="margin:.6rem 0 0;font-size:.8rem">“Salário c/ dissídio” já considera o reajuste a partir do mês da data-base; no modo “Por mês” é a média dos meses. Valores em azul são condições próprias do colaborador. Clique em 💬 para pedir ajuste.</p>
     </section>`;
+  $$('#conf-modo button', el).forEach(b => b.addEventListener('click', () => { E.conf.modo = b.dataset.m; detalheConferencia(); }));
+  $('#conf-excel', el).addEventListener('click', () => {
+    if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
+    const cab = ['Matrícula', 'Colaborador', 'Função', 'Cargo', 'Cód. C. Custo', 'Centro de custo', 'Mês início', 'Mês fim', 'Salário base', ...cols.map(({ r }) => r.nome), `Total ${porMes ? '/ mês' : 'ano'}`];
+    const r2 = v => Math.round(v * 100) / 100;
+    const aoa = [cab, ...colabs.map(c => [c.matricula, c.nome, c.funcao, c.cargo, c.cc_cod, c.cc_nome, c.mes_inicio, c.mes_fim, c.salario,
+      ...cols.map(({ k }) => r2(valorCel(c, k))), r2(porMes ? totalColab(c) / mesesAtivos(c) : totalColab(c))])];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = cab.map((_, i) => ({ wch: i === 1 ? 34 : 14 }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, porMes ? 'Por mês' : 'No ano');
+    XLSX.writeFile(wb, `Conferencia-${f.replace(/[^\w-]+/g, '_')}-${porMes ? 'mensal' : 'anual'}.xlsx`);
+  });
   $('#conf-status', el).addEventListener('click', async e => {
     await api(`/api/filiais/${encodeURIComponent(f)}/conferencia`, { method: 'PUT', body: { status: e.target.dataset.s } });
     await carregar();
@@ -1691,7 +1728,7 @@ function detalheConferencia() {
   }));
   $$('[data-pedir-colab]', el).forEach(b => b.addEventListener('click', () => {
     const c = colabs.find(x => x.id === Number(b.dataset.pedirColab));
-    pedirAjuste({ tipo: 'colaborador', filial: f, regional: cfg.regional, alvo_id: String(c.id), alvo_desc: `${c.nome} · ${c.funcao || ''}`, colab: c });
+    pedirAjuste({ tipo: 'colaborador', filial: f, regional: cfg.regional, alvo_id: String(c.id), alvo_desc: `${c.nome} · ${c.funcao || ''}`, colab: c, itens: E.conf.valoresColab(c) });
   }));
 }
 
@@ -1699,7 +1736,9 @@ function pedirAjuste(ctx) {
   const c = ctx.colab;
   const camposColab = c ? {
     'Salário': brl.format(c.salario), 'Centro de custo': `${c.cc_cod || ''} ${c.cc_nome || ''}`.trim(), 'Função / cargo': `${c.funcao || ''} · ${c.cargo || ''}`,
-    'Desligamento previsto': c.mes_fim === 12 ? 'Sem previsão' : MESES[c.mes_fim - 1], 'Transferência de filial': c.filial, 'Excluir do orçamento': '', 'Outro': '',
+    'Desligamento previsto': c.mes_fim === 12 ? 'Sem previsão' : MESES[c.mes_fim - 1], 'Transferência de filial': c.filial,
+    ...Object.fromEntries(Object.entries(ctx.itens || {}).filter(([k]) => k !== 'Salário')),
+    'Excluir do orçamento': '', 'Outro': '',
   } : null;
   const d = abrirModal({
     titulo: ctx.alvo_desc, sup: 'SOLICITAR AJUSTE',

@@ -488,3 +488,12 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .tabela-contabil td, .tabela-contabil th { font-size: .78rem; }
 @media (max-width: 1000px) { .contabil-passos { grid-template-columns: 1fr; } }
 .contabil-itens tr.grupo td::before { content: none !important; } .contabil-itens tr.grupo td { cursor: default; }
+
+/* Conferência: uma coluna por item, como a planilha BZO */
+.tabela-conf th, .tabela-conf td { font-size: .78rem; }
+.tabela-conf thead tr:first-child th { top: 0; }
+.tabela-conf thead tr:nth-child(2) th { top: 31px; white-space: normal; min-width: 92px; line-height: 1.25; vertical-align: bottom; }
+.tabela-conf .cab-grupo { text-align: center; color: #fff; background: var(--c); font-size: .68rem; letter-spacing: .1em; border-bottom: 0; }
+.tabela-conf td.fixa { min-width: 250px; max-width: 320px; white-space: normal; }
+.tabela-conf td.fixa .btn-ic { padding: .1rem .3rem; }
+.tabela-conf td.propria-cel { color: var(--marinho-2); font-weight: 800; background: #eef4f9; }
