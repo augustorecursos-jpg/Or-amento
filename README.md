@@ -61,6 +61,9 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   início. Copiar regras de uma filial para outras e dissídio em lote.
   - **Horas extras, treinamento e viagens**: lance o **custo total do ano** da filial; a ferramenta divide por 12 e faz a
     média por colaborador (só entre quem recebe). Dá para trocar para total por mês no ⚙.
+  - **PPR = salário × target**: ex.: R$ 13.780 × 2 = R$ 27.560 no ano. Usa o salário da base (sem dissídio), como nas
+    planilhas; no ⚙ dá para calcular sobre o salário já reajustado. O valor do ano é lançado no mês escolhido ou
+    diluído em 12 meses, e a conta aparece no detalhe do colaborador na Simulação.
   - **PPR**: em “Como é calculado”, a opção **Nº de salários por nível do cargo** abre a tabela de target por nível, que
     aceita **colar do Excel** (NÍVEL CARGO · TARGET). Cada regra (geral, regional ou filial) tem a sua. A regra da
     **Holding** (matriz) já vem cadastrada: Supervisores 2, Administrativo 1, Coordenação 3, Gerentes 5, Diretores 10,

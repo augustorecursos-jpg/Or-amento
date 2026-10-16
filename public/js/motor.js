@@ -9,12 +9,12 @@
 //   premissas:     { [escopo]: { [rubrica]: premissa } }  escopo = '*' (geral), 'R:<regional>' ou '<filial>'
 //   niveis:        { [nível do cargo]: múltiplo de salários do PPR } — tabela geral, usada se a regra não tiver a sua
 //
-// Premissa: { metodo, valor, base, periodo, mes, rateio, teto, por_nivel, niveis, quem }
+// Premissa: { metodo, valor, base, periodo, mes, rateio, teto, por_nivel, niveis, com_dissidio, quem }
 //   metodo  'nao'      não se aplica
 //           'pct'      % sobre uma base (salário, remuneração, folha, férias ou 13º), com teto opcional
 //           'fixo'     R$ por colaborador
 //           'rateio'   R$ total da filial, distribuído entre os colaboradores (por headcount ou proporcional ao salário)
-//           'multiplo' N salários por colaborador (PPR); com por_nivel, usa a tabela `niveis` da própria regra
+//           'multiplo' N salários por colaborador (PPR) = salário da base × N (com_dissidio: usa o salário já reajustado); com por_nivel, usa a tabela `niveis` da própria regra
 //                      ({ [nível do cargo]: nº de salários }) — ex.: a Holding com target por cargo e as filiais com outro
 //   periodo 'mensal' (todo mês) · 'anual_mes' (valor do ano inteiro lançado no mês `mes`) · 'anual_diluido' (valor anual ÷ 12)
 //   quem    lista vazia = todos; senão só quem está em um dos centros de custo ('cc:<código>') ou níveis de cargo ('cargo:<nível>')
@@ -249,7 +249,8 @@
               else if (p.periodo === 'anual_diluido') v = v / 12;
               break;
             case 'multiplo': {
-              v = multiploDe(p, colaboradores[i].cargo, niveis) * sal[i];
+              // PPR = salário × target. Por padrão sobre o salário da base (sem dissídio), como nas planilhas de orçamento.
+              v = multiploDe(p, colaboradores[i].cargo, niveis) * (p.com_dissidio ? sal[i] : num(colaboradores[i].salario));
               if (p.periodo === 'anual_mes') v = m + 1 === num(p.mes) ? v : 0;
               else if (p.periodo === 'anual_diluido') v = v / 12;
               break;

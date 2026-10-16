@@ -111,3 +111,13 @@ test('PPR: tabela de nível da própria regra (Holding) e outra regra nas filiai
   perto(total(res, 'ppr', 1), 1000);
   perto(total(res, 'ppr', 2), 2400);
 });
+
+test('PPR = salário da base × target (sem dissídio), mesmo com dissídio no ano', () => {
+  const premissas = { '*': { ppr: { metodo: 'multiplo', valor: 2, periodo: 'anual_mes', mes: 3 } } };
+  const res = Motor.calcular({ colaboradores: [colab({ salario: 13780 })], filiais: { CUIABA: { dissidio_pct: 5, dissidio_mes: 1 } }, premissas });
+  perto(total(res, 'ppr'), 27560);
+  perto(res.valor(0, Motor.IDX.ppr, 2), 27560);
+  const comDiss = Motor.calcular({ colaboradores: [colab({ salario: 13780 })], filiais: { CUIABA: { dissidio_pct: 5, dissidio_mes: 1 } },
+    premissas: { '*': { ppr: { metodo: 'multiplo', valor: 2, periodo: 'anual_mes', mes: 3, com_dissidio: true } } } });
+  perto(total(comDiss, 'ppr'), 27560 * 1.05);
+});

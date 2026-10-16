@@ -139,6 +139,7 @@ function limparPremissa(p) {
     rateio: p.rateio === 'salario' ? 'salario' : 'hc',
     teto: p.teto === '' || p.teto == null ? null : numero(p.teto),
     por_nivel: Boolean(p.por_nivel),
+    com_dissidio: Boolean(p.com_dissidio),
     niveis: Object.fromEntries(Object.entries(p.niveis && typeof p.niveis === 'object' ? p.niveis : {})
       .filter(([k, v]) => texto(k) && v !== '' && v != null).slice(0, 100).map(([k, v]) => [texto(k, 120), numero(v)])),
     quem: (Array.isArray(p.quem) ? p.quem : []).map(q => texto(q, 200)).filter(q => /^(cc|cargo):/.test(q)).slice(0, 300),

@@ -393,13 +393,25 @@ function detalheColaborador(id) {
   const out = [];
   for (const g of GRUPOS) {
     const filhos = RUBRICAS.map((r, k) => ({ r, k })).filter(x => x.r.grupo === g.id).map(({ r, k }) => ({
-      rotulo: r.nome, meses: MESES.map((_, m) => E.res.valor(i, k, m)), propria: Boolean(c.excecoes?.[r.id]),
+      rotulo: r.nome, meses: MESES.map((_, m) => E.res.valor(i, k, m)), propria: Boolean(c.excecoes?.[r.id]), conta: contaDoItem(c, r),
     })).filter(f => f.meses.some(x => x));
     if (!filhos.length) continue;
     out.push({ rotulo: g.nome, cor: g.cor, meses: MESES.map((_, m) => filhos.reduce((s, f) => s + f.meses[m], 0)), det: 'grupo' });
     filhos.forEach(f => out.push({ ...f, det: 'rubrica' }));
   }
   return out;
+}
+
+/** Explica a conta de itens em nº de salários (PPR): salário × target = valor no ano. */
+function contaDoItem(c, rub) {
+  if (rub.fixa) return '';
+  const p = Motor.aplicarExcecao(Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rub.id), c.excecoes?.[rub.id]);
+  if (p.metodo !== 'multiplo') return '';
+  const mult = Motor.multiploDe(p, c.cargo, E.dados.niveis);
+  const quando = p.periodo === 'anual_mes' ? `pago em ${MESES[p.mes - 1]}` : p.periodo === 'anual_diluido' ? 'diluído em 12 meses' : 'todo mês';
+  const alvo = `${fmtN(mult)} salário${mult === 1 ? '' : 's'}${p.por_nivel && c.cargo ? ` (${c.cargo})` : ''}`;
+  if (p.com_dissidio) return `salário com dissídio × ${alvo} · ${quando}`;
+  return `${brl.format(c.salario)} × ${alvo} = ${brl.format(c.salario * mult)} no ano · ${quando}`;
 }
 
 function tabelaSimulacaoHtml() {
@@ -421,7 +433,7 @@ function tabelaSimulacaoHtml() {
         if (l.det) {
           // Detalhe do colaborador: % é sobre o custo dele
           return `<tr class="det-${l.det}">
-            <td class="fixa" title="${esc(l.rotulo)}">${l.det === 'grupo' ? `<i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.propria ? ' <span class="etiqueta azul">valor próprio</span>' : ''}</td>
+            <td class="fixa" title="${esc(l.rotulo)}">${l.det === 'grupo' ? `<i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.propria ? ' <span class="etiqueta azul">valor próprio</span>' : ''}${l.conta ? `<span class="sub conta">${esc(l.conta)}</span>` : ''}</td>
             ${l.meses.map(cel).join('')}<td class="n"><b>${fmtVal(t)}</b></td><td class="n">${pctFmt(t / totColab)}</td></tr>`;
         }
         const cls = l.grupo ? `grupo${E.sim.fechados.has(l.grupo) ? ' fechado' : ''}` : l.filho ? 'filho' : l.colab != null ? `colab${l.aberto ? ' aberto' : ''}${l.vaga ? ' vaga' : ''}` : l.vaga ? 'vaga' : '';
@@ -867,6 +879,8 @@ function editarDetalhes(rub) {
       : `
         <label class="rotulo">Quando é pago${sel('periodo', PERIODOS, p.periodo)}<small>“Uma vez no ano” lança o valor inteiro no mês escolhido (ex.: cesta natalina em dezembro).</small></label>
         <label class="rotulo">Mês (se for uma vez no ano)<select class="campo" name="mes">${opcoesMes(p.mes)}</select></label>`}
+      ${m === 'multiplo' ? `<label class="check inteiro"><input type="checkbox" name="com_dissidio" ${p.com_dissidio ? 'checked' : ''}> Calcular sobre o salário <b>já com o dissídio</b></label>
+        <p class="inteiro" style="margin:0;font-size:.8rem;color:var(--texto-suave)">Desmarcado (padrão): salário da base × nº de salários. Ex.: R$ 13.780 × 2 = R$ 27.560 no ano, lançado inteiro no mês escolhido ou diluído em 12 meses.</p>` : ''}
       ${m === 'rateio' ? `<label class="rotulo inteiro">Como dividir o total entre os colaboradores${sel('rateio', { hc: 'Igual por pessoa (headcount)', salario: 'Proporcional ao salário' }, p.rateio)}</label>` : ''}
     </form>`,
     rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="ok-detalhes">Aplicar</button>',
@@ -879,6 +893,7 @@ function editarDetalhes(rub) {
     if (f.periodo) novo.periodo = f.periodo.value;
     if (f.mes) novo.mes = Number(f.mes.value);
     if (f.rateio) novo.rateio = f.rateio.value;
+    if (f.com_dissidio) novo.com_dissidio = f.com_dissidio.checked;
     E.prem.edits[rub] = novo;
     d.close();
     desenharTabelaPrem();
