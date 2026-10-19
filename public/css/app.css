@@ -57,6 +57,7 @@ body.app { display: flex; min-height: 100vh; }
 .linha-funcao { display: flex; align-items: center; gap: .4rem; justify-content: space-between; }
 .linha-funcao .check { flex: 1; min-width: 0; }
 .valor-funcao { width: 6.5rem; flex: none; padding: .25rem .4rem; font-size: .85rem; }
+.nota-reajuste { display: block; color: var(--laranja, #ec6b24); font-size: .72rem; margin-top: .2rem; white-space: nowrap; }
 .valor-funcao::placeholder { color: #a9b4bf; font-style: italic; }
 
 /* ---------- Destaque do painel ---------- */

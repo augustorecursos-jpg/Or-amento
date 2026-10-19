@@ -418,10 +418,19 @@ function detalheColaborador(id) {
   return out;
 }
 
-/** Explica a conta de itens em nº de salários (PPR): salário × target = valor no ano. */
+/** Explica a conta do item no detalhe do colaborador: PPR (salário × target) e benefício em R$ com reajuste. */
 function contaDoItem(c, rub) {
   if (rub.fixa) return '';
   const p = Motor.aplicarExcecao(Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rub.id), c.excecoes?.[rub.id]);
+  if (p.metodo === 'fixo' && rub.grupo === 'beneficios' && p.periodo !== 'por_mes') {
+    // Benefício em R$: mostra o reajuste de benefícios da filial, que entra por cima do valor lançado.
+    const f = filiaisComRascunho()[c.filial] || {};
+    const pct = Number(f.reaj_benef_pct) || 0;
+    if (!pct) return '';
+    const v = Motor.valorDe(p, c.funcao);
+    const deFuncao = !c.excecoes?.[rub.id] && Motor.valorDe(p, c.funcao) !== Number(p.valor) ? ` (${c.funcao})` : '';
+    return `${brl.format(v)}${deFuncao} + reajuste de benefícios da filial de ${fmtN(pct)}% a partir de ${MESES[(f.reaj_benef_mes || 1) - 1]} = ${brl.format(v * (1 + pct / 100))}`;
+  }
   if (p.metodo !== 'multiplo') return '';
   const mult = Motor.multiploDe(p, c.cargo, E.dados.niveis, c.funcao);
   const quando = p.periodo === 'anual_mes' ? `pago em ${MESES[p.mes - 1]}` : p.periodo === 'anual_diluido' ? 'diluído em 12 meses' : 'todo mês';
@@ -734,7 +743,7 @@ function renderPremissas() {
             <p>Os salários sobem neste mês; adicionais, provisões e encargos acompanham.</p></div>
           <div class="reajuste"><h4>🎁 Reajuste de benefícios</h4>
             <div class="linha-campos"><input class="campo" type="number" step="0.01" data-fcampo="reaj_benef_pct" value="${cfgF.reaj_benef_pct}"> % a partir de <select class="campo" data-fcampo="reaj_benef_mes">${opcoesMes(cfgF.reaj_benef_mes)}</select></div>
-            <p>Aplicado aos benefícios em R$ (por colaborador ou total da filial).</p></div>
+            <p>Soma-se aos benefícios em R$ lançados abaixo (por colaborador ou total da filial): com 4,5%, R$ 803 viram R$ 839,14. <b>Se os valores lançados já estão reajustados, deixe 0.</b></p></div>
         </div>` : `
         <div class="reajuste" style="margin-bottom:1rem"><h4>📈 Dissídio em lote</h4>
           <div class="linha-campos">Aplicar <input class="campo" type="number" step="0.01" id="lote-pct" placeholder="%"> % a partir de <select class="campo" id="lote-mes">${opcoesMes(5)}</select> em todas as filiais ${escopo === '*' ? 'da empresa' : 'da regional'} <button class="btn btn-claro btn-sm" id="lote-aplicar">Aplicar</button></div>
@@ -827,6 +836,16 @@ function textoCurto(p) {
   }
 }
 
+/** Na filial com reajuste de benefícios, mostra quanto o valor lançado vira depois do reajuste. */
+function notaReajuste(rub, tipo, p) {
+  const { escopo } = E.prem;
+  if (rub.grupo !== 'beneficios' || (tipo !== 'fixo' && tipo !== 'rateio') || !E.dados.filiais[escopo]) return '';
+  const cfg = { ...E.dados.filiais[escopo], ...E.prem.filial };
+  const pct = Number(cfg.reaj_benef_pct) || 0;
+  if (!pct || !Number(p.valor)) return '';
+  return `<small class="nota-reajuste" title="Reajuste de benefícios da filial">+${fmtN(pct)}% a partir de ${MESES[(cfg.reaj_benef_mes || 1) - 1]} → ${brl.format(Number(p.valor) * (1 + pct / 100))}</small>`;
+}
+
 function linhaPremHtml(rub, previa) {
   const { escopo } = E.prem;
   const { p, propria, origem } = premEfetiva(escopo, rub.id);
@@ -842,7 +861,7 @@ function linhaPremHtml(rub, previa) {
     ? `<button class="btn-detalhe btn-niveis" data-detalhes2 title="Valores de cada mês">📅 12 meses · ${brl0.format(totalMeses)} no ano</button>`
     : tipo === 'nivel'
     ? `<button class="btn-detalhe btn-niveis" data-niveis title="Target de salários por nível do cargo">📋 Tabela por nível · ${nNiveis ? `${nNiveis} nível(is)` : 'preencher'}</button>`
-    : `<span class="valor-un"><input class="campo" type="number" step="any" data-campo="valor" value="${p.valor ?? 0}"><small>${unidadeValor(tipo, p.periodo)}</small></span>`;
+    : `<span class="valor-un"><input class="campo" type="number" step="any" data-campo="valor" value="${p.valor ?? 0}"><small>${unidadeValor(tipo, p.periodo)}</small></span>${notaReajuste(rub, tipo, p)}`;
   const desab = tem ? '' : ' desab';
   return `<tr class="${propria ? 'propria' : 'herdada'}${tem ? '' : ' nao-tem'}" data-rub="${rub.id}">
     <td class="rub fixa">${esc(rub.nome)}<small>${propria ? (escopo === '*' ? 'regra geral' : escopo.startsWith('R:') ? 'regra da regional' : 'regra desta filial') : `herdada · ${esc(origem)}`}</small></td>
