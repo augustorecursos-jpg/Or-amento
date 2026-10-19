@@ -216,3 +216,22 @@ test('12 meses de remuneração (padrão): Rafael de Melo', () => {
   perto(v('inss'), cheio * 0.29);
   perto(total(res, 'salario'), 5063.049288 * 12);
 });
+
+test('total da regional toda: treinamento de 8.293,08 por mês dividido entre as filiais da regional', () => {
+  const colaboradores = [
+    colab({ id: 1, regional: 'SUL', filial: 'A' }), colab({ id: 2, regional: 'SUL', filial: 'A' }),
+    colab({ id: 3, regional: 'SUL', filial: 'B' }), colab({ id: 4, regional: 'SUL', filial: 'C' }),
+    colab({ id: 5, regional: 'SUL', filial: 'D' }), colab({ id: 6, regional: 'NORTE', filial: 'E' }),
+  ];
+  const regra = { metodo: 'rateio', valor: 8293.08, periodo: 'mensal', dividir: 'escopo' };
+  const premissas = { 'R:SUL': { treinamento: regra }, D: { treinamento: { metodo: 'rateio', valor: 1000, periodo: 'mensal' } } };
+  const res = Motor.calcular({ colaboradores, filiais: {}, premissas });
+  const v = i => res.valor(i, Motor.IDX.treinamento, 0);
+  perto(v(0) + v(1) + v(2) + v(3), 8293.08);   // filiais A, B e C dividem o total da regional
+  perto(v(0), 8293.08 / 4);
+  perto(v(4), 1000);                          // D tem regra própria
+  perto(v(5), 0);                             // outra regional
+  // sem "da regional toda": cada filial tem o total
+  const cada = Motor.calcular({ colaboradores, filiais: {}, premissas: { 'R:SUL': { treinamento: { ...regra, dividir: '' } } } });
+  perto(cada.valor(2, Motor.IDX.treinamento, 0), 8293.08);
+});

@@ -689,9 +689,11 @@ function calcularPrevia() {
   }
   const filiais = { ...E.dados.filiais };
   if (E.dados.filiais[escopo]) filiais[escopo] = { ...filiais[escopo], ...E.prem.filial };
+  // Calcula com todos (o total de uma regional/geral é dividido entre todas as filiais) e mostra só os do escopo.
   const filtro = colabsDoEscopo(escopo);
-  const colaboradores = E.dados.colaboradores.filter(filtro);
-  return Motor.calcular({ colaboradores, filiais, premissas, niveis: E.dados.niveis });
+  const res = Motor.calcular({ colaboradores: E.dados.colaboradores, filiais, premissas, niveis: E.dados.niveis });
+  const idx = res.colaboradores.map((c, i) => (filtro(c) ? i : -1)).filter(i => i >= 0);
+  return { n: idx.length, colaboradores: idx.map(i => res.colaboradores[i]), valor: (i, r, m) => res.valor(idx[i], r, m) };
 }
 
 function renderPremissas() {
@@ -831,7 +833,7 @@ function metodoAoLigar(rub, p) {
 function resumoDetalhes(p) {
   if (p.metodo === 'pct') return `s/ ${BASES[p.base].toLowerCase()}${p.teto ? ` · teto ${brl0.format(p.teto)}` : ''}`;
   const per = { mensal: 'todo mês', anual_mes: `1x no ano · ${MESES[p.mes - 1]}`, anual_diluido: 'anual ÷ 12', por_mes: 'valor por mês' }[p.periodo];
-  if (p.metodo === 'rateio') return `${{ mensal: 'total do mês', anual_mes: `total em ${MESES[p.mes - 1]}`, anual_diluido: 'total do ano ÷ 12', por_mes: 'total de cada mês' }[p.periodo]} · ${p.rateio === 'salario' ? 'proporcional ao salário' : 'média por colaborador'}`;
+  if (p.metodo === 'rateio') return `${{ mensal: 'total do mês', anual_mes: `total em ${MESES[p.mes - 1]}`, anual_diluido: 'total do ano ÷ 12', por_mes: 'total de cada mês' }[p.periodo]}${p.dividir === 'escopo' ? ' · dividido entre as filiais' : ''} · ${p.rateio === 'salario' ? 'proporcional ao salário' : 'média por colaborador'}`;
   if (p.metodo === 'multiplo') return per;
   return per;
 }
@@ -873,7 +875,7 @@ function linhaPremHtml(rub, previa) {
     ? `<button class="btn-detalhe btn-niveis" data-detalhes2 title="Valores de cada mês">📅 12 meses · ${brl0.format(totalMeses)} no ano</button>`
     : tipo === 'nivel'
     ? `<button class="btn-detalhe btn-niveis" data-niveis title="Target de salários por nível do cargo">📋 Tabela por nível · ${nNiveis ? `${nNiveis} nível(is)` : 'preencher'}</button>`
-    : `<span class="valor-un"><input class="campo" type="number" step="any" data-campo="valor" value="${p.valor ?? 0}"><small>${unidadeValor(tipo, p.periodo)}</small></span>${notaReajuste(rub, tipo, p)}`;
+    : `<span class="valor-un"><input class="campo" type="number" step="any" data-campo="valor" value="${p.valor ?? 0}"><small>${unidadeValor(tipo, p.periodo).replace('R$ total', tipo === 'rateio' && p.dividir === 'escopo' ? `R$ total ${E.prem.escopo === '*' ? 'da empresa' : 'da regional'}` : 'R$ total')}</small></span>${notaReajuste(rub, tipo, p)}`;
   const desab = tem ? '' : ' desab';
   return `<tr class="${propria ? 'propria' : 'herdada'}${tem ? '' : ' nao-tem'}" data-rub="${rub.id}">
     <td class="rub fixa">${esc(rub.nome)}<small>${propria ? (escopo === '*' ? 'regra geral' : escopo.startsWith('R:') ? 'regra da regional' : 'regra desta filial') : `herdada · ${esc(origem)}`}</small></td>
@@ -949,6 +951,7 @@ function editarDetalhes(rub) {
       ${m === 'multiplo' ? `<label class="check inteiro"><input type="checkbox" name="sem_dissidio" ${p.sem_dissidio ? 'checked' : ''}> Ignorar o dissídio (usar o salário da base)</label>
         <p class="inteiro" style="margin:0;font-size:.8rem;color:var(--texto-suave)">Padrão: novo salário (com o dissídio da filial) × nº de salários. Ex.: R$ 13.780 com dissídio de 5% = R$ 14.469 × 2 = R$ 28.938 no ano, lançado inteiro no mês escolhido ou diluído em 12 meses.</p>` : ''}
       ${outrosEscopos(rub).length && m !== 'pct' ? `<label class="check inteiro propagar"><input type="checkbox" name="propagar"><span>Aplicar esta forma de pagamento também às <b>${outrosEscopos(rub).length} regra(s) própria(s)</b> de ${E.prem.escopo === '*' ? 'regionais e filiais' : 'filiais desta regional'} para este item <small>${esc(outrosEscopos(rub).map(e => e.replace(/^R:/, 'Regional ')).join(', ').slice(0, 160))} — cada uma mantém os seus valores${m === 'multiplo' ? ' e targets' : ''}</small></span></label>` : ''}
+      ${m === 'rateio' && !E.dados.filiais[E.prem.escopo] ? `<label class="rotulo inteiro">De quem é este total${sel('dividir', { '': 'De cada filial (cada filial tem este valor)', escopo: E.prem.escopo === '*' ? 'Da empresa toda (dividido entre todas as filiais)' : 'Da regional toda (dividido entre todas as filiais da regional)' }, p.dividir || '')}<small>Ex.: treinamento de R$ 8.293,08 por mês para a regional inteira → “da regional toda”. Filiais com regra própria ficam fora da divisão.</small></label>` : ''}
       ${m === 'rateio' ? `<label class="rotulo inteiro">Como dividir o total entre os colaboradores${sel('rateio', { hc: 'Igual por pessoa (headcount)', salario: 'Proporcional ao salário' }, p.rateio)}</label>` : ''}
     </form>`,
     rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="ok-detalhes">Aplicar</button>',
@@ -982,6 +985,7 @@ function editarDetalhes(rub) {
     if (f.periodo) novo.periodo = f.periodo.value;
     if (f.mes) novo.mes = Number(f.mes.value);
     if (f.rateio) novo.rateio = f.rateio.value;
+    if (f.dividir) novo.dividir = f.dividir.value;
     if (f.sem_dissidio) novo.sem_dissidio = f.sem_dissidio.checked;
     if (f.periodo?.value === 'por_mes') {
       novo.meses = $$('[data-mesv]', d).map(i => Number(i.value) || 0);
@@ -1521,7 +1525,7 @@ function atualizarPrevia() {
 
 function atualizarRodapePrem(previa) {
   let total = 0;
-  for (let k = 0; k < previa.valores.length; k++) total += previa.valores[k];
+  for (let i = 0; i < previa.n; i++) for (let r = 0; r < RUBRICAS.length; r++) for (let m = 0; m < 12; m++) total += previa.valor(i, r, m);
   $('#prem-total').textContent = brl0.format(total);
   const salvo = totalDe(E.resSalvo, colabsDoEscopo(E.prem.escopo)).total;
   const pend = Object.keys(E.prem.edits).length + Object.keys(E.prem.filial).length;
@@ -2173,7 +2177,7 @@ function descreverPremissa(p) {
   switch (p.metodo) {
     case 'pct': return `${num2.format(v)}% s/ ${BASES[p.base].split(' (')[0].toLowerCase()}${p.teto ? ` · teto ${brl.format(p.teto)}` : ''}`;
     case 'fixo': return `${brl.format(v)} por colaborador${per}`;
-    case 'rateio': return `${brl.format(v)} total da filial · rateio ${p.rateio === 'salario' ? 'pelo salário' : 'por HC'}${per}`;
+    case 'rateio': return `${brl.format(v)} ${p.dividir === 'escopo' ? 'total único dividido entre as filiais' : 'total da filial'} · rateio ${p.rateio === 'salario' ? 'pelo salário' : 'por HC'}${per}`;
     case 'multiplo': return `${p.por_nivel ? 'pela tabela de nível' : `${num2.format(v)} salário(s)`}${per}`;
     default: return 'Não se aplica';
   }

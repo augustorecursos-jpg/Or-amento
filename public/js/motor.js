@@ -10,6 +10,7 @@
 //   niveis:        { [nível do cargo]: múltiplo de salários do PPR } — tabela geral, usada se a regra não tiver a sua
 //
 // Premissa: { metodo, valor, base, periodo, mes, rateio, teto, por_nivel, niveis, sem_dissidio, quem, por_funcao }
+//   dividir 'escopo' no total (rateio) de uma regra da regional/geral: o total é de toda a regional/empresa, não de cada filial
 //   por_funcao { 'APRENDIZ': 900 } valor próprio por função (no lugar de `valor`, em %, R$ por colaborador e nº de salários)
 //   quem    tokens 'cc:<cód>', 'cargo:<nível>' e 'funcao:<função>' (basta bater um)
 //   metodo  'nao'      não se aplica
@@ -264,11 +265,21 @@
         const rub = RUBRICAS[r];
         const ehBenef = rub.grupo === 'beneficios';
 
-        // Rateio: o total da filial é dividido entre quem está ativo no mês.
+        // Rateio: o total é dividido entre quem está ativo no mês — da filial ou, com dividir = 'escopo' numa regra da
+        // regional (ou geral), entre todas as filiais que herdam essa regra (ex.: treinamento de R$ 8 mil/mês para a regional).
         const rateados = new Set();
-        for (const [, idxs] of porFilial) {
+        const grupos = new Map();
+        for (const [filial, idxs] of porFilial) {
           const p = premsFilial[idxs[0]][r];
           if (p.metodo !== 'rateio') continue;
+          const regional = colaboradores[idxs[0]].regional;
+          const origem = p.dividir === 'escopo' ? origemDe(premissas, filial, regional, rub.id) : 'filial';
+          const chave = origem === 'regional' ? 'R:' + regional : origem === 'geral' || origem === 'padrao' ? '*' : 'F:' + filial;
+          if (!grupos.has(chave)) grupos.set(chave, []);
+          grupos.get(chave).push(...idxs);
+        }
+        for (const [, idxs] of grupos) {
+          const p = premsFilial[idxs[0]][r];
           idxs.forEach(i => { if (!temExcecao(i, r)) rateados.add(i); });
           let total = p.periodo === 'por_mes' ? num(p.meses?.[m]) : num(p.valor);
           if (p.periodo === 'anual_mes') total = m + 1 === num(p.mes) ? total : 0;
@@ -278,9 +289,8 @@
           const pesos = elegiveis.map(i => (p.rateio === 'salario' ? sal[i] : 1));
           const soma = pesos.reduce((a, b) => a + b, 0);
           if (!soma) continue;
-          const fator = ehBenef ? fatorBenef(elegiveis[0], m) : 1;
-          // Total da filial (ex.: horas extras do ano) já é o custo real: não passa pelo 11/12.
-          elegiveis.forEach((i, k) => { valores[at(i, r, m)] = cheio[i * R + r] = (total * fator * pesos[k]) / soma; });
+          // Total (ex.: horas extras do ano) já é o custo real: não passa pelo 11/12. Reajuste de benefícios: o de cada filial.
+          elegiveis.forEach((i, k) => { valores[at(i, r, m)] = cheio[i * R + r] = (total * (ehBenef ? fatorBenef(i, m) : 1) * pesos[k]) / soma; });
         }
 
         for (let i = 0; i < n; i++) {

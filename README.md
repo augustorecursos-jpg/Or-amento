@@ -72,7 +72,9 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
     periodicidade/mês para as regionais e filiais que têm regra própria, mantendo os valores de cada uma — ex.: PPR inteiro
     em fevereiro em todas as unidades, cada uma com o seu target.
   - **Horas extras, treinamento e viagens**: lance o **custo total do ano** da filial; a ferramenta divide por 12 e faz a
-    média por colaborador (só entre quem recebe). Dá para trocar para total por mês no ⚙.
+    média por colaborador (só entre quem recebe). Dá para trocar para total por mês no ⚙. Numa regra da regional (ou
+    geral), o ⚙ tem **“De quem é este total”**: *de cada filial* (cada filial tem o valor) ou *da regional toda* (um total
+    único dividido entre os colaboradores de todas as filiais que seguem a regra — as que têm regra própria ficam fora).
   - **PPR = salário × target**: ex.: R$ 13.780 × 2 = R$ 27.560 no ano. Se a filial tem dissídio, usa o **novo salário**
     (ex.: 13.780 × 1,05 × 2); no ⚙ dá para ignorar o dissídio. O valor do ano é lançado no mês escolhido ou
     diluído em 12 meses, e a conta aparece no detalhe do colaborador na Simulação.
