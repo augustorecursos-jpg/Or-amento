@@ -144,10 +144,10 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
 Padrões do sistema (regra do ADM de pessoal, ajustáveis em Premissas): periculosidade 30% do salário. Férias, 13º,
 FGTS e INSS sobre **salário + adicionais (periculosidade, insalubridade, penosidade, turno/noturno) + horas extras**: férias
 + 1/3 = base ÷ 12 + (base ÷ 12) ÷ 3 (= base ÷ 9); 13º = base ÷ 12; FGTS 8% (e 8% sobre férias e 13º); **INSS 29%** (e 29% sobre férias). PPR 2,4 salários/ano.
-**11 meses de salário + 1 de férias**: salário, adicionais e horas extras por colaborador entram em 11/12 a cada mês;
-o mês de férias é coberto pela provisão de férias + 1/3 (base ÷ 9, sobre o mês cheio) e o 13º é base ÷ 12. FGTS e INSS
-incidem sobre o que foi pago no mês (11/12) e, no mês de férias, pelo FGTS férias e **INSS férias (29%)**. No ano: 11
-salários + férias com 1/3 + 13º. Horas extras lançadas como total da filial já são o custo real e não passam pelo 11/12.
+**Remuneração em 12 meses** (pedido da gerência): salário, adicionais e horas extras entram cheios nos 12 meses, além da
+provisão de férias + 1/3 (base ÷ 9), do 13º (base ÷ 12) e dos encargos (FGTS e INSS sobre a remuneração do mês; FGTS
+férias e **INSS férias 29%** sobre a provisão). O motor também aceita 11 meses (`MESES_SALARIO` em `public/js/motor.js`):
+aí a remuneração entra em 11/12 e o mês de férias fica só na provisão.
 O salário importado é **sem dissídio**: o reajuste entra a partir do mês da data-base de cada filial.
 
 ## Estrutura

@@ -7,10 +7,10 @@ const perto = (a, b) => assert.ok(Math.abs(a - b) < 0.01, `${a} ≠ ${b}`);
 const colab = (extra = {}) => ({ id: 1, nome: 'Teste', regional: 'CENTRO OESTE', filial: 'CUIABA', cargo: '14-Operação - Apoio', cc_cod: '17151', salario: 4858.04, mes_inicio: 1, mes_fim: 12, ...extra });
 const total = (res, rub, i = 0) => { let s = 0; for (let m = 0; m < 12; m++) s += res.valor(i, Motor.IDX[rub], m); return s; };
 
-test('Rafael de Melo: 11 meses de salário + férias e 1/3 + 13º; encargos sobre salário + grupo OUTROS', () => {
+test('opção de 11 meses (Rafael de Melo): 11 salários + férias e 1/3 + 13º; encargos sobre salário + grupo OUTROS', () => {
   // Salário 4.858,04 · dissídio 4,22% · periculosidade 30% · insalubridade 0 · HE 193,81 (sem dissídio)
   const c = colab({ salario: 4858.04, excecoes: { horas_extras: { metodo: 'fixo', valor: 193.81, origem: 'base' } } });
-  const res = Motor.calcular({ colaboradores: [c], filiais: { CUIABA: { dissidio_pct: 4.22, dissidio_mes: 1 } }, premissas: {} });
+  const res = Motor.calcular({ colaboradores: [c], filiais: { CUIABA: { dissidio_pct: 4.22, dissidio_mes: 1 } }, premissas: {}, mesesSalario: 11 });
   const v = rub => res.valor(0, Motor.IDX[rub], 0);
   const cheio = 5063.049288 + 1518.9147864 + 193.81 * 1.0422; // 6.783,95 = K + L + M + N
   perto(v('salario'), 5063.049288 * 11 / 12);
@@ -201,4 +201,18 @@ test('auxílio óculos da base: valor do ano dividido em 12', () => {
   const res = Motor.calcular({ colaboradores: [c], filiais: {}, premissas: {} });
   perto(res.valor(0, Motor.IDX.aux_oculos, 0), 250);
   perto(total(res, 'aux_oculos'), 3000);
+});
+
+test('12 meses de remuneração (padrão): Rafael de Melo', () => {
+  const c = colab({ salario: 4858.04, excecoes: { horas_extras: { metodo: 'fixo', valor: 193.81, origem: 'base' } } });
+  const res = Motor.calcular({ colaboradores: [c], filiais: { CUIABA: { dissidio_pct: 4.22, dissidio_mes: 1 } }, premissas: {} });
+  const v = rub => res.valor(0, Motor.IDX[rub], 0);
+  const cheio = 5063.049288 + 1518.9147864 + 193.81 * 1.0422;
+  perto(v('salario'), 5063.049288);
+  perto(v('periculosidade'), 1518.9147864);
+  perto(v('ferias'), 753.77);
+  perto(v('decimo'), cheio / 12);
+  perto(v('fgts'), cheio * 0.08);
+  perto(v('inss'), cheio * 0.29);
+  perto(total(res, 'salario'), 5063.049288 * 12);
 });

@@ -101,7 +101,9 @@
   const PERIODOS = { mensal: 'Todo mês', anual_mes: 'Uma vez no ano (mês)', anual_diluido: 'Anual diluído (÷12)', por_mes: 'Valor diferente em cada mês' };
 
   const R = RUBRICAS.length;
-  const MESES_SALARIO = 11; // 11 meses de salário + 1 mês de férias (provisionado em férias + 1/3)
+  // Meses de salário no ano. 12 = remuneração orçada nos 12 meses (pedido da gerência), além da provisão de férias + 1/3 e do 13º.
+  // Com 11, salário, adicionais e horas extras entram em 11/12 e o mês de férias fica só na provisão.
+  const MESES_SALARIO = 12;
   const IDX = Object.fromEntries(RUBRICAS.map((r, i) => [r.id, i]));
   const ADICIONAIS = RUBRICAS.map((r, i) => (r.adicional ? i : -1)).filter(i => i >= 0);
   const REMUNERACAO = RUBRICAS.map((r, i) => (r.grupo === 'remuneracao' ? i : -1)).filter(i => i >= 0);
@@ -177,7 +179,7 @@
    */
   function calcular({ colaboradores = [], filiais = {}, premissas = {}, niveis = {}, mesesSalario = MESES_SALARIO }) {
     const n = colaboradores.length;
-    // Salário, adicionais e horas extras entram em 11/12 por mês: 1 mês do ano é pago como férias (provisão de férias + 1/3).
+    // Com mesesSalario = 11, salário, adicionais e horas extras entram em 11/12 por mês (1 mês do ano pago como férias).
     const T = num(mesesSalario) / 12;
     const valores = new Float64Array(n * R * 12);
     const at = (i, r, m) => (i * R + r) * 12 + m;

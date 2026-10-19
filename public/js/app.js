@@ -420,14 +420,17 @@ function detalheColaborador(id) {
 
 /** Explica a conta do item no detalhe do colaborador: PPR (salário × target) e benefício em R$ com reajuste. */
 function contaDoItem(c, rub) {
-  const onze = `${Motor.MESES_SALARIO}/12`;
-  if (rub.fixa || (rub.grupo === 'remuneracao' && rub.adicional)) return `mês cheio × ${onze} · 1 mês do ano é pago como férias + 1/3`;
+  // Com 11 meses de salário, a remuneração do mês entra em 11/12 (o 12º mês é pago como férias + 1/3).
+  const onze = Motor.MESES_SALARIO < 12 ? `${Motor.MESES_SALARIO}/12` : '';
+  const notaMeses = onze ? `mês cheio × ${onze} · 1 mês do ano é pago como férias + 1/3` : '';
+  if (rub.fixa || (rub.grupo === 'remuneracao' && rub.adicional)) return notaMeses;
   if (rub.id === 'horas_extras') {
     const p = Motor.aplicarExcecao(Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rub.id), c.excecoes?.[rub.id]);
-    return p.metodo === 'rateio' ? '' : `mês cheio × ${onze} · 1 mês do ano é pago como férias + 1/3`;
+    return p.metodo === 'rateio' ? '' : notaMeses;
   }
-  if (rub.id === 'ferias') return '(salário + adicionais + HE) ÷ 12 + 1/3 · provisão do mês de férias';
-  if (rub.id === 'fgts' || rub.id === 'inss') return `sobre salário + adicionais + HE pagos no mês (${onze}); o mês de férias entra em ${rub.id === 'fgts' ? 'FGTS' : 'INSS'} férias`;
+  if (rub.id === 'ferias') return '(salário + adicionais + HE) ÷ 12 + 1/3 · provisão de férias';
+  if (rub.id === 'decimo') return '(salário + adicionais + HE) ÷ 12';
+  if (rub.id === 'fgts' || rub.id === 'inss') return `sobre salário + adicionais + HE${onze ? ` pagos no mês (${onze})` : ''}`;
   const p = Motor.aplicarExcecao(Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rub.id), c.excecoes?.[rub.id]);
   if (p.metodo === 'fixo' && rub.grupo === 'beneficios' && p.periodo !== 'por_mes') {
     // Benefício em R$: mostra o reajuste de benefícios da filial, que entra por cima do valor lançado.
@@ -2260,7 +2263,7 @@ function detalheConferencia() {
           ${cols.map(({ k }) => `<td class="n">${num2.format(somaCol(k))}</td>`).join('')}
           <td class="n">${num2.format(colabs.reduce((s, c) => s + totalColab(c), 0) / (porMes ? 12 : 1))}</td></tr></tfoot>
       </table></div>
-      <p class="subtitulo" style="margin:.6rem 0 0;font-size:.8rem">“Salário c/ dissídio” já considera o reajuste a partir do mês da data-base e entra em ${Motor.MESES_SALARIO}/12 (1 mês do ano é pago como férias + 1/3); no modo “Por mês” é a média dos meses. Valores em azul são condições próprias do colaborador.</p>
+      <p class="subtitulo" style="margin:.6rem 0 0;font-size:.8rem">“Salário c/ dissídio” já considera o reajuste a partir do mês da data-base${Motor.MESES_SALARIO < 12 ? ` e entra em ${Motor.MESES_SALARIO}/12 (1 mês do ano é pago como férias + 1/3)` : ''}; no modo “Por mês” é a média dos meses. Valores em azul são condições próprias do colaborador.</p>
       <div class="barra-selecao" id="barra-selecao" hidden></div>
     </section>`;
   $$('#conf-modo button', el).forEach(b => b.addEventListener('click', () => { E.conf.modo = b.dataset.m; detalheConferencia(); }));
