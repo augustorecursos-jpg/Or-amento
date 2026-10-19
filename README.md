@@ -120,9 +120,9 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   “N/A Centro de Custo” para o que não bater). Respeita os filtros de regional e filial.
   Três pacotes: **PESSOAL** (salário, adicionais, horas extras, rescisão, FGTS, INSS, PPR), **BENEFÍCIOS** (VA/VR, VT,
   saúde, creche, seguro, cesta, fretado, treinamento, endomarketing…) e **PROVISÕES TRABALHISTAS** (férias, 13º e FGTS/INSS
-  sobre eles) — o pacote de cada item pode ser trocado na tela. Cada item pode ter um **centro de custo fixo**: VT, Fretado e
-  Fretado (overall) vão para **25506 - Transporte Contratado/Mobilidade** (contas 236 - Vale Transporte e 67975 - Transporte
-  contratado/próprio); os demais usam o centro de custo de cada colaborador.
+  sobre eles) — o pacote de cada item pode ser trocado na tela. Cada item pode ter um **centro de custo fixo**: Fretado e
+  Fretado (overall) vão para **25506 - Transporte Contratado/Mobilidade** (conta 67975 - Transporte contratado/próprio); o VT
+  (236 - Vale Transporte) e os demais usam o centro de custo de cada colaborador.
 - **Pedidos de ajuste** – caixa de entrada com status (aberta, em análise, ajustada, recusada), resposta ao coordenador
   e botão **Abrir item**, que leva direto ao colaborador ou à premissa da filial.
 - **Acessos dos coordenadores** – login, senha e regionais de cada coordenador.

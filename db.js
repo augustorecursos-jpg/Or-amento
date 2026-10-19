@@ -176,6 +176,19 @@ if (!db.prepare("SELECT 1 FROM config WHERE chave = 'inss_ferias'").get()) {
   db.prepare("INSERT INTO config (chave, valor) VALUES ('inss_ferias', 'ok')").run();
 }
 
+// VT fica no centro de custo de cada colaborador (só o fretado vai para o 25506): desfaz, uma vez, um 25506 salvo no VT.
+if (!db.prepare("SELECT 1 FROM config WHERE chave = 'vt_cc_colab'").get()) {
+  const r = db.prepare("SELECT valor FROM config WHERE chave = 'contabil'").get();
+  if (r) {
+    const c = JSON.parse(r.valor || '{}');
+    if (String(c.cc_rubricas?.vt || '').startsWith('25506')) {
+      delete c.cc_rubricas.vt;
+      db.prepare("UPDATE config SET valor = ? WHERE chave = 'contabil'").run(JSON.stringify(c));
+    }
+  }
+  db.prepare("INSERT INTO config (chave, valor) VALUES ('vt_cc_colab', 'ok')").run();
+}
+
 function registrar(quem, acao, detalhe = '') {
   db.prepare('INSERT INTO historico (quem, acao, detalhe) VALUES (?, ?, ?)').run(quem, acao, String(detalhe).slice(0, 500));
 }

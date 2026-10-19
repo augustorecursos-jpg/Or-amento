@@ -2522,7 +2522,7 @@ const CONTA_SUGERIDA = {
 };
 // Itens lançados num centro de custo próprio, e não no do colaborador (editável na tela).
 const CC_MOBILIDADE = '25506 - TRANSPORTE CONTRATADO/MOBILIDADE';
-const CC_SUGERIDO = { vt: CC_MOBILIDADE, fretado: CC_MOBILIDADE, fretado_overall: CC_MOBILIDADE };
+const CC_SUGERIDO = { fretado: CC_MOBILIDADE, fretado_overall: CC_MOBILIDADE };
 // Pacote de cada item no arquivo da contabilidade (editável na tela).
 const PROVISOES_TRAB = new Set(['ferias', 'decimo', 'fgts_ferias', 'fgts_13', 'inss_ferias', 'inss_13']);
 function pacoteDoItem(cfg, rub) {
@@ -2546,7 +2546,7 @@ function contaDoItem2(cfg, rub) {
   return cfg.contas.find(c => codigoDe(c) === codigoDe(sug)) || sug;
 }
 
-/** Centro de custo fixo do item (ex.: VT e fretado no 25506) ou '' para usar o do colaborador. */
+/** Centro de custo fixo do item (ex.: fretado no 25506) ou '' para usar o do colaborador. */
 function ccDoItem(cfg, rub) {
   const v = cfg.cc_rubricas?.[rub];
   if (v === '-') return '';
@@ -2632,7 +2632,7 @@ async function renderContabil() {
     </div>
 
     <section class="cartao" style="margin-top:1.2rem">
-      <h3>3 · Item do orçamento → Conta contábil <small>· sugestão inicial pelo nome da conta; troque o que precisar. Centro de custo: o do colaborador ou um fixo para o item (VT e fretado → 25506 Transporte Contratado/Mobilidade)</small></h3>
+      <h3>3 · Item do orçamento → Conta contábil <small>· sugestão inicial pelo nome da conta; troque o que precisar. Centro de custo: o do colaborador ou um fixo para o item (fretado → 25506 Transporte Contratado/Mobilidade)</small></h3>
       <div class="tabela-wrap" style="max-height:420px"><table class="tabela contabil-itens"><thead><tr><th>Item</th><th class="n">Custo anual (${esc(escopo)})</th><th>Pacote</th><th>Conta contábil</th><th>Centro de custo</th></tr></thead>
       <tbody>${GRUPOS.map(g => `<tr class="grupo"><td colspan="5" style="cursor:default">${g.nome}</td></tr>${RUBRICAS.map((r, k) => ({ r, k })).filter(x => x.r.grupo === g.id).map(({ r, k }) => `
         <tr><td>${esc(r.nome)}</td><td class="n">${brl0.format(anualRub(k))}</td>
