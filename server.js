@@ -295,6 +295,9 @@ function lerExcecoes(v) {
   const out = {};
   for (const [rub, e] of Object.entries(obj && typeof obj === 'object' ? obj : {})) {
     if (!RUBRICAS_VALIDAS.has(rub) || !e || !['nao', 'fixo', 'pct', 'multiplo'].includes(e.metodo)) continue;
+    // Horas extras e promoções/méritos são só o total de cada filial: nunca aceitam valor vindo da planilha da base
+    // (mesmo que a tela antiga, em cache no navegador, ainda leia a coluna).
+    if (e.origem === 'base' && (rub === 'horas_extras' || rub === 'promocoes')) continue;
     out[rub] = { metodo: e.metodo, valor: e.metodo === 'nao' ? 0 : numero(e.valor), ...(e.origem === 'base' ? { origem: 'base' } : {}) };
   }
   return out;
@@ -666,7 +669,8 @@ app.get('/api/backup', exigirAdmin, (req, res) => {
   res.download(destino, `orcamento-backup-${new Date().toISOString().slice(0, 10)}.db`, () => fs.rm(destino, () => {}));
 });
 
-app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
+// no-cache: o navegador sempre confere se há versão nova (evita telas antigas depois de um deploy).
+app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], setHeaders: res => res.setHeader('Cache-Control', 'no-cache') }));
 
 app.use((err, req, res, next) => {
   console.error(err);
