@@ -97,13 +97,14 @@
     rateio: 'Total da filial (rateio)',
     multiplo: 'Nº de salários',
   };
-  const BASES = { salario: 'Salário', remuneracao: 'Remuneração', folha: 'Salário + adicionais + horas extras', ferias: 'Férias', decimo: '13º salário' };
+  const BASES = { salario: 'Salário', remuneracao: 'Salário + adicionais (sem horas extras)', folha: 'Remuneração (salário + adicionais + horas extras)', ferias: 'Férias', decimo: '13º salário' };
   const PERIODOS = { mensal: 'Todo mês', anual_mes: 'Uma vez no ano (mês)', anual_diluido: 'Anual diluído (÷12)', por_mes: 'Valor diferente em cada mês' };
 
   const R = RUBRICAS.length;
   const MESES_SALARIO = 11; // 11 meses de salário + 1 mês de férias (provisionado em férias + 1/3)
   const IDX = Object.fromEntries(RUBRICAS.map((r, i) => [r.id, i]));
   const ADICIONAIS = RUBRICAS.map((r, i) => (r.adicional ? i : -1)).filter(i => i >= 0);
+  const REMUNERACAO = RUBRICAS.map((r, i) => (r.grupo === 'remuneracao' ? i : -1)).filter(i => i >= 0);
 
   /** O colaborador recebe a rubrica? (filtro "quem recebe" da premissa) */
   function elegivel(p, c, m) {
@@ -248,7 +249,8 @@
         let rem = val(0);
         for (const r of ADICIONAIS) rem += val(r);
         if (nome === 'remuneracao') return rem;
-        if (nome === 'folha') return rem + val(IDX.horas_extras);
+        // Folha = todo o grupo Remuneração (salário + adicionais + horas extras e o que mais entrar nesse grupo).
+        if (nome === 'folha') { let f = 0; for (const r of REMUNERACAO) f += val(r); return f; }
         if (nome === 'ferias') return valores[at(i, IDX.ferias, m)];
         if (nome === 'decimo') return valores[at(i, IDX.decimo, m)];
         return val(0);
