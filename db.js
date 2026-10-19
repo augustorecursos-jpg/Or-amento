@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS colaboradores (
   vaga       INTEGER NOT NULL DEFAULT 0,
   excecoes   TEXT NOT NULL DEFAULT '{}',
   sexo       TEXT NOT NULL DEFAULT '',
+  gestor     TEXT NOT NULL DEFAULT '',
   atualizado_em TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS ix_colab_filial ON colaboradores(regional, filial);
@@ -109,6 +110,7 @@ CREATE TABLE IF NOT EXISTS historico (
 const colunas = db.prepare('PRAGMA table_info(colaboradores)').all().map(c => c.name);
 if (!colunas.includes('excecoes')) db.exec("ALTER TABLE colaboradores ADD COLUMN excecoes TEXT NOT NULL DEFAULT '{}'");
 if (!colunas.includes('sexo')) db.exec("ALTER TABLE colaboradores ADD COLUMN sexo TEXT NOT NULL DEFAULT ''");
+if (!colunas.includes('gestor')) db.exec("ALTER TABLE colaboradores ADD COLUMN gestor TEXT NOT NULL DEFAULT ''");
 const colFiliais = db.prepare('PRAGMA table_info(filiais)').all().map(c => c.name);
 if (!colFiliais.includes('uf')) db.exec('ALTER TABLE filiais ADD COLUMN uf TEXT');
 

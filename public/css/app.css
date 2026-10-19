@@ -570,3 +570,14 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .publico-item { display: flex; gap: .4rem 1rem; align-items: center; flex-wrap: wrap; padding: .7rem .9rem; border-radius: 10px; background: var(--fundo); }
 .publico-item b { color: var(--marinho); }
 .publico-item small { color: #b54d12; width: 100%; }
+
+/* Headcount (Painel) */
+.painel-acoes { display: flex; gap: .7rem; align-items: center; flex-wrap: wrap; }
+.kpis-hc { grid-template-columns: repeat(5, minmax(0, 1fr)); margin-bottom: 1.2rem; }
+@media (max-width: 1200px) { .kpis-hc { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.hc-barra { position: relative; display: flex; gap: 2px; align-items: center; height: 18px; }
+.hc-barra i { display: block; height: 12px; border-radius: 0 4px 4px 0; min-width: 0; }
+.hc-barra i[style*="width:0%"] { display: none; }
+.hc-barra b { margin-left: .5rem; font-size: .82rem; color: var(--texto); }
+.tabela-hc td:first-child { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tabela-hc tfoot td { font-weight: 800; background: var(--fundo); position: sticky; bottom: 0; }

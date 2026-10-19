@@ -45,16 +45,16 @@ const Graficos = (() => {
    * Colunas empilhadas por mês.
    * series: [{ nome, cor, valores: [12] }], rotulos: [12]
    */
-  function colunasEmpilhadas(el, { series, rotulos, destaque }) {
+  function colunasEmpilhadas(el, { series, rotulos, destaque, formato = brl.format, curtoFmt = curto, titulo = 'Custo mensal por grupo' }) {
     const L = 760, A = 280, me = 54, md = 8, mt = 22, mb = 26;
     const totais = rotulos.map((_, m) => series.reduce((s, se) => s + se.valores[m], 0));
     const { topo, passo } = escala(Math.max(...totais, 0));
     const larg = (L - me - md) / rotulos.length;
     const bw = Math.min(38, larg * 0.62);
     const y = v => mt + (A - mt - mb) * (1 - v / topo);
-    let svg = `<svg class="grafico-svg" viewBox="0 0 ${L} ${A}" role="img" aria-label="Custo mensal por grupo">`;
+    let svg = `<svg class="grafico-svg" viewBox="0 0 ${L} ${A}" role="img" aria-label="${esc(titulo)}">`;
     for (let v = 0; v <= topo + 1e-9; v += passo) {
-      svg += `<line class="grade" x1="${me}" x2="${L - md}" y1="${y(v)}" y2="${y(v)}"/><text x="${me - 8}" y="${y(v) + 4}" text-anchor="end">${curto(v)}</text>`;
+      svg += `<line class="grade" x1="${me}" x2="${L - md}" y1="${y(v)}" y2="${y(v)}"/><text x="${me - 8}" y="${y(v) + 4}" text-anchor="end">${curtoFmt(v)}</text>`;
     }
     rotulos.forEach((r, m) => {
       const cx = me + larg * m + larg / 2;
@@ -74,7 +74,7 @@ const Graficos = (() => {
         }
         acum += seg.v;
       });
-      if (totais[m] > 0) svg += `<text class="rot-total" x="${cx}" y="${y(totais[m]) - 6}" text-anchor="middle">${curto(totais[m])}</text>`;
+      if (totais[m] > 0) svg += `<text class="rot-total" x="${cx}" y="${y(totais[m]) - 6}" text-anchor="middle">${curtoFmt(totais[m])}</text>`;
       svg += `<text x="${cx}" y="${A - 8}" text-anchor="middle"${destaque && destaque.includes(m) ? ' style="fill:#ec6b24;font-weight:700"' : ''}>${r}</text>`;
       svg += `<rect class="alvo" data-dica="${m}" x="${me + larg * m}" y="${mt}" width="${larg}" height="${A - mt - mb}"/>`;
     });
@@ -83,8 +83,8 @@ const Graficos = (() => {
     ligarDicas(el, m => {
       m = Number(m);
       return `<b>${rotulos[m]}${destaque && destaque.includes(m) ? ' · dissídio' : ''}</b>` +
-        series.slice().reverse().map(s => `<div class="linha"><span><i style="background:${s.cor}"></i>${esc(s.nome)}</span><span>${brl.format(s.valores[m])}</span></div>`).join('') +
-        `<div class="linha" style="border-top:1px solid rgba(255,255,255,.2);margin-top:.3rem;padding-top:.3rem"><b>Total</b><b>${brl.format(totais[m])}</b></div>`;
+        series.slice().reverse().map(s => `<div class="linha"><span><i style="background:${s.cor}"></i>${esc(s.nome)}</span><span>${formato(s.valores[m])}</span></div>`).join('') +
+        `<div class="linha" style="border-top:1px solid rgba(255,255,255,.2);margin-top:.3rem;padding-top:.3rem"><b>Total</b><b>${formato(totais[m])}</b></div>`;
     });
   }
 

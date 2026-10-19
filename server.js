@@ -277,6 +277,7 @@ function lerColaborador(b) {
     vaga: vaga ? 1 : 0,
     excecoes: JSON.stringify(lerExcecoes(b.excecoes)),
     sexo: lerSexo(b.sexo),
+    gestor: texto(b.gestor, 160),
   };
 }
 
@@ -315,7 +316,7 @@ function juntarExcecoes(velhas, novas, colunasBase) {
   return out;
 }
 
-const CAMPOS_COLAB = ['matricula', 'nome', 'regional', 'filial', 'situacao', 'funcao', 'cargo', 'cc_cod', 'cc_nome', 'salario', 'mes_inicio', 'mes_fim', 'vaga', 'excecoes', 'sexo'];
+const CAMPOS_COLAB = ['matricula', 'nome', 'regional', 'filial', 'situacao', 'funcao', 'cargo', 'cc_cod', 'cc_nome', 'salario', 'mes_inicio', 'mes_fim', 'vaga', 'excecoes', 'sexo', 'gestor'];
 
 app.post('/api/colaboradores/importar', exigirAdmin, (req, res) => {
   const linhas = Array.isArray(req.body?.linhas) ? req.body.linhas : [];

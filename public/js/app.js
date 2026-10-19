@@ -23,6 +23,8 @@ const E = {
   prem: { escopo: '*', uf: '', edits: {}, filial: {}, propagar: {}, busca: '', visao: 'filial', ocultarVazios: true, quadroReg: '' },
   base: { busca: '', soVagas: false, soProprias: false, fila: [] },
   conf: { filial: '', modo: 'mes', sel: new Set() },
+  painelVisao: 'custo', // 'custo' ou 'hc' (headcount)
+  hc: { dim: 'filial', busca: '' },
   solic: [],
   solicFiltro: 'pendentes',
   contabil: { cfg: null, zeradas: false, porFilial: true },
@@ -205,12 +207,29 @@ function renderPainel() {
 
   const kpi = (ic, cor, rotulo, valor, nota, id = '') => `<div class="kpi2"><span class="kpi2-ic" style="--c:${cor}">${ic}</span><div><span>${rotulo}</span><strong${id ? ` id="${id}"` : ''}>${valor}</strong><small>${nota}</small></div></div>`;
 
-  el.innerHTML = `
+  const topo = `
     ${faixaRascunho()}
     <div class="painel-topo">
       <div><small>ORÇAMENTO DE PESSOAL · ${esc(ano)}</small><h1>${esc(escopo)}</h1></div>
-      <button class="btn btn-marinho" id="btn-apresentar">▶ Modo apresentação</button>
-    </div>
+      <div class="painel-acoes">
+        <div class="segmentos" id="painel-visao"><button data-v="custo" class="${E.painelVisao === 'custo' ? 'ativo' : ''}">💰 Custo</button><button data-v="hc" class="${E.painelVisao === 'hc' ? 'ativo' : ''}">👥 Headcount</button></div>
+        <button class="btn btn-marinho" id="btn-apresentar">▶ Modo apresentação</button>
+      </div>
+    </div>`;
+  const ligarTopo = () => {
+    ligarFaixa(el);
+    $('#btn-apresentar', el).addEventListener('click', alternarApresentacao);
+    $$('#painel-visao button', el).forEach(b => b.addEventListener('click', () => { E.painelVisao = b.dataset.v; renderPainel(); }));
+  };
+  if (E.painelVisao === 'hc') {
+    el.innerHTML = topo + '<div id="painel-hc"></div>';
+    ligarTopo();
+    desenharHeadcount($('#painel-hc', el), col);
+    return;
+  }
+
+  el.innerHTML = `
+    ${topo}
     <section class="hero2">
       <div class="pontilhado"></div>
       <div class="hero2-num">
@@ -241,8 +260,7 @@ function renderPainel() {
       <div class="cards-escopo" id="g-cards"></div>
     </section>
     <section class="cartao" style="margin-top:1.2rem" id="g-conf"></section>`;
-  ligarFaixa(el);
-  $('#btn-apresentar', el).addEventListener('click', alternarApresentacao);
+  ligarTopo();
   Graficos.contar($('#hero-total', el), ag.total, v => brl0.format(v));
 
   Graficos.areaAno($('#g-area', el), [...ag.meses], MESES, { destaque: mesesDiss });
@@ -295,6 +313,116 @@ function renderPainel() {
       const ok = cfg.conferencia === 'conferida';
       return `<span class="conf-chip ${ok ? 'ok' : ''}" title="${ok ? `Conferida por ${esc(cfg.conferida_por || '')}` : 'Pendente'}">${ok ? '✓' : '○'} ${esc(f)}${n ? ` <b>${n}</b>` : ''}</span>`;
     }).join('')}</div>`;
+}
+
+// ----- Headcount: cadeiras (colaboradores + vagas) por filial, centro de custo, gestor, cargo e função -----
+
+const COR_OCUPADA = '#2f6fa3';
+const COR_VAGA = '#ec6b24';
+const DIMS_HC = {
+  regional: { nome: 'Regional', chave: c => c.regional || '—' },
+  filial: { nome: 'Filial', chave: c => c.filial || '—' },
+  cc: { nome: 'Centro de custo', chave: c => `${c.cc_cod || '—'} · ${c.cc_nome || 'Sem centro de custo'}` },
+  gestor: { nome: 'Gestor', chave: c => c.gestor || '(sem gestor na base)' },
+  cargo: { nome: 'Nível do cargo', chave: c => c.cargo || '(sem nível)' },
+  funcao: { nome: 'Função', chave: c => c.funcao || '(sem função)' },
+};
+const ativoNoMes = (c, m) => m + 1 >= (Number(c.mes_inicio) || 1) && m + 1 <= (Number(c.mes_fim) || 12);
+
+/** Números de headcount de uma lista de colaboradores/vagas. */
+function numerosHc(lista) {
+  const ocupadas = MESES.map((_, m) => lista.filter(c => !c.vaga && ativoNoMes(c, m)).length);
+  const vagasMes = MESES.map((_, m) => lista.filter(c => c.vaga && ativoNoMes(c, m)).length);
+  return {
+    cadeiras: lista.length,
+    ocupadas: lista.filter(c => !c.vaga).length,
+    vagas: lista.filter(c => c.vaga).length,
+    deslig: lista.filter(c => !c.vaga && (Number(c.mes_fim) || 12) < 12).length,
+    jan: ocupadas[0] + vagasMes[0],
+    dez: ocupadas[11] + vagasMes[11],
+    ocupadasMes: ocupadas,
+    vagasMes,
+  };
+}
+
+function desenharHeadcount(el, col) {
+  const n = numerosHc(col);
+  const dimsVisiveis = Object.entries(DIMS_HC).filter(([k]) => !(k === 'regional' && E.filtro.regional));
+  if (!dimsVisiveis.some(([k]) => k === E.hc.dim)) E.hc.dim = 'filial';
+  const dim = DIMS_HC[E.hc.dim];
+  const semGestor = col.filter(c => !c.gestor).length;
+  const kpi = (ic, cor, rotulo, valor, nota) => `<div class="kpi2"><span class="kpi2-ic" style="--c:${cor}">${ic}</span><div><span>${rotulo}</span><strong>${valor}</strong><small>${nota}</small></div></div>`;
+  const varAno = n.dez - n.jan;
+  el.innerHTML = `
+    <div class="kpis2 kpis-hc">
+      ${kpi('🪑', '#164d74', 'Cadeiras no orçamento', num0.format(n.cadeiras), 'colaboradores + vagas previstas')}
+      ${kpi('👤', COR_OCUPADA, 'Ocupadas', num0.format(n.ocupadas), `${pctFmt(n.ocupadas / (n.cadeiras || 1))} das cadeiras`)}
+      ${kpi('🧑‍💼', COR_VAGA, 'Vagas previstas', num0.format(n.vagas), n.vagas ? 'novas posições no ano' : 'nenhuma vaga prevista')}
+      ${kpi('🚪', '#8b5fbf', 'Desligamentos previstos', num0.format(n.deslig), 'saídas antes de dezembro')}
+      ${kpi('📅', '#2a9d8f', 'HC janeiro → dezembro', `${num0.format(n.jan)} → ${num0.format(n.dez)}`, varAno ? `${varAno > 0 ? '+' : ''}${num0.format(varAno)} no ano` : 'estável no ano')}
+    </div>
+    <section class="cartao"><h3>Headcount mês a mês <small>· pessoas ativas em cada mês, ocupadas e vagas</small></h3><div id="g-hc-meses"></div></section>
+    <section class="cartao" style="margin-top:1.2rem">
+      <div class="ferramentas" style="margin-bottom:.8rem">
+        <h3 style="margin:0">Cadeiras por</h3>
+        <div class="segmentos" id="hc-dim">${dimsVisiveis.map(([k, d]) => `<button data-d="${k}" class="${k === E.hc.dim ? 'ativo' : ''}">${d.nome}</button>`).join('')}</div>
+        <input class="campo" id="hc-busca" placeholder="Buscar…" value="${esc(E.hc.busca)}" style="min-width:180px">
+        <span class="direita"><button class="btn btn-marinho btn-sm" id="hc-excel">⬇ Excel</button></span>
+      </div>
+      ${E.hc.dim === 'gestor' && semGestor ? `<p class="aviso-ajuste" style="margin:0 0 .8rem">ℹ️ ${num0.format(semGestor)} cadeira(s) sem gestor: inclua a coluna <b>GESTOR</b> na base (opcional) para ver a distribuição por gestor.</p>` : ''}
+      <div class="legenda" style="margin-bottom:.4rem"><span><i style="background:${COR_OCUPADA}"></i>Ocupadas</span><span><i style="background:${COR_VAGA}"></i>Vagas</span></div>
+      <div class="tabela-wrap alta" id="hc-tabela"></div>
+    </section>`;
+
+  Graficos.colunasEmpilhadas($('#g-hc-meses', el), {
+    rotulos: MESES, titulo: 'Headcount por mês',
+    series: [{ nome: 'Ocupadas', cor: COR_OCUPADA, valores: n.ocupadasMes }, { nome: 'Vagas', cor: COR_VAGA, valores: n.vagasMes }],
+    formato: v => `${num0.format(v)} pessoa(s)`, curtoFmt: v => num0.format(v),
+  });
+
+  const linhasHc = () => {
+    const grupos = new Map();
+    col.forEach(c => { const k = dim.chave(c); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(c); });
+    const custo = Motor.agregar(E.res, dim.chave, noFiltro);
+    const b = E.hc.busca.trim().toLowerCase();
+    return [...grupos].filter(([k]) => !b || k.toLowerCase().includes(b)).map(([k, lista]) => {
+      const a = custo.get(k);
+      const hcMeses = a ? a.hc.reduce((x, y) => x + y, 0) : 0;
+      return { k, ...numerosHc(lista), filiais: new Set(lista.map(c => c.filial)).size, custo: a ? a.total : 0, medio: hcMeses ? a.total / hcMeses : 0 };
+    }).sort((x, y) => y.cadeiras - x.cadeiras || x.k.localeCompare(y.k));
+  };
+  const desenharTabela = () => {
+    const linhas = linhasHc();
+    const max = Math.max(...linhas.map(l => l.cadeiras), 1);
+    const tot = numerosHc(col.filter(c => !E.hc.busca.trim() || dim.chave(c).toLowerCase().includes(E.hc.busca.trim().toLowerCase())));
+    $('#hc-tabela', el).innerHTML = `<table class="tabela tabela-hc"><thead><tr>
+        <th>${dim.nome}</th><th style="min-width:180px">Cadeiras</th><th class="n">Ocupadas</th><th class="n">Vagas</th><th class="n">Desligam.</th>
+        <th class="n">HC jan</th><th class="n">HC dez</th>${E.hc.dim !== 'filial' && E.hc.dim !== 'regional' ? '<th class="n">Filiais</th>' : ''}<th class="n">Custo no ano</th><th class="n">Custo médio / mês</th></tr></thead>
+      <tbody>${linhas.map(l => `<tr>
+        <td title="${esc(l.k)}">${esc(l.k)}</td>
+        <td><div class="hc-barra" title="${l.ocupadas} ocupada(s) · ${l.vagas} vaga(s)"><i style="width:${(l.ocupadas / max) * 100}%;background:${COR_OCUPADA}"></i><i style="width:${(l.vagas / max) * 100}%;background:${COR_VAGA}"></i><b>${num0.format(l.cadeiras)}</b></div></td>
+        <td class="n">${num0.format(l.ocupadas)}</td><td class="n${l.vagas ? '' : ' zero'}">${l.vagas ? num0.format(l.vagas) : '–'}</td><td class="n${l.deslig ? '' : ' zero'}">${l.deslig ? num0.format(l.deslig) : '–'}</td>
+        <td class="n">${num0.format(l.jan)}</td><td class="n">${num0.format(l.dez)}</td>${E.hc.dim !== 'filial' && E.hc.dim !== 'regional' ? `<td class="n">${l.filiais}</td>` : ''}
+        <td class="n">${brl0.format(l.custo)}</td><td class="n">${brl0.format(l.medio)}</td></tr>`).join('') || `<tr><td colspan="10" class="vazio">Nada para mostrar.</td></tr>`}</tbody>
+      <tfoot><tr><td>Total · ${linhas.length} ${dim.nome.toLowerCase()}(s)</td><td><b>${num0.format(tot.cadeiras)}</b></td><td class="n">${num0.format(tot.ocupadas)}</td><td class="n">${num0.format(tot.vagas)}</td><td class="n">${num0.format(tot.deslig)}</td>
+        <td class="n">${num0.format(tot.jan)}</td><td class="n">${num0.format(tot.dez)}</td>${E.hc.dim !== 'filial' && E.hc.dim !== 'regional' ? '<td></td>' : ''}<td class="n">${brl0.format(linhas.reduce((a, l) => a + l.custo, 0))}</td><td></td></tr></tfoot></table>`;
+    return linhas;
+  };
+  desenharTabela();
+  $$('#hc-dim button', el).forEach(b => b.addEventListener('click', () => { E.hc.dim = b.dataset.d; E.hc.busca = ''; desenharHeadcount(el, col); }));
+  $('#hc-busca', el).addEventListener('input', e => { E.hc.busca = e.target.value; desenharTabela(); });
+  $('#hc-excel', el).addEventListener('click', () => {
+    if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
+    const linhas = linhasHc();
+    const aoa = [[dim.nome, 'Cadeiras', 'Ocupadas', 'Vagas', 'Desligamentos previstos', 'HC jan', 'HC dez', ...MESES.map(m => `HC ${m}`), 'Custo no ano', 'Custo médio / mês'],
+      ...linhas.map(l => [l.k, l.cadeiras, l.ocupadas, l.vagas, l.deslig, l.jan, l.dez, ...MESES.map((_, m) => l.ocupadasMes[m] + l.vagasMes[m]), Math.round(l.custo * 100) / 100, Math.round(l.medio * 100) / 100])];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 40 }, ...aoa[0].slice(1).map(() => ({ wch: 11 }))];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Headcount');
+    const nome = [E.dados.config.ano, E.filtro.regional, E.filtro.uf, E.filtro.filial, dim.nome].filter(Boolean).join('-').replace(/[^\w-]+/g, '_');
+    XLSX.writeFile(wb, `Headcount-${nome}.xlsx`);
+  });
 }
 
 // ----- Modo apresentação: tela cheia, sem menus; setas trocam de regional -----
@@ -1678,8 +1806,9 @@ const ALIASES = {
   mes_inicio: ['MES INICIO', 'MES DE INICIO', 'MES ADMISSAO', 'MES DE ADMISSAO'],
   mes_fim: ['MES FIM', 'MES DESLIGAMENTO', 'MES DE DESLIGAMENTO'],
   sexo: ['SEXO', 'GENERO'],
+  gestor: ['GESTOR', 'GESTOR IMEDIATO', 'NOME DO GESTOR', 'GESTOR DIRETO', 'SUPERIOR IMEDIATO', 'LIDER', 'LIDER IMEDIATO', 'COORDENADOR'],
 };
-const ROTULO_CAMPO = { matricula: 'Matrícula', nome: 'Funcionário', regional: 'Regional', filial: 'Filial', situacao: 'Situação', funcao: 'Função', cargo: 'Cargo / nível', cc_cod: 'Cód. centro de custo', cc_nome: 'Centro de custo', salario: 'Salário', mes_inicio: 'Mês início', mes_fim: 'Mês fim', sexo: 'Sexo' };
+const ROTULO_CAMPO = { matricula: 'Matrícula', nome: 'Funcionário', regional: 'Regional', filial: 'Filial', situacao: 'Situação', funcao: 'Função', cargo: 'Cargo / nível', cc_cod: 'Cód. centro de custo', cc_nome: 'Centro de custo', salario: 'Salário', mes_inicio: 'Mês início', mes_fim: 'Mês fim', sexo: 'Sexo', gestor: 'Gestor' };
 const normCab = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
 
 /** Lê as planilhas: acha a linha de cabeçalho (com FUNCIONÁRIO/NOME e SALÁRIO) e mapeia as colunas até o salário. */
@@ -1710,7 +1839,7 @@ function lerPlanilha(wb) {
           nome: String(v('nome')).trim(), regional: String(v('regional') ?? '').trim(), filial: String(v('filial')).trim(),
           situacao, funcao: v('funcao') ?? '', cargo: v('cargo') ?? '', cc_cod: v('cc_cod') != null ? String(v('cc_cod')).trim() : '', cc_nome: v('cc_nome') ?? '',
           salario: typeof v('salario') === 'number' ? v('salario') : Number(String(v('salario') ?? '0').replace(/\./g, '').replace(',', '.')) || 0,
-          mes_inicio: v('mes_inicio') ?? 1, mes_fim: v('mes_fim') ?? 12, sexo: v('sexo') ?? '',
+          mes_inicio: v('mes_inicio') ?? 1, mes_fim: v('mes_fim') ?? 12, sexo: v('sexo') ?? '', gestor: String(v('gestor') ?? '').trim(),
           vaga: /vaga/i.test(situacao) || /vaga/i.test(String(v('nome'))),
           ...valoresDaLinha(l, colunas, comDiss && Number(l[iSalD]) > 0 && Number(l[mapa.salario]) > 0 ? Number(l[mapa.salario]) / Number(l[iSalD]) : 1),
         });
@@ -1791,12 +1920,12 @@ function renderBase() {
     <section class="cartao importar">
       <h3>Importar base <small>· .xlsx ou .csv · pode ser uma planilha por regional ou todas juntas</small></h3>
       <div class="passos-modelo">
-        <div><b>1</b><span>Baixe o modelo — <b>13 colunas</b> até o salário e, se quiser, os valores de adicionais e <b>benefícios</b> de cada colaborador.</span><button class="btn btn-marinho btn-sm" id="baixar-modelo">⬇ Baixar modelo (Excel)</button></div>
+        <div><b>1</b><span>Baixe o modelo — <b>14 colunas</b> até o salário e, se quiser, os valores de adicionais e <b>benefícios</b> de cada colaborador.</span><button class="btn btn-marinho btn-sm" id="baixar-modelo">⬇ Baixar modelo (Excel)</button></div>
         <div><b>2</b><span>Cole os colaboradores (uma linha por pessoa). Vagas: situação “Nova Vaga” e o mês de admissão em <i>Mês início</i>.</span></div>
         <div><b>3</b><span>Suba o arquivo aqui embaixo e confira a prévia antes de importar.</span></div>
       </div>
       <label class="zona-arquivo" id="zona"><input type="file" id="arquivo" accept=".xlsx,.xls,.csv" multiple hidden>
-        <strong>Clique ou arraste as planilhas aqui</strong><span class="zona-dica">Pode adicionar uma de cada vez — elas vão se juntando numa lista e você importa todas juntas.</span>Matrícula · Funcionário · Regional · Filial · Situação · Função · Cargo · Cód. C. Custo · Centro de custo · Salário · Mês início · Mês fim
+        <strong>Clique ou arraste as planilhas aqui</strong><span class="zona-dica">Pode adicionar uma de cada vez — elas vão se juntando numa lista e você importa todas juntas.</span>Matrícula · Funcionário · Regional · Filial · Situação · Função · Cargo · Cód. C. Custo · Centro de custo · Gestor (opcional) · Salário · Mês início · Mês fim
         <br><small>Colunas de adicionais, rescisão e benefícios (VA, VT, Assist. médica…) são lidas como valor do colaborador; as demais são ignoradas.</small></label>
       <div id="previa" class="previa"></div>
     </section>
@@ -1857,15 +1986,15 @@ function aplicarCondicoesProprias(wb, lido) {
 
 function baixarModeloBase() {
   if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
-  const cab = ['MATRÍCULA', 'FUNCIONÁRIO', 'SEXO', 'REGIONAL', 'FILIAL', 'SITUAÇÃO', 'FUNÇÃO', 'CARGO', 'CÓD. C. CUSTO', 'CENTRO DE CUSTO', 'SALÁRIO', 'MÊS INÍCIO', 'MÊS FIM',
+  const cab = ['MATRÍCULA', 'FUNCIONÁRIO', 'SEXO', 'REGIONAL', 'FILIAL', 'SITUAÇÃO', 'FUNÇÃO', 'CARGO', 'CÓD. C. CUSTO', 'CENTRO DE CUSTO', 'GESTOR', 'SALÁRIO', 'MÊS INÍCIO', 'MÊS FIM',
     ...RUBS_BASE.map(r => r.nome.toUpperCase())];
   const exemplo = { periculosidade: 1252.68, va: 1480, vt: 0, assist_medica: 2339.18, assist_odonto: 27, seguro_vida: 83.9 };
   const ws = XLSX.utils.aoa_to_sheet([
     cab,
-    ['10001', 'NOME DO COLABORADOR', 'F', 'NORTE', 'APARECIDA', 'Ativo', 'Operador I', '15-Operação - Produção', '17150', 'OPERAÇÃO', 4175.6, 1, 12, ...RUBS_BASE.map(r => exemplo[r.id] ?? null)],
-    ['', 'NOVA VAGA - OPERADOR I', '', 'NORTE', 'APARECIDA', 'Nova Vaga', 'Operador I', '15-Operação - Produção', '17150', 'OPERAÇÃO', 4000, 4, 12],
+    ['10001', 'NOME DO COLABORADOR', 'F', 'NORTE', 'APARECIDA', 'Ativo', 'Operador I', '15-Operação - Produção', '17150', 'OPERAÇÃO', 'NOME DO GESTOR', 4175.6, 1, 12, ...RUBS_BASE.map(r => exemplo[r.id] ?? null)],
+    ['', 'NOVA VAGA - OPERADOR I', '', 'NORTE', 'APARECIDA', 'Nova Vaga', 'Operador I', '15-Operação - Produção', '17150', 'OPERAÇÃO', 'NOME DO GESTOR', 4000, 4, 12],
   ]);
-  ws['!cols'] = [12, 34, 7, 16, 22, 14, 28, 26, 14, 26, 12, 11, 10, ...RUBS_BASE.map(() => 14)].map(wch => ({ wch }));
+  ws['!cols'] = [12, 34, 7, 16, 22, 14, 28, 26, 14, 26, 26, 12, 11, 10, ...RUBS_BASE.map(() => 14)].map(wch => ({ wch }));
   const ajuda = XLSX.utils.aoa_to_sheet([
     ['Coluna', 'O que colocar'],
     ['MATRÍCULA', 'Chapa/matrícula (pode ficar vazia para vagas)'],
@@ -1875,6 +2004,7 @@ function baixarModeloBase() {
     ['SITUAÇÃO', 'Ativo, Férias, Afastado… Use "Nova Vaga" para vagas previstas'],
     ['FUNÇÃO / CARGO', 'Cargo = nível do cargo (ex.: 07-Supervisores), usado no PPR por nível. Função (ex.: Aprendiz) e cargo servem no filtro "quem recebe" e no valor diferente por função'],
     ['CÓD. C. CUSTO / CENTRO DE CUSTO', 'Código e nome do centro de custo'],
+    ['GESTOR', 'Opcional. Nome do gestor imediato — usado na visão de headcount do Painel (cadeiras por gestor)'],
     ['SALÁRIO', 'Salário mensal atual, SEM o dissídio (o reajuste é aplicado pela ferramenta no mês da data-base)'],
     ['MÊS INÍCIO', 'Opcional. 1 a 12 — para vagas, o mês de admissão. Vazio = janeiro'],
     ['MÊS FIM', 'Opcional. 1 a 12 — desligamento previsto. Vazio = dezembro'],
@@ -1939,7 +2069,7 @@ async function previaImportacao(arquivos) {
     <div class="fila-cab"><b>${lidas.length} arquivo(s) na lista</b><button class="btn btn-claro btn-sm" id="add-arquivo">+ Adicionar outra planilha</button><button class="btn-link" id="limpar-fila">Limpar lista</button></div>
     ${lidas.map((l, i) => l.erro ? `<p class="fila-item">❌ <b>${esc(l.arquivo)}</b>: não encontrei uma linha de cabeçalho com Funcionário, Filial e Salário. <button class="btn-ic" data-tirar="${i}" title="Tirar da lista">✕</button></p>`
       : `<div class="fila-item"><b>📄 ${esc(l.arquivo)}</b> · aba “${esc(l.aba)}” · ${l.linhas.length} linha(s) <button class="btn-ic" data-tirar="${i}" title="Tirar da lista">✕</button><div class="chips" style="margin-top:.35rem">${Object.entries(l.mapa).map(([k, i]) => {
-        const opcional = k === 'mes_inicio' || k === 'mes_fim' || k === 'matricula' || k === 'sexo';
+        const opcional = k === 'mes_inicio' || k === 'mes_fim' || k === 'matricula' || k === 'sexo' || k === 'gestor';
         return `<span class="chip ${i >= 0 ? 'ok' : opcional ? '' : 'falta'}">${i >= 0 ? '✓' : '–'} ${ROTULO_CAMPO[k]}${i < 0 && opcional ? ' (opcional)' : ''}</span>`;
       }).join('')}</div></div>`).join('')}
     ${linhas.length ? `
@@ -2081,6 +2211,7 @@ function editarColaborador(id, padrao = {}) {
       <label class="rotulo">Cargo / nível<input class="campo" name="cargo" list="dl-cargo" value="${esc(c.cargo || '')}"></label>
       ${campo('cc_cod', 'Cód. centro de custo')}
       ${campo('cc_nome', 'Centro de custo')}
+      ${campo('gestor', 'Gestor')}
       ${campo('salario', 'Salário (sem dissídio)', 'number', 'step="0.01" min="0" required')}
       ${campo('situacao', 'Situação')}
       <label class="rotulo">Sexo <small>(para ações por público)</small><select class="campo" name="sexo"><option value="">Não informado</option><option value="F" ${c.sexo === 'F' ? 'selected' : ''}>Feminino</option><option value="M" ${c.sexo === 'M' ? 'selected' : ''}>Masculino</option></select></label>

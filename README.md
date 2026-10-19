@@ -46,6 +46,10 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   colaborador, impacto do dissídio, encargos + benefícios), custo mês a mês por grupo, rosca de composição, **ponte do
   salário ao custo total**, cards por regional → filial → centro de custo (clique para descer) e conferência das filiais.
   **Modo apresentação**: tela cheia sem menus; as setas ← → passam pelas regionais.
+  **Visão Headcount** (botão 👥 no topo do Painel): cadeiras no orçamento (colaboradores + vagas), ocupadas, vagas previstas,
+  desligamentos previstos, HC janeiro → dezembro, headcount mês a mês (ocupadas × vagas) e a tabela de **cadeiras por
+  regional, filial, centro de custo, gestor, nível do cargo ou função**, com custo no ano e custo médio por mês; exporta Excel.
+  O gestor vem da coluna opcional **GESTOR** da base.
 - **Simulação mês a mês** – tabela Jan–Dez por rubrica, filial, centro de custo ou colaborador (R$ ou R$ mil). Na visão
   por colaborador, clique na pessoa para abrir o que está orçado para ela (salário, adicionais, provisões, encargos,
   PPR, convênio, VA…), mês a mês e no ano. Inclui o
@@ -97,7 +101,7 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   (`30%`, `1480`, `8000 total`, `2,4 sal`, `Não`, vazio = herda) e **importa de volta**; valores iguais à regra da
   regional/geral não viram exceção.
 - **Base de colaboradores** – dados até o **salário** (sem dissídio), no **modelo Excel** que a própria tela baixa:
-  matrícula, funcionário, sexo, regional, filial, situação, função, cargo, cód. e nome do centro de custo, salário, mês
+  matrícula, funcionário, sexo, regional, filial, situação, função, cargo, cód. e nome do centro de custo, gestor, salário, mês
   início e mês fim — mais as colunas opcionais de valores por colaborador (abaixo). Modo *substituir as
   regionais do arquivo* ou *adicionar*. Padrão: **Substituir toda a base** (a base fica só com o que está nos arquivos).
   Painel com o total por regional, aviso de **colaboradores duplicados** (mesma matrícula + nome + filial; a mesma

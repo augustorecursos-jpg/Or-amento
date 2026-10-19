@@ -72,6 +72,11 @@ for (const [regional, filiais] of Object.entries(ESTRUTURA)) {
 sincronizarFiliais();
 // Sexo fictício (cerca de 1 mulher para cada 3 homens), para testar ações por público
 db.exec("UPDATE colaboradores SET sexo = CASE WHEN id % 4 = 0 THEN 'F' ELSE 'M' END WHERE vaga = 0");
+// Gestor fictício por filial e centro de custo, para a visão de headcount
+const GESTORES = ['ANA MOURA', 'BRUNO LIMA', 'CARLA DIAS', 'DANIEL ROCHA', 'ELISA PRADO', 'FABIO NUNES', 'GISELE ARAUJO', 'HUGO TAVARES'];
+const gestorDe = (filial, cc) => GESTORES[[...(filial + cc)].reduce((a, ch) => a + ch.charCodeAt(0), 0) % GESTORES.length];
+const setGestor = db.prepare('UPDATE colaboradores SET gestor = ? WHERE id = ?');
+for (const c of db.prepare('SELECT id, filial, cc_cod FROM colaboradores').all()) setGestor.run(gestorDe(c.filial, c.cc_cod), c.id);
 
 const prem = db.prepare('INSERT INTO premissas (escopo, rubrica, dados) VALUES (?, ?, ?)');
 const P = (escopo, rubrica, dados) => prem.run(escopo, rubrica, JSON.stringify({ base: 'salario', periodo: 'mensal', mes: 12, rateio: 'hc', teto: null, por_nivel: false, quem: [], valor: 0, ...dados }));
