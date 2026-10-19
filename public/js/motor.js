@@ -18,6 +18,7 @@
 //                      ({ [nível do cargo]: nº de salários }) — ex.: a Holding com target por cargo e as filiais com outro
 //   periodo 'mensal' (todo mês) · 'anual_mes' (valor do ano inteiro lançado no mês `mes`) · 'anual_diluido' (valor anual ÷ 12)
 //           · 'por_mes' (R$ fixo ou total da filial com um valor para cada mês em `meses[12]`, ex.: ações de endomarketing)
+//   publico 'F' / 'M' = só mulheres / só homens (colaborador.sexo); publico_meses[12] faz o mesmo mês a mês em 'por_mes'
 //   quem    lista vazia = todos; senão só quem está em um dos centros de custo ('cc:<código>') ou níveis de cargo ('cargo:<nível>')
 (function (raiz, fabrica) {
   const motor = fabrica();
@@ -100,15 +101,23 @@
   const ADICIONAIS = RUBRICAS.map((r, i) => (r.adicional ? i : -1)).filter(i => i >= 0);
 
   /** O colaborador recebe a rubrica? (filtro "quem recebe" da premissa) */
-  function elegivel(p, c) {
-    return !p.quem || !p.quem.length || p.quem.includes('cc:' + (c.cc_cod || '')) || p.quem.includes('cargo:' + (c.cargo || ''));
+  function elegivel(p, c, m) {
+    const quemOk = !p.quem || !p.quem.length || p.quem.includes('cc:' + (c.cc_cod || '')) || p.quem.includes('cargo:' + (c.cargo || ''));
+    if (!quemOk) return false;
+    // Público por sexo: do item inteiro e, nos valores por mês, de cada mês (ex.: outubro rosa só mulheres)
+    if ((p.publico === 'F' || p.publico === 'M') && c.sexo !== p.publico) return false;
+    if (m != null && p.periodo === 'por_mes') {
+      const pm = p.publico_meses?.[m];
+      if ((pm === 'F' || pm === 'M') && c.sexo !== pm) return false;
+    }
+    return true;
   }
 
   /** Regra do colaborador: a da filial, ou a condição própria dele (exceção) quando houver. */
   function aplicarExcecao(p, exc) {
     if (!exc || !METODOS[exc.metodo]) return p;
     const periodo = exc.metodo === p.metodo ? p.periodo : exc.metodo === 'multiplo' ? 'anual_diluido' : 'mensal';
-    return { ...p, metodo: exc.metodo, valor: num(exc.valor), periodo, quem: [], por_nivel: false, teto: exc.metodo === 'pct' ? p.teto : null };
+    return { ...p, metodo: exc.metodo, valor: num(exc.valor), periodo, quem: [], publico: '', publico_meses: [], por_nivel: false, teto: exc.metodo === 'pct' ? p.teto : null };
   }
 
   /** Nº de salários do PPR para o nível do cargo: tabela da regra → tabela geral → valor da regra. */
@@ -231,7 +240,7 @@
           if (p.periodo === 'anual_mes') total = m + 1 === num(p.mes) ? total : 0;
           else if (p.periodo === 'anual_diluido') total = total / 12;
           if (!total) continue;
-          const elegiveis = idxs.filter(i => ativos[i] && !temExcecao(i, r) && elegivel(p, colaboradores[i]));
+          const elegiveis = idxs.filter(i => ativos[i] && !temExcecao(i, r) && elegivel(p, colaboradores[i], m));
           const pesos = elegiveis.map(i => (p.rateio === 'salario' ? sal[i] : 1));
           const soma = pesos.reduce((a, b) => a + b, 0);
           if (!soma) continue;
@@ -242,7 +251,7 @@
         for (let i = 0; i < n; i++) {
           if (!ativos[i] || rateados.has(i)) continue;
           const p = prems[i][r];
-          if (p.metodo === 'nao' || !elegivel(p, colaboradores[i])) continue;
+          if (p.metodo === 'nao' || !elegivel(p, colaboradores[i], m)) continue;
           let v = 0;
           switch (p.metodo) {
             case 'pct':

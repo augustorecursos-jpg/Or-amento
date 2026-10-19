@@ -61,6 +61,9 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   início. Copiar regras de uma filial para outras e dissídio em lote.
   - **Valor diferente em cada mês** (no ⚙ do item): 12 valores, Jan a Dez, em R$ por colaborador ou total da filial —
     ex.: ações de endomarketing. Aceita colar a linha do Excel.
+  - **Público por sexo**: coluna opcional **SEXO** (F/M) na base; o item pode valer só para mulheres ou só para homens
+    (👥 Quem recebe) e, nos valores por mês, cada mês tem o seu público — ex.: outubro rosa só mulheres, novembro azul só
+    homens. No total da filial, o valor é dividido só entre o público do mês. Quem está sem sexo na base não entra.
   - **Aplicar a forma de pagamento às regras próprias**: na Regra geral (ou numa regional), o ⚙ permite levar a
     periodicidade/mês para as regionais e filiais que têm regra própria, mantendo os valores de cada uma — ex.: PPR inteiro
     em fevereiro em todas as unidades, cada uma com o seu target.

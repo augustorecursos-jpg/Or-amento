@@ -850,7 +850,7 @@ function linhaPremHtml(rub, previa) {
     <td class="${desab}"><select class="campo" data-campo="metodo">${Object.entries(tipos).map(([k, v]) => `<option value="${k}" ${k === tipo ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
     <td class="${desab}">${valorHtml}</td>
     <td class="${desab}"><button class="btn-detalhe" data-detalhes title="Base, periodicidade, rateio e teto">⚙ ${esc(resumoDetalhes({ ...p, metodo: tipo }))}</button></td>
-    <td class="${desab}"><button class="btn-detalhe" data-quem title="Quem recebe esta rubrica">👥 ${p.quem?.length ? `${p.quem.length} grupo(s)` : 'Todos'}</button></td>
+    <td class="${desab}"><button class="btn-detalhe" data-quem title="Quem recebe esta rubrica">👥 ${[p.publico === 'F' ? '♀ Mulheres' : p.publico === 'M' ? '♂ Homens' : '', p.quem?.length ? `${p.quem.length} grupo(s)` : ''].filter(Boolean).join(' · ') || 'Todos'}${p.periodo === 'por_mes' && p.publico_meses?.some(Boolean) ? ' · público por mês' : ''}</button></td>
     <td class="n" data-anual>${anual ? brl0.format(anual) : '–'}</td>
     <td><span class="acoes">${anual ? '<button class="btn-ic" data-ver title="Ver distribuição por centro de custo e colaborador">🔍</button>' : ''}${propria ? `<button class="btn-ic" data-reset title="${escopo === '*' ? 'Voltar ao padrão do sistema' : 'Remover regra própria (volta a herdar)'}">↺</button>` : ''}</span></td>
   </tr>`;
@@ -910,7 +910,9 @@ function editarDetalhes(rub) {
         <label class="rotulo" id="box-mes">Mês do pagamento<select class="campo" name="mes">${opcoesMes(p.mes)}</select></label>
         <div class="inteiro meses-box" id="box-meses">
           <b>${m === 'rateio' ? 'Total da filial em cada mês (R$)' : 'Valor por colaborador em cada mês (R$)'}</b>
-          <div class="meses-grade">${MESES.map((nm, i) => `<label>${nm}<input class="campo" type="number" step="any" data-mesv="${i}" value="${p.meses?.[i] || ''}" placeholder="0"></label>`).join('')}</div>
+          <div class="meses-grade">${MESES.map((nm, i) => `<label>${nm}<input class="campo" type="number" step="any" data-mesv="${i}" value="${p.meses?.[i] || ''}" placeholder="0">
+            <select class="campo publico-mes" data-pubm="${i}" title="Público deste mês"><option value="">Todos</option><option value="F" ${p.publico_meses?.[i] === 'F' ? 'selected' : ''}>♀ Mulher</option><option value="M" ${p.publico_meses?.[i] === 'M' ? 'selected' : ''}>♂ Homem</option></select></label>`).join('')}</div>
+          <small class="dica-publico">Público de cada mês: ex.: outubro rosa só para mulheres, novembro azul só para homens. ${avisoSemSexo()}</small>
           <div class="meses-colar"><input class="campo" id="meses-colar" placeholder="Ou cole aqui a linha do Excel com os 12 valores (Jan a Dez)"><small id="meses-total"></small></div>
         </div>`}
       ${m === 'multiplo' ? `<label class="check inteiro"><input type="checkbox" name="sem_dissidio" ${p.sem_dissidio ? 'checked' : ''}> Ignorar o dissídio (usar o salário da base)</label>
@@ -950,7 +952,10 @@ function editarDetalhes(rub) {
     if (f.mes) novo.mes = Number(f.mes.value);
     if (f.rateio) novo.rateio = f.rateio.value;
     if (f.sem_dissidio) novo.sem_dissidio = f.sem_dissidio.checked;
-    if (f.periodo?.value === 'por_mes') novo.meses = $$('[data-mesv]', d).map(i => Number(i.value) || 0);
+    if (f.periodo?.value === 'por_mes') {
+      novo.meses = $$('[data-mesv]', d).map(i => Number(i.value) || 0);
+      novo.publico_meses = $$('[data-pubm]', d).map(i => i.value);
+    }
     if (f.propagar?.checked) E.prem.propagar[rub] = { escopos: outrosEscopos(rub), periodo: novo.periodo, mes: novo.mes, meses: novo.meses };
     else delete E.prem.propagar[rub];
     E.prem.edits[rub] = novo;
@@ -1492,6 +1497,12 @@ function atualizarRodapePrem(previa) {
   $('#prem-info').innerHTML = pend ? `<b>${pend}</b> alteração(ões) não salva(s) · impacto <b style="color:${dif > 0 ? '#b54d12' : '#177a44'}">${dif >= 0 ? '+' : ''}${brl0.format(dif)}</b> no ano` : 'Tudo salvo';
 }
 
+/** Aviso quando há colaboradores sem sexo informado (eles ficam fora das ações por público). */
+function avisoSemSexo(colabs = E.dados.colaboradores.filter(colabsDoEscopo(E.prem.escopo))) {
+  const n = colabs.filter(c => !c.sexo && !c.vaga).length;
+  return n ? `⚠ ${num0.format(n)} colaborador(es) sem sexo informado na base não entram nas ações por público — inclua a coluna SEXO na base.` : '';
+}
+
 /** Filtro "quem recebe": marca centros de custo e/ou níveis de cargo do escopo atual. */
 function escolherQuem(rub) {
   const atual = { ...premEfetiva(E.prem.escopo, rub).p };
@@ -1504,15 +1515,20 @@ function escolherQuem(rub) {
   const lista = (titulo, itens) => `<div><b style="color:var(--marinho)">${titulo}</b><div style="display:grid;gap:.3rem;margin-top:.5rem;max-height:260px;overflow-y:auto">${itens}</div></div>`;
   const d = abrirModal({
     titulo: `Quem recebe: ${RUBRICAS[IDX[rub]].nome}`, sup: 'PREMISSA', largo: true,
-    corpo: `<p class="subtitulo" style="margin:0">Sem nada marcado, a rubrica vale para <b>todos</b>. Marcando centros de custo e/ou níveis de cargo, vale só para quem estiver em algum deles — inclusive no rateio do total da filial (ex.: horas extras só para Operação e Manutenção).</p>
+    corpo: `<div class="publico-item"><b>Público</b>
+        <label class="check"><input type="radio" name="publico" value="" ${!atual.publico ? 'checked' : ''}> Todos</label>
+        <label class="check"><input type="radio" name="publico" value="F" ${atual.publico === 'F' ? 'checked' : ''}> ♀ Só mulheres <small>(${colabs.filter(c => c.sexo === 'F').length})</small></label>
+        <label class="check"><input type="radio" name="publico" value="M" ${atual.publico === 'M' ? 'checked' : ''}> ♂ Só homens <small>(${colabs.filter(c => c.sexo === 'M').length})</small></label>
+        <small>${avisoSemSexo(colabs)}</small></div>
+      <p class="subtitulo" style="margin:0">Sem nada marcado, a rubrica vale para <b>todos</b>. Marcando centros de custo e/ou níveis de cargo, vale só para quem estiver em algum deles — inclusive no rateio do total da filial (ex.: horas extras só para Operação e Manutenção).</p>
       <div class="grade-2-igual" style="margin-top:0">
         ${lista('Centros de custo', ccs.map(([cod, nome]) => `<label class="check"><input type="checkbox" value="cc:${esc(cod)}" ${marcados.has('cc:' + cod) ? 'checked' : ''}> ${esc(cod)} · ${esc(nome || 'Sem nome')} <small class="sub" style="display:inline">(${contar('cc_cod', cod)})</small></label>`).join(''))}
         ${lista('Níveis de cargo', cargos.map(c => `<label class="check"><input type="checkbox" value="cargo:${esc(c)}" ${marcados.has('cargo:' + c) ? 'checked' : ''}> ${esc(c || 'Sem nível')} <small class="sub" style="display:inline">(${contar('cargo', c)})</small></label>`).join(''))}
       </div>`,
     rodape: '<button class="btn btn-claro" id="quem-todos">Todos recebem</button><button class="btn btn-laranja" id="quem-ok">Aplicar</button>',
   });
-  const aplicar = quem => { E.prem.edits[rub] = { ...atual, quem }; d.close(); desenharTabelaPrem(); };
-  $('#quem-todos', d).addEventListener('click', () => aplicar([]));
+  const aplicar = quem => { E.prem.edits[rub] = { ...atual, quem, publico: $('input[name=publico]:checked', d)?.value || '' }; d.close(); desenharTabelaPrem(); };
+  $('#quem-todos', d).addEventListener('click', () => { $('input[name=publico][value=""]', d).checked = true; aplicar([]); });
   $('#quem-ok', d).addEventListener('click', () => {
     const visiveis = new Set($$('input[type=checkbox]', d).map(i => i.value));
     const fora = [...marcados].filter(q => !visiveis.has(q));
@@ -1605,8 +1621,9 @@ const ALIASES = {
   salario: ['SALARIO S/PROV DISSIDIO', 'SALARIO S/ PROV DISSIDIO', 'SALARIO BASE', 'SALARIO'],
   mes_inicio: ['MES INICIO', 'MES DE INICIO', 'MES ADMISSAO', 'MES DE ADMISSAO'],
   mes_fim: ['MES FIM', 'MES DESLIGAMENTO', 'MES DE DESLIGAMENTO'],
+  sexo: ['SEXO', 'GENERO'],
 };
-const ROTULO_CAMPO = { matricula: 'Matrícula', nome: 'Funcionário', regional: 'Regional', filial: 'Filial', situacao: 'Situação', funcao: 'Função', cargo: 'Cargo / nível', cc_cod: 'Cód. centro de custo', cc_nome: 'Centro de custo', salario: 'Salário', mes_inicio: 'Mês início', mes_fim: 'Mês fim' };
+const ROTULO_CAMPO = { matricula: 'Matrícula', nome: 'Funcionário', regional: 'Regional', filial: 'Filial', situacao: 'Situação', funcao: 'Função', cargo: 'Cargo / nível', cc_cod: 'Cód. centro de custo', cc_nome: 'Centro de custo', salario: 'Salário', mes_inicio: 'Mês início', mes_fim: 'Mês fim', sexo: 'Sexo' };
 const normCab = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
 
 /** Lê as planilhas: acha a linha de cabeçalho (com FUNCIONÁRIO/NOME e SALÁRIO) e mapeia as colunas até o salário. */
@@ -1634,7 +1651,7 @@ function lerPlanilha(wb) {
           nome: String(v('nome')).trim(), regional: String(v('regional') ?? '').trim(), filial: String(v('filial')).trim(),
           situacao, funcao: v('funcao') ?? '', cargo: v('cargo') ?? '', cc_cod: v('cc_cod') != null ? String(v('cc_cod')).trim() : '', cc_nome: v('cc_nome') ?? '',
           salario: typeof v('salario') === 'number' ? v('salario') : Number(String(v('salario') ?? '0').replace(/\./g, '').replace(',', '.')) || 0,
-          mes_inicio: v('mes_inicio') ?? 1, mes_fim: v('mes_fim') ?? 12,
+          mes_inicio: v('mes_inicio') ?? 1, mes_fim: v('mes_fim') ?? 12, sexo: v('sexo') ?? '',
           vaga: /vaga/i.test(situacao) || /vaga/i.test(String(v('nome'))),
         });
       }
@@ -1653,7 +1670,7 @@ function renderBase() {
     <section class="cartao importar">
       <h3>Importar base <small>· .xlsx ou .csv · pode ser uma planilha por regional ou todas juntas</small></h3>
       <div class="passos-modelo">
-        <div><b>1</b><span>Baixe o modelo — são só <b>12 colunas</b>, até o salário.</span><button class="btn btn-marinho btn-sm" id="baixar-modelo">⬇ Baixar modelo (Excel)</button></div>
+        <div><b>1</b><span>Baixe o modelo — são só <b>13 colunas</b>, até o salário.</span><button class="btn btn-marinho btn-sm" id="baixar-modelo">⬇ Baixar modelo (Excel)</button></div>
         <div><b>2</b><span>Cole os colaboradores (uma linha por pessoa). Vagas: situação “Nova Vaga” e o mês de admissão em <i>Mês início</i>.</span></div>
         <div><b>3</b><span>Suba o arquivo aqui embaixo e confira a prévia antes de importar.</span></div>
       </div>
@@ -1719,17 +1736,18 @@ function aplicarCondicoesProprias(wb, lido) {
 
 function baixarModeloBase() {
   if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
-  const cab = ['MATRÍCULA', 'FUNCIONÁRIO', 'REGIONAL', 'FILIAL', 'SITUAÇÃO', 'FUNÇÃO', 'CARGO', 'CÓD. C. CUSTO', 'CENTRO DE CUSTO', 'SALÁRIO', 'MÊS INÍCIO', 'MÊS FIM'];
+  const cab = ['MATRÍCULA', 'FUNCIONÁRIO', 'SEXO', 'REGIONAL', 'FILIAL', 'SITUAÇÃO', 'FUNÇÃO', 'CARGO', 'CÓD. C. CUSTO', 'CENTRO DE CUSTO', 'SALÁRIO', 'MÊS INÍCIO', 'MÊS FIM'];
   const ws = XLSX.utils.aoa_to_sheet([
     cab,
-    ['10001', 'NOME DO COLABORADOR', 'NORTE', 'APARECIDA', 'Ativo', 'Operador I', '15-Operação - Produção', '17150', 'OPERAÇÃO', 4175.6, 1, 12],
-    ['', 'NOVA VAGA - OPERADOR I', 'NORTE', 'APARECIDA', 'Nova Vaga', 'Operador I', '15-Operação - Produção', '17150', 'OPERAÇÃO', 4000, 4, 12],
+    ['10001', 'NOME DO COLABORADOR', 'F', 'NORTE', 'APARECIDA', 'Ativo', 'Operador I', '15-Operação - Produção', '17150', 'OPERAÇÃO', 4175.6, 1, 12],
+    ['', 'NOVA VAGA - OPERADOR I', '', 'NORTE', 'APARECIDA', 'Nova Vaga', 'Operador I', '15-Operação - Produção', '17150', 'OPERAÇÃO', 4000, 4, 12],
   ]);
-  ws['!cols'] = [12, 34, 16, 22, 14, 28, 26, 14, 26, 12, 11, 10].map(wch => ({ wch }));
+  ws['!cols'] = [12, 34, 7, 16, 22, 14, 28, 26, 14, 26, 12, 11, 10].map(wch => ({ wch }));
   const ajuda = XLSX.utils.aoa_to_sheet([
     ['Coluna', 'O que colocar'],
     ['MATRÍCULA', 'Chapa/matrícula (pode ficar vazia para vagas)'],
     ['FUNCIONÁRIO', 'Nome do colaborador ou descrição da vaga'],
+    ['SEXO', 'Opcional. F ou M — usado em ações para públicos específicos (ex.: outubro rosa, novembro azul)'],
     ['REGIONAL / FILIAL', 'Iguais em todas as linhas da mesma unidade (ex.: NORTE / APARECIDA)'],
     ['SITUAÇÃO', 'Ativo, Férias, Afastado… Use "Nova Vaga" para vagas previstas'],
     ['FUNÇÃO / CARGO', 'Cargo = nível do cargo (ex.: 07-Supervisores), usado no PPR por nível e no filtro "quem recebe"'],
@@ -1794,7 +1812,7 @@ async function previaImportacao(arquivos) {
     <div class="fila-cab"><b>${lidas.length} arquivo(s) na lista</b><button class="btn btn-claro btn-sm" id="add-arquivo">+ Adicionar outra planilha</button><button class="btn-link" id="limpar-fila">Limpar lista</button></div>
     ${lidas.map((l, i) => l.erro ? `<p class="fila-item">❌ <b>${esc(l.arquivo)}</b>: não encontrei uma linha de cabeçalho com Funcionário, Filial e Salário. <button class="btn-ic" data-tirar="${i}" title="Tirar da lista">✕</button></p>`
       : `<div class="fila-item"><b>📄 ${esc(l.arquivo)}</b> · aba “${esc(l.aba)}” · ${l.linhas.length} linha(s) <button class="btn-ic" data-tirar="${i}" title="Tirar da lista">✕</button><div class="chips" style="margin-top:.35rem">${Object.entries(l.mapa).map(([k, i]) => {
-        const opcional = k === 'mes_inicio' || k === 'mes_fim' || k === 'matricula';
+        const opcional = k === 'mes_inicio' || k === 'mes_fim' || k === 'matricula' || k === 'sexo';
         return `<span class="chip ${i >= 0 ? 'ok' : opcional ? '' : 'falta'}">${i >= 0 ? '✓' : '–'} ${ROTULO_CAMPO[k]}${i < 0 && opcional ? ' (opcional)' : ''}</span>`;
       }).join('')}</div></div>`).join('')}
     ${linhas.length ? `
@@ -1853,6 +1871,7 @@ function desenharSituacaoBase() {
   el.innerHTML = `
     <div class="ferramentas" style="margin:0">
       <h3 style="margin:0">Base atual: ${num0.format(todos.length)} registro(s)</h3>
+      <span class="chip" title="Sexo informado na base (usado em ações por público)">♀ ${num0.format(todos.filter(c => c.sexo === 'F').length)} · ♂ ${num0.format(todos.filter(c => c.sexo === 'M').length)}${todos.some(c => !c.sexo && !c.vaga) ? ` · sem sexo ${num0.format(todos.filter(c => !c.sexo && !c.vaga).length)}` : ''}</span>
       <div class="chips">${Object.entries(porReg).sort().map(([r, n]) => `<span class="chip">${esc(r)} · ${num0.format(n)}</span>`).join('')}</div>
       <span class="direita"><button class="btn btn-perigo btn-sm" id="apagar-base" ${todos.length ? '' : 'disabled'}>🗑 Apagar toda a base</button></span>
     </div>
@@ -1924,6 +1943,7 @@ function editarColaborador(id, padrao = {}) {
       ${campo('cc_nome', 'Centro de custo')}
       ${campo('salario', 'Salário (sem dissídio)', 'number', 'step="0.01" min="0" required')}
       ${campo('situacao', 'Situação')}
+      <label class="rotulo">Sexo <small>(para ações por público)</small><select class="campo" name="sexo"><option value="">Não informado</option><option value="F" ${c.sexo === 'F' ? 'selected' : ''}>Feminino</option><option value="M" ${c.sexo === 'M' ? 'selected' : ''}>Masculino</option></select></label>
       <label class="rotulo">${c.vaga ? 'Mês de admissão' : 'Mês de início'}<select class="campo" name="mes_inicio">${opcoesMes(c.mes_inicio)}</select></label>
       <label class="rotulo">Mês de saída <small>(desligamento previsto)</small><select class="campo" name="mes_fim">${opcoesMes(c.mes_fim)}</select></label>
       <label class="check inteiro"><input type="checkbox" name="vaga" ${c.vaga ? 'checked' : ''}> É uma vaga prevista (ainda não preenchida)</label>
@@ -2015,7 +2035,7 @@ function descreverPremissa(p) {
     default: return 'Não se aplica';
   }
 }
-const descreverComQuem = p => `${descreverPremissa(p)}${p.quem?.length ? ' · só para alguns CCs/cargos' : ''}`;
+const descreverComQuem = p => `${descreverPremissa(p)}${p.publico === 'F' ? ' · só mulheres' : p.publico === 'M' ? ' · só homens' : ''}${p.periodo === 'por_mes' && p.publico_meses?.some(Boolean) ? ` · ${p.publico_meses.map((x, i) => (x ? `${MESES[i]} só ${x === 'F' ? 'mulheres' : 'homens'}` : '')).filter(Boolean).join(', ')}` : ''}${p.quem?.length ? ' · só para alguns CCs/cargos' : ''}`;
 
 function renderConferencia() {
   const el = painel('conferencia');

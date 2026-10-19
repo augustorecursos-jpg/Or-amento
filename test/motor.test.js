@@ -138,3 +138,20 @@ test('valor diferente em cada mês: por colaborador e total da filial', () => {
   perto(res.valor(0, Motor.IDX.treinamento, 11), 1500);
   perto(total(res, 'treinamento', 0) + total(res, 'treinamento', 1), 4700);
 });
+
+test('público por sexo: outubro rosa só mulheres, novembro azul só homens', () => {
+  const meses = [0, 0, 0, 0, 0, 0, 0, 0, 0, 900, 600, 0];
+  const publico_meses = ['', '', '', '', '', '', '', '', '', 'F', 'M', ''];
+  const colaboradores = [colab({ id: 1, sexo: 'F' }), colab({ id: 2, sexo: 'F' }), colab({ id: 3, sexo: 'M' }), colab({ id: 4, sexo: '' })];
+  const total = Motor.calcular({ colaboradores, filiais: {}, premissas: { '*': { endomarketing: { metodo: 'rateio', periodo: 'por_mes', meses, publico_meses } } } });
+  perto(total.valor(0, Motor.IDX.endomarketing, 9), 450);   // outubro: 900 ÷ 2 mulheres
+  perto(total.valor(2, Motor.IDX.endomarketing, 9), 0);
+  perto(total.valor(2, Motor.IDX.endomarketing, 10), 600);  // novembro: só o homem
+  perto(total.valor(3, Motor.IDX.endomarketing, 10), 0);    // sem sexo informado não entra
+  const porColab = Motor.calcular({ colaboradores, filiais: {}, premissas: { '*': { endomarketing: { metodo: 'fixo', periodo: 'por_mes', meses: [0, 0, 0, 0, 0, 0, 0, 0, 0, 50, 40, 0], publico_meses } } } });
+  perto(porColab.valor(1, Motor.IDX.endomarketing, 9), 50);
+  perto(porColab.valor(2, Motor.IDX.endomarketing, 9), 0);
+  const item = Motor.calcular({ colaboradores, filiais: {}, premissas: { '*': { aux_creche: { metodo: 'fixo', valor: 300, publico: 'F' } } } });
+  perto(item.valor(0, Motor.IDX.aux_creche, 0), 300);
+  perto(item.valor(2, Motor.IDX.aux_creche, 0), 0);
+});

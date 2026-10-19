@@ -141,6 +141,8 @@ function limparPremissa(p) {
     por_nivel: Boolean(p.por_nivel),
     sem_dissidio: Boolean(p.sem_dissidio),
     meses: Array.from({ length: 12 }, (_, i) => numero(Array.isArray(p.meses) ? p.meses[i] : 0)),
+    publico: ['F', 'M'].includes(p.publico) ? p.publico : '',
+    publico_meses: Array.from({ length: 12 }, (_, i) => (Array.isArray(p.publico_meses) && ['F', 'M'].includes(p.publico_meses[i]) ? p.publico_meses[i] : '')),
     niveis: Object.fromEntries(Object.entries(p.niveis && typeof p.niveis === 'object' ? p.niveis : {})
       .filter(([k, v]) => texto(k) && v !== '' && v != null).slice(0, 100).map(([k, v]) => [texto(k, 120), numero(v)])),
     quem: (Array.isArray(p.quem) ? p.quem : []).map(q => texto(q, 200)).filter(q => /^(cc|cargo):/.test(q)).slice(0, 300),
@@ -270,7 +272,16 @@ function lerColaborador(b) {
     mes_fim: mes(b.mes_fim, 12),
     vaga: vaga ? 1 : 0,
     excecoes: JSON.stringify(lerExcecoes(b.excecoes)),
+    sexo: lerSexo(b.sexo),
   };
+}
+
+/** F, M ou vazio (aceita Feminino/Masculino, Mulher/Homem, F/M). */
+function lerSexo(v) {
+  const t = String(v ?? '').trim().toUpperCase();
+  if (/^(F|FEM|FEMININO|MULHER)/.test(t)) return 'F';
+  if (/^(M|MASC|MASCULINO|HOMEM)/.test(t)) return 'M';
+  return '';
 }
 
 /** Condições próprias do colaborador por rubrica (ex.: sucedidos): { rubrica: { metodo, valor } }. */
@@ -285,7 +296,7 @@ function lerExcecoes(v) {
   return out;
 }
 
-const CAMPOS_COLAB = ['matricula', 'nome', 'regional', 'filial', 'situacao', 'funcao', 'cargo', 'cc_cod', 'cc_nome', 'salario', 'mes_inicio', 'mes_fim', 'vaga', 'excecoes'];
+const CAMPOS_COLAB = ['matricula', 'nome', 'regional', 'filial', 'situacao', 'funcao', 'cargo', 'cc_cod', 'cc_nome', 'salario', 'mes_inicio', 'mes_fim', 'vaga', 'excecoes', 'sexo'];
 
 app.post('/api/colaboradores/importar', exigirAdmin, (req, res) => {
   const linhas = Array.isArray(req.body?.linhas) ? req.body.linhas : [];

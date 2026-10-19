@@ -552,3 +552,8 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .propagar small { display: block; color: var(--texto-suave); font-size: .76rem; }
 @media (max-width: 600px) { .meses-grade { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 #form-detalhes .rotulo { align-self: start; } .propagar input { margin-top: .2rem; }
+.meses-grade .publico-mes { padding: .2rem .3rem; font-size: .72rem; margin-top: .15rem; }
+.dica-publico { color: var(--texto-suave); font-size: .76rem; }
+.publico-item { display: flex; gap: .4rem 1rem; align-items: center; flex-wrap: wrap; padding: .7rem .9rem; border-radius: 10px; background: var(--fundo); }
+.publico-item b { color: var(--marinho); }
+.publico-item small { color: #b54d12; width: 100%; }
