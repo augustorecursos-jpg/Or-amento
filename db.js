@@ -161,9 +161,19 @@ if (!db.prepare("SELECT 1 FROM config WHERE chave = 'ferias_terco'").get()) {
   const gravar = db.prepare("UPDATE premissas SET dados = ? WHERE escopo = ? AND rubrica = 'ferias'");
   for (const r of db.prepare("SELECT escopo, dados FROM premissas WHERE rubrica = 'ferias'").all()) {
     const p = JSON.parse(r.dados);
-    if (p.metodo === 'pct' && Math.abs(Number(p.valor) - 2.7778) < 0.001) gravar.run(JSON.stringify({ ...p, valor: 11.1111 }), r.escopo);
+    if (p.metodo === 'pct' && Math.abs(Number(p.valor) - 2.7778) < 0.001) gravar.run(JSON.stringify({ ...p, valor: 100 / 9 }), r.escopo);
   }
   db.prepare("INSERT INTO config (chave, valor) VALUES ('ferias_terco', 'ok')").run();
+}
+
+// 11 meses de salário + 1 de férias: o INSS do mês de férias entra pelo INSS férias (29%). Uma única vez, na regra geral.
+if (!db.prepare("SELECT 1 FROM config WHERE chave = 'inss_ferias'").get()) {
+  const r = db.prepare("SELECT dados FROM premissas WHERE escopo = '*' AND rubrica = 'inss_ferias'").get();
+  if (r && JSON.parse(r.dados).metodo === 'nao') {
+    db.prepare("UPDATE premissas SET dados = ? WHERE escopo = '*' AND rubrica = 'inss_ferias'")
+      .run(JSON.stringify({ ...JSON.parse(r.dados), metodo: 'pct', valor: 29, base: 'ferias' }));
+  }
+  db.prepare("INSERT INTO config (chave, valor) VALUES ('inss_ferias', 'ok')").run();
 }
 
 function registrar(quem, acao, detalhe = '') {

@@ -53,7 +53,7 @@
 
     // Férias, 13º, FGTS e INSS sobre salário + adicionais (periculosidade, insalubridade…) + horas extras (regra do ADM de pessoal).
     // Férias + 1/3 = base ÷ 12 + (base ÷ 12) ÷ 3 = base ÷ 9 (11,1111%).
-    { id: 'ferias', nome: 'Férias + 1/3', grupo: 'provisoes', padrao: P('pct', { valor: 11.1111, base: 'folha' }) },
+    { id: 'ferias', nome: 'Férias + 1/3', grupo: 'provisoes', padrao: P('pct', { valor: 100 / 9, base: 'folha' }) },
     { id: 'decimo', nome: '13º salário', grupo: 'provisoes', padrao: P('pct', { valor: 8.3333, base: 'folha' }) },
     { id: 'rescisao', nome: 'Rescisão', grupo: 'provisoes', padrao: P('nao') },
 
@@ -61,7 +61,7 @@
     { id: 'fgts_ferias', nome: 'FGTS férias', grupo: 'encargos', padrao: P('pct', { valor: 8, base: 'ferias' }) },
     { id: 'fgts_13', nome: 'FGTS 13º', grupo: 'encargos', padrao: P('pct', { valor: 8, base: 'decimo' }) },
     { id: 'inss', nome: 'INSS', grupo: 'encargos', padrao: P('pct', { valor: 29, base: 'folha' }) },
-    { id: 'inss_ferias', nome: 'INSS férias', grupo: 'encargos', padrao: P('nao', { base: 'ferias' }) },
+    { id: 'inss_ferias', nome: 'INSS férias', grupo: 'encargos', padrao: P('pct', { valor: 29, base: 'ferias' }) },
     { id: 'inss_13', nome: 'INSS 13º', grupo: 'encargos', padrao: P('nao', { base: 'decimo' }) },
 
     { id: 'ppr', nome: 'PPR', grupo: 'beneficios', padrao: P('multiplo', { valor: 2.4, periodo: 'anual_diluido' }) },
@@ -101,6 +101,7 @@
   const PERIODOS = { mensal: 'Todo mês', anual_mes: 'Uma vez no ano (mês)', anual_diluido: 'Anual diluído (÷12)', por_mes: 'Valor diferente em cada mês' };
 
   const R = RUBRICAS.length;
+  const MESES_SALARIO = 11; // 11 meses de salário + 1 mês de férias (provisionado em férias + 1/3)
   const IDX = Object.fromEntries(RUBRICAS.map((r, i) => [r.id, i]));
   const ADICIONAIS = RUBRICAS.map((r, i) => (r.adicional ? i : -1)).filter(i => i >= 0);
 
@@ -173,8 +174,10 @@
    * Calcula o custo mensal de cada colaborador em cada rubrica.
    * Retorna { valores: Float64Array(n × R × 12), n, colaboradores } — use valor(i, r, m) para ler.
    */
-  function calcular({ colaboradores = [], filiais = {}, premissas = {}, niveis = {} }) {
+  function calcular({ colaboradores = [], filiais = {}, premissas = {}, niveis = {}, mesesSalario = MESES_SALARIO }) {
     const n = colaboradores.length;
+    // Salário, adicionais e horas extras entram em 11/12 por mês: 1 mês do ano é pago como férias (provisão de férias + 1/3).
+    const T = num(mesesSalario) / 12;
     const valores = new Float64Array(n * R * 12);
     const at = (i, r, m) => (i * R + r) * 12 + m;
 
@@ -227,23 +230,28 @@
     for (let m = 0; m < 12; m++) {
       const sal = new Float64Array(n);
       const ativos = new Uint8Array(n);
+      // Remuneração do mês cheio (antes do 11/12): base das provisões de férias e 13º.
+      const cheio = new Float64Array(n * R);
       for (let i = 0; i < n; i++) {
         ativos[i] = ativo(i, m) ? 1 : 0;
         if (ativos[i]) {
           sal[i] = salario(i, m);
-          valores[at(i, 0, m)] = sal[i];
+          cheio[i * R] = sal[i];
+          valores[at(i, 0, m)] = sal[i] * T;
         }
       }
 
-      const base = (i, nome) => {
-        if (nome === 'salario') return sal[i];
-        let rem = sal[i];
-        for (const r of ADICIONAIS) rem += valores[at(i, r, m)];
+      // Bases: provisões, adicionais e benefícios em % usam o mês cheio; encargos usam o que foi pago no mês (11/12).
+      const base = (i, nome, mesCheio) => {
+        const val = r => (mesCheio ? cheio[i * R + r] : valores[at(i, r, m)]);
+        if (nome === 'salario') return val(0);
+        let rem = val(0);
+        for (const r of ADICIONAIS) rem += val(r);
         if (nome === 'remuneracao') return rem;
-        if (nome === 'folha') return rem + valores[at(i, IDX.horas_extras, m)];
+        if (nome === 'folha') return rem + val(IDX.horas_extras);
         if (nome === 'ferias') return valores[at(i, IDX.ferias, m)];
         if (nome === 'decimo') return valores[at(i, IDX.decimo, m)];
-        return sal[i];
+        return val(0);
       };
 
       for (let r = 1; r < R; r++) {
@@ -265,7 +273,8 @@
           const soma = pesos.reduce((a, b) => a + b, 0);
           if (!soma) continue;
           const fator = ehBenef ? fatorBenef(elegiveis[0], m) : 1;
-          elegiveis.forEach((i, k) => { valores[at(i, r, m)] = (total * fator * pesos[k]) / soma; });
+          // Total da filial (ex.: horas extras do ano) já é o custo real: não passa pelo 11/12.
+          elegiveis.forEach((i, k) => { valores[at(i, r, m)] = cheio[i * R + r] = (total * fator * pesos[k]) / soma; });
         }
 
         for (let i = 0; i < n; i++) {
@@ -275,7 +284,7 @@
           let v = 0;
           switch (p.metodo) {
             case 'pct':
-              v = (valorDe(p, colaboradores[i].funcao) / 100) * base(i, rub.adicional ? 'salario' : p.base);
+              v = (valorDe(p, colaboradores[i].funcao) / 100) * base(i, rub.adicional ? 'salario' : p.base, rub.grupo !== 'encargos');
               if (p.teto != null && p.teto !== '' && num(p.teto) > 0) v = Math.min(v, num(p.teto));
               break;
             case 'fixo':
@@ -296,6 +305,7 @@
             default:
               v = 0;
           }
+          if (rub.grupo === 'remuneracao') { cheio[i * R + r] = v; v *= T; }
           valores[at(i, r, m)] = v;
         }
       }
@@ -346,5 +356,5 @@
     return out;
   }
 
-  return { MESES, GRUPOS, RUBRICAS, METODOS, BASES, PERIODOS, IDX, premissaDe, origemDe, elegivel, aplicarExcecao, multiploDe, valorDe, calcular, agregar, porGrupo };
+  return { MESES_SALARIO, MESES, GRUPOS, RUBRICAS, METODOS, BASES, PERIODOS, IDX, premissaDe, origemDe, elegivel, aplicarExcecao, multiploDe, valorDe, calcular, agregar, porGrupo };
 });
