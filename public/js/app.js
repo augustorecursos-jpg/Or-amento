@@ -24,7 +24,7 @@ const E = {
   base: { busca: '', soVagas: false, soProprias: false, fila: [] },
   conf: { filial: '', modo: 'mes', sel: new Set() },
   painelVisao: 'custo', // 'custo' ou 'hc' (headcount)
-  hc: { dim: 'filial', busca: '' },
+  hc: { dim: 'filial', busca: '', aberto: '', sub: 'funcao' },
   solic: [],
   solicFiltro: 'pendentes',
   contabil: { cfg: null, zeradas: false, porFilial: true },
@@ -392,46 +392,98 @@ function desenharHeadcount(el, col) {
     formato: v => `${num0.format(v)} pessoa(s)`, curtoFmt: v => num0.format(v),
   });
 
-  const linhasHc = () => {
-    const grupos = new Map();
-    col.forEach(c => { const k = dim.chave(c); if (!grupos.has(k)) grupos.set(k, []); grupos.get(k).push(c); });
-    const custo = Motor.agregar(E.res, dim.chave, noFiltro);
-    const b = E.hc.busca.trim().toLowerCase();
-    return [...grupos].filter(([k]) => !b || k.toLowerCase().includes(b)).map(([k, lista]) => {
-      const a = custo.get(k);
-      const hcMeses = a ? a.hc.reduce((x, y) => x + y, 0) : 0;
-      return { k, ...numerosHc(lista), filiais: new Set(lista.map(c => c.filial)).size, custo: a ? a.total : 0, medio: hcMeses ? a.total / hcMeses : 0 };
-    }).sort((x, y) => y.cadeiras - x.cadeiras || x.k.localeCompare(y.k));
+  // Custo de cada cadeira no ano (todas as contas), para separar o custo das ocupadas e das vagas.
+  const idx = new Map(E.res.colaboradores.map((c, i) => [c.id, i]));
+  const custoDe = c => {
+    const i = idx.get(c.id);
+    if (i == null) return 0;
+    let t = 0;
+    for (let r = 0; r < RUBRICAS.length; r++) for (let m = 0; m < 12; m++) t += E.res.valor(i, r, m);
+    return t;
   };
+  const custoId = new Map(col.map(c => [c.id, custoDe(c)]));
+  const resumo = (k, lista) => {
+    const n2 = numerosHc(lista);
+    const custoOcup = lista.filter(c => !c.vaga).reduce((a, c) => a + (custoId.get(c.id) || 0), 0);
+    const custoVaga = lista.filter(c => c.vaga).reduce((a, c) => a + (custoId.get(c.id) || 0), 0);
+    const hcMeses = n2.ocupadasMes.reduce((a, x) => a + x, 0) + n2.vagasMes.reduce((a, x) => a + x, 0);
+    return { k, lista, ...n2, filiais: new Set(lista.map(c => c.filial)).size, custoOcup, custoVaga, custo: custoOcup + custoVaga, medio: hcMeses ? (custoOcup + custoVaga) / hcMeses : 0 };
+  };
+  const agrupar = (lista, chave) => {
+    const g = new Map();
+    lista.forEach(c => { const k = chave(c); if (!g.has(k)) g.set(k, []); g.get(k).push(c); });
+    return [...g].map(([k, l]) => resumo(k, l)).sort((x, y) => y.cadeiras - x.cadeiras || x.k.localeCompare(y.k));
+  };
+  const filtrados = () => { const b = E.hc.busca.trim().toLowerCase(); return col.filter(c => !b || dim.chave(c).toLowerCase().includes(b)); };
+  const linhasHc = () => agrupar(filtrados(), dim.chave);
+  const colFiliais = E.hc.dim !== 'filial' && E.hc.dim !== 'regional';
+  const barraHc = (l, max) => `<div class="hc-barra" title="${l.ocupadas} ocupada(s) · ${l.vagas} vaga(s)"><i style="width:${(l.ocupadas / max) * 100}%;background:${COR_OCUPADA}"></i><i style="width:${(l.vagas / max) * 100}%;background:${COR_VAGA}"></i><b>${num0.format(l.cadeiras)}</b></div>`;
+  const zero = v => (v ? num0.format(v) : '–');
+  const custoVagaCel = v => `<td class="n${v ? ' custo-vaga' : ' zero'}">${v ? brl0.format(v) : '–'}</td>`;
+
+  // Detalhe de uma linha: quebra por outra dimensão + a lista das cadeiras
+  const detalheHc = l => {
+    const subs = Object.entries(DIMS_HC).filter(([k]) => k !== E.hc.dim && !(k === 'regional' && (E.filtro.regional || E.hc.dim === 'filial')));
+    if (!subs.some(([k]) => k === E.hc.sub)) E.hc.sub = 'funcao';
+    const sub = DIMS_HC[E.hc.sub];
+    const sl = agrupar(l.lista, sub.chave);
+    const max = Math.max(...sl.map(x => x.cadeiras), 1);
+    const pessoas = [...l.lista].sort((a, b) => (a.vaga - b.vaga) || String(a.funcao).localeCompare(String(b.funcao)) || a.nome.localeCompare(b.nome));
+    const periodo = c => (c.mes_inicio > 1 || c.mes_fim < 12 ? `${MESES[(c.mes_inicio || 1) - 1]}–${MESES[(c.mes_fim || 12) - 1]}` : 'Ano todo');
+    return `<div class="hc-det-caixa">
+      <div class="ferramentas" style="margin-bottom:.6rem"><b style="color:var(--marinho)">${esc(l.k)} · por</b>
+        <div class="segmentos" id="hc-sub">${subs.map(([k, d]) => `<button data-s="${k}" class="${k === E.hc.sub ? 'ativo' : ''}">${d.nome}</button>`).join('')}</div></div>
+      <table class="tabela tabela-hc tabela-hc-sub"><thead><tr><th>${sub.nome}</th><th style="min-width:150px">Cadeiras</th><th class="n">Ocupadas</th><th class="n">Vagas</th><th class="n">Desligam.</th><th class="n">Custo ocupadas</th><th class="n">Custo vagas</th><th class="n">Custo no ano</th><th class="n">Custo médio / mês</th></tr></thead>
+        <tbody>${sl.map(x => `<tr><td title="${esc(x.k)}">${esc(x.k)}</td><td>${barraHc(x, max)}</td><td class="n">${num0.format(x.ocupadas)}</td><td class="n${x.vagas ? '' : ' zero'}">${zero(x.vagas)}</td><td class="n${x.deslig ? '' : ' zero'}">${zero(x.deslig)}</td>
+          <td class="n">${brl0.format(x.custoOcup)}</td>${custoVagaCel(x.custoVaga)}<td class="n"><b>${brl0.format(x.custo)}</b></td><td class="n">${brl0.format(x.medio)}</td></tr>`).join('')}</tbody></table>
+      <details class="hc-pessoas"><summary>Ver as ${num0.format(l.cadeiras)} cadeira(s) de ${esc(l.k)}</summary>
+        <div class="tabela-wrap" style="max-height:360px"><table class="tabela tabela-hc"><thead><tr><th>Colaborador / vaga</th><th>Situação</th><th>Função</th><th>Nível do cargo</th><th>Centro de custo</th>${E.hc.dim !== 'gestor' ? '<th>Gestor</th>' : ''}${E.hc.dim !== 'filial' ? '<th>Filial</th>' : ''}<th>Período</th><th class="n">Salário</th><th class="n">Custo no ano</th></tr></thead>
+        <tbody>${pessoas.map(c => `<tr class="${c.vaga ? 'vaga' : ''}"><td>${esc(c.nome)}${c.matricula ? `<span class="sub">${esc(c.matricula)}</span>` : ''}</td><td>${c.vaga ? '<span class="etiqueta pend">vaga</span>' : (c.mes_fim < 12 ? '<span class="etiqueta neutra">desligamento</span>' : 'Ocupada')}</td>
+          <td>${esc(c.funcao || '')}</td><td>${esc(c.cargo || '')}</td><td>${esc(rotuloCc(c))}</td>${E.hc.dim !== 'gestor' ? `<td>${esc(c.gestor || '—')}</td>` : ''}${E.hc.dim !== 'filial' ? `<td>${esc(c.filial)}</td>` : ''}<td>${periodo(c)}</td>
+          <td class="n">${brl.format(c.salario)}</td><td class="n">${brl0.format(custoId.get(c.id) || 0)}</td></tr>`).join('')}</tbody></table></div></details>
+    </div>`;
+  };
+
   const desenharTabela = () => {
     const linhas = linhasHc();
     const max = Math.max(...linhas.map(l => l.cadeiras), 1);
-    const tot = numerosHc(col.filter(c => !E.hc.busca.trim() || dim.chave(c).toLowerCase().includes(E.hc.busca.trim().toLowerCase())));
+    const tot = resumo('Total', filtrados());
+    const nCols = 12 + (colFiliais ? 1 : 0);
     $('#hc-tabela', el).innerHTML = `<table class="tabela tabela-hc"><thead><tr>
-        <th>${dim.nome}</th><th style="min-width:180px">Cadeiras</th><th class="n">Ocupadas</th><th class="n">Vagas</th><th class="n">Desligam.</th>
-        <th class="n">HC jan</th><th class="n">HC dez</th>${E.hc.dim !== 'filial' && E.hc.dim !== 'regional' ? '<th class="n">Filiais</th>' : ''}<th class="n">Custo no ano</th><th class="n">Custo médio / mês</th></tr></thead>
-      <tbody>${linhas.map(l => `<tr>
-        <td title="${esc(l.k)}">${esc(l.k)}</td>
-        <td><div class="hc-barra" title="${l.ocupadas} ocupada(s) · ${l.vagas} vaga(s)"><i style="width:${(l.ocupadas / max) * 100}%;background:${COR_OCUPADA}"></i><i style="width:${(l.vagas / max) * 100}%;background:${COR_VAGA}"></i><b>${num0.format(l.cadeiras)}</b></div></td>
-        <td class="n">${num0.format(l.ocupadas)}</td><td class="n${l.vagas ? '' : ' zero'}">${l.vagas ? num0.format(l.vagas) : '–'}</td><td class="n${l.deslig ? '' : ' zero'}">${l.deslig ? num0.format(l.deslig) : '–'}</td>
-        <td class="n">${num0.format(l.jan)}</td><td class="n">${num0.format(l.dez)}</td>${E.hc.dim !== 'filial' && E.hc.dim !== 'regional' ? `<td class="n">${l.filiais}</td>` : ''}
-        <td class="n">${brl0.format(l.custo)}</td><td class="n">${brl0.format(l.medio)}</td></tr>`).join('') || `<tr><td colspan="10" class="vazio">Nada para mostrar.</td></tr>`}</tbody>
+        <th>${dim.nome}</th><th style="min-width:170px">Cadeiras</th><th class="n">Ocupadas</th><th class="n">Vagas</th><th class="n">Desligam.</th>
+        <th class="n">HC jan</th><th class="n">HC dez</th>${colFiliais ? '<th class="n">Filiais</th>' : ''}<th class="n">Custo ocupadas</th><th class="n">Custo vagas</th><th class="n">Custo no ano</th><th class="n">Custo médio / mês</th></tr></thead>
+      <tbody>${linhas.map(l => `<tr class="hc-linha${E.hc.aberto === l.k ? ' aberto' : ''}" data-hc="${esc(l.k)}" title="Clique para ${E.hc.aberto === l.k ? 'fechar' : 'ver cargos, funções, custos e as cadeiras'}">
+        <td title="${esc(l.k)}"><span class="hc-seta">${E.hc.aberto === l.k ? '▾' : '▸'}</span>${esc(l.k)}</td>
+        <td>${barraHc(l, max)}</td>
+        <td class="n">${num0.format(l.ocupadas)}</td><td class="n${l.vagas ? '' : ' zero'}">${zero(l.vagas)}</td><td class="n${l.deslig ? '' : ' zero'}">${zero(l.deslig)}</td>
+        <td class="n">${num0.format(l.jan)}</td><td class="n">${num0.format(l.dez)}</td>${colFiliais ? `<td class="n">${l.filiais}</td>` : ''}
+        <td class="n">${brl0.format(l.custoOcup)}</td>${custoVagaCel(l.custoVaga)}<td class="n"><b>${brl0.format(l.custo)}</b></td><td class="n">${brl0.format(l.medio)}</td></tr>
+        ${E.hc.aberto === l.k ? `<tr class="hc-det"><td colspan="${nCols}">${detalheHc(l)}</td></tr>` : ''}`).join('') || `<tr><td colspan="${nCols}" class="vazio">Nada para mostrar.</td></tr>`}</tbody>
       <tfoot><tr><td>Total · ${linhas.length} ${dim.nome.toLowerCase()}(s)</td><td><b>${num0.format(tot.cadeiras)}</b></td><td class="n">${num0.format(tot.ocupadas)}</td><td class="n">${num0.format(tot.vagas)}</td><td class="n">${num0.format(tot.deslig)}</td>
-        <td class="n">${num0.format(tot.jan)}</td><td class="n">${num0.format(tot.dez)}</td>${E.hc.dim !== 'filial' && E.hc.dim !== 'regional' ? '<td></td>' : ''}<td class="n">${brl0.format(linhas.reduce((a, l) => a + l.custo, 0))}</td><td></td></tr></tfoot></table>`;
+        <td class="n">${num0.format(tot.jan)}</td><td class="n">${num0.format(tot.dez)}</td>${colFiliais ? '<td></td>' : ''}<td class="n">${brl0.format(tot.custoOcup)}</td><td class="n">${brl0.format(tot.custoVaga)}</td><td class="n">${brl0.format(tot.custo)}</td><td class="n">${brl0.format(tot.medio)}</td></tr></tfoot></table>`;
+    $$('#hc-tabela tr.hc-linha', el).forEach(tr => tr.addEventListener('click', () => { E.hc.aberto = E.hc.aberto === tr.dataset.hc ? '' : tr.dataset.hc; desenharTabela(); }));
+    $$('#hc-sub button', el).forEach(b2 => b2.addEventListener('click', () => { E.hc.sub = b2.dataset.s; desenharTabela(); }));
     return linhas;
   };
   desenharTabela();
-  $$('#hc-dim button', el).forEach(b => b.addEventListener('click', () => { E.hc.dim = b.dataset.d; E.hc.busca = ''; desenharHeadcount(el, col); }));
+  $$('#hc-dim button', el).forEach(b => b.addEventListener('click', () => { E.hc.dim = b.dataset.d; E.hc.busca = ''; E.hc.aberto = ''; desenharHeadcount(el, col); }));
   $('#hc-busca', el).addEventListener('input', e => { E.hc.busca = e.target.value; desenharTabela(); });
   $('#hc-excel', el).addEventListener('click', () => {
     if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
     const linhas = linhasHc();
-    const aoa = [[dim.nome, 'Cadeiras', 'Ocupadas', 'Vagas', 'Desligamentos previstos', 'HC jan', 'HC dez', ...MESES.map(m => `HC ${m}`), 'Custo no ano', 'Custo médio / mês'],
-      ...linhas.map(l => [l.k, l.cadeiras, l.ocupadas, l.vagas, l.deslig, l.jan, l.dez, ...MESES.map((_, m) => l.ocupadasMes[m] + l.vagasMes[m]), Math.round(l.custo * 100) / 100, Math.round(l.medio * 100) / 100])];
+    const aoa = [[dim.nome, 'Cadeiras', 'Ocupadas', 'Vagas', 'Desligamentos previstos', 'HC jan', 'HC dez', ...MESES.map(m => `HC ${m}`), 'Custo ocupadas', 'Custo vagas', 'Custo no ano', 'Custo médio / mês'],
+      ...linhas.map(l => [l.k, l.cadeiras, l.ocupadas, l.vagas, l.deslig, l.jan, l.dez, ...MESES.map((_, m) => l.ocupadasMes[m] + l.vagasMes[m]),
+        Math.round(l.custoOcup * 100) / 100, Math.round(l.custoVaga * 100) / 100, Math.round(l.custo * 100) / 100, Math.round(l.medio * 100) / 100])];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{ wch: 40 }, ...aoa[0].slice(1).map(() => ({ wch: 11 }))];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Headcount');
+    // Uma linha por cadeira (colaborador ou vaga), para tabela dinâmica
+    const cad = [['Regional', 'Filial', 'Matrícula', 'Colaborador / vaga', 'Situação', 'Função', 'Nível do cargo', 'Cód. C. Custo', 'Centro de custo', 'Gestor', 'Mês início', 'Mês fim', 'Salário', 'Custo no ano'],
+      ...filtrados().map(c => [c.regional, c.filial, c.matricula, c.nome, c.vaga ? 'Vaga' : c.mes_fim < 12 ? 'Desligamento previsto' : 'Ocupada', c.funcao, c.cargo, c.cc_cod, c.cc_nome, c.gestor || '', c.mes_inicio, c.mes_fim, c.salario, Math.round((custoId.get(c.id) || 0) * 100) / 100])];
+    const wsCad = XLSX.utils.aoa_to_sheet(cad);
+    wsCad['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: cad.length - 1, c: cad[0].length - 1 } }) };
+    XLSX.utils.book_append_sheet(wb, wsCad, 'Cadeiras');
     const nome = [E.dados.config.ano, E.filtro.regional, E.filtro.uf, E.filtro.filial, dim.nome].filter(Boolean).join('-').replace(/[^\w-]+/g, '_');
     XLSX.writeFile(wb, `Headcount-${nome}.xlsx`);
   });

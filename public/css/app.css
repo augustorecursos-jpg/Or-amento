@@ -584,3 +584,15 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 
 /* Com os 4 filtros, em telas médias o nome do usuário some e fica só o avatar */
 @media (max-width: 1700px) { .barra-nome { display: none; } }
+/* Headcount: detalhe ao clicar na linha */
+.tabela-hc tr.hc-linha { cursor: pointer; }
+.tabela-hc tr.hc-linha:hover td { background: var(--laranja-suave); }
+.tabela-hc tr.hc-linha.aberto td { background: #eef3f8; font-weight: 700; }
+.hc-seta { display: inline-block; width: 1rem; color: var(--laranja); }
+.tabela-hc tr.hc-det > td { background: #f8fafc; padding: .8rem 1rem 1rem; white-space: normal; max-width: none; overflow: visible; }
+.hc-det-caixa { border-left: 3px solid var(--laranja); padding-left: .9rem; }
+.tabela-hc-sub { background: #fff; }
+.tabela-hc td.custo-vaga { color: #b54d12; }
+.hc-pessoas { margin-top: .7rem; }
+.hc-pessoas summary { cursor: pointer; font-weight: 700; color: var(--marinho); margin-bottom: .5rem; }
+.tabela-hc tr.vaga td { background: #fff8f2; }

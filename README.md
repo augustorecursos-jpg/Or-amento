@@ -48,7 +48,10 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   **Modo apresentação**: tela cheia sem menus; as setas ← → passam pelas regionais.
   **Visão Headcount** (botão 👥 no topo do Painel): cadeiras no orçamento (colaboradores + vagas), ocupadas, vagas previstas,
   desligamentos previstos, HC janeiro → dezembro, headcount mês a mês (ocupadas × vagas) e a tabela de **cadeiras por
-  regional, filial, centro de custo, gestor, nível do cargo ou função**, com custo no ano e custo médio por mês; exporta Excel.
+  regional, filial, centro de custo, gestor, nível do cargo ou função**, com o custo separado em **ocupadas** e **vagas**,
+  custo no ano e custo médio por mês. Clique na linha para abrir a quebra por função, nível do cargo, centro de custo ou
+  gestor e a lista das cadeiras (colaborador/vaga, função, CC, gestor, período, salário, custo). O Excel traz o resumo e a
+  aba *Cadeiras* (uma linha por colaborador ou vaga).
   O gestor vem da coluna opcional **GESTOR** da base.
 - **Filtros do topo** – regional, estado, filial e **centro de custo**, valendo para painel, simulação, base, conferência e
   relatório contábil.
