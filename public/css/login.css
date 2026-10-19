@@ -23,6 +23,15 @@
 .login-cartao label { font-weight: 700; font-size: .85rem; color: var(--marinho); }
 .login-cartao .btn { margin-top: .4rem; }
 .login-cartao .erro { color: var(--vermelho); font-weight: 700; margin: 0; }
+/* Link para o guia em PDF (mesmo padrão da Trilha) */
+.guia-acesso {
+  display: flex; align-items: center; gap: .7rem; margin-top: .4rem; padding: .75rem 1rem; border-radius: 10px; text-decoration: none;
+  background: var(--laranja-suave); border: 1px solid #f6dccb; color: var(--marinho); font-size: .88rem;
+}
+.guia-acesso strong { color: var(--laranja); }
+.guia-acesso .guia-ic { font-size: 1.1rem; }
+.guia-acesso .guia-seta { margin-left: auto; font-weight: 800; color: var(--laranja); transition: transform .15s; }
+.guia-acesso:hover .guia-seta { transform: translateX(4px); }
 @media (max-width: 860px) {
   .login { grid-template-columns: 1fr; }
   .login-arte { padding: 32px 16px 80px; }

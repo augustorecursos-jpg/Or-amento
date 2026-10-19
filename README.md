@@ -128,6 +128,9 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
 - **Acessos dos coordenadores** – login, senha e regionais de cada coordenador.
 - **Histórico** – registro de todas as alterações e backup.
 
+**Guia do coordenador** (`public/guia/guia-do-coordenador.pdf`): link “Primeira vez aqui?” na tela de acesso e item
+“Guia do coordenador” no menu lateral, como na Trilha.
+
 **Coordenador** (só as regionais liberadas, sem alterar valores)
 - Painel e simulação da regional.
 - **Conferência** – cards por filial; premissas aplicadas e a tabela de colaboradores/vagas com **uma coluna por item**

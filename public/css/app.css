@@ -16,6 +16,7 @@ body.app { display: flex; min-height: 100vh; }
   position: relative; display: flex; align-items: center; gap: .7rem; width: 100%; text-align: left; border: 0; background: transparent; text-decoration: none;
   color: #dce7f0; font-weight: 600; padding: .62rem .7rem; border-radius: 10px; font-size: .92rem; line-height: 1.2; margin-bottom: 2px;
 }
+a.lateral-item { text-decoration: none; }
 .lateral-item:hover { background: rgba(255, 255, 255, .07); color: #fff; }
 .lateral-item.ativo { background: rgba(255, 255, 255, .12); color: #fff; }
 .lateral-item.ativo::before { content: ''; position: absolute; left: -14px; top: 8px; bottom: 8px; width: 4px; border-radius: 0 4px 4px 0; background: var(--laranja); }
