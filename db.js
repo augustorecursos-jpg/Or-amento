@@ -189,6 +189,22 @@ if (!db.prepare("SELECT 1 FROM config WHERE chave = 'vt_cc_colab'").get()) {
   db.prepare("INSERT INTO config (chave, valor) VALUES ('vt_cc_colab', 'ok')").run();
 }
 
+// Horas extras passam a ser só o total do ano de cada filial (distribuído pela ferramenta): apaga, uma vez, a HE que veio
+// da planilha da base para cada colaborador. Ajustes feitos à mão no cadastro (sem origem 'base') ficam.
+if (!db.prepare("SELECT 1 FROM config WHERE chave = 'he_sem_base'").get()) {
+  const gravar = db.prepare('UPDATE colaboradores SET excecoes = ? WHERE id = ?');
+  let n = 0;
+  for (const c of db.prepare("SELECT id, excecoes FROM colaboradores WHERE excecoes LIKE '%horas_extras%'").all()) {
+    const e = JSON.parse(c.excecoes || '{}');
+    if (e.horas_extras?.origem !== 'base') continue;
+    delete e.horas_extras;
+    gravar.run(JSON.stringify(e), c.id);
+    n++;
+  }
+  db.prepare("INSERT INTO config (chave, valor) VALUES ('he_sem_base', 'ok')").run();
+  if (n) db.prepare('INSERT INTO historico (quem, acao, detalhe) VALUES (?, ?, ?)').run('Sistema', 'Removeu a HE vinda da base', `${n} colaborador(es): HE passa a ser o total do ano de cada filial`);
+}
+
 function registrar(quem, acao, detalhe = '') {
   db.prepare('INSERT INTO historico (quem, acao, detalhe) VALUES (?, ?, ?)').run(quem, acao, String(detalhe).slice(0, 500));
 }

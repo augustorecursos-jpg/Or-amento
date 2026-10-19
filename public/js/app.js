@@ -1719,10 +1719,11 @@ function lerPlanilha(wb) {
   return null;
 }
 
-// Itens que podem vir preenchidos por colaborador na base: remuneração (adicionais, horas extras), rescisão e benefícios.
+// Itens que podem vir preenchidos por colaborador na base: adicionais, rescisão e benefícios. Horas extras não: são lançadas
+// como total do ano de cada filial e distribuídas pela ferramenta.
 // Ficam de fora o PPR (salário × target), a cesta natalina e o grupo Demais, que seguem as premissas; férias, 13º e
 // encargos seguem calculados sobre esses valores.
-const RUBS_BASE = RUBRICAS.filter(r => !r.fixa && r.id !== 'ppr' && r.id !== 'cesta_natalina' && (r.grupo === 'remuneracao' || r.grupo === 'beneficios' || r.id === 'rescisao'));
+const RUBS_BASE = RUBRICAS.filter(r => !r.fixa && r.id !== 'ppr' && r.id !== 'cesta_natalina' && r.id !== 'horas_extras' && (r.grupo === 'remuneracao' || r.grupo === 'beneficios' || r.id === 'rescisao'));
 const APELIDOS_BASE = { adic_turno: ['ADIC. NOTURNO', 'ADICIONAL NOTURNO', 'ADICIONAIS DE TURNO'] };
 
 /** Colunas da planilha com o valor de cada item por colaborador: [{ rub, col }]. */
@@ -1783,7 +1784,7 @@ function renderBase() {
   const el = painel('base');
   el.innerHTML = `
     <div class="cab-pagina"><div><h1 class="titulo-pagina">Base de <em>colaboradores</em></h1>
-      <p class="subtitulo">Suba os dados cadastrais e o <b>salário</b> (sem dissídio) de cada colaborador. Adicionais, horas extras, rescisão e benefícios podem vir com o <b>valor de cada colaborador</b> em colunas opcionais (0 = não recebe; vazio = segue a regra da filial). PPR, cesta natalina, o grupo Demais, férias, 13º e encargos seguem as premissas.</p></div>
+      <p class="subtitulo">Suba os dados cadastrais e o <b>salário</b> (sem dissídio) de cada colaborador. Adicionais, rescisão e benefícios podem vir com o <b>valor de cada colaborador</b> em colunas opcionais (0 = não recebe; vazio = segue a regra da filial). Horas extras (total do ano de cada filial), PPR, cesta natalina, o grupo Demais, férias, 13º e encargos seguem as premissas.</p></div>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn btn-claro" id="nova-vaga">+ Nova vaga</button><button class="btn btn-claro" id="novo-colab">+ Colaborador</button></div></div>
     <section class="cartao importar">
       <h3>Importar base <small>· .xlsx ou .csv · pode ser uma planilha por regional ou todas juntas</small></h3>
@@ -1794,7 +1795,7 @@ function renderBase() {
       </div>
       <label class="zona-arquivo" id="zona"><input type="file" id="arquivo" accept=".xlsx,.xls,.csv" multiple hidden>
         <strong>Clique ou arraste as planilhas aqui</strong><span class="zona-dica">Pode adicionar uma de cada vez — elas vão se juntando numa lista e você importa todas juntas.</span>Matrícula · Funcionário · Regional · Filial · Situação · Função · Cargo · Cód. C. Custo · Centro de custo · Salário · Mês início · Mês fim
-        <br><small>Colunas de adicionais, horas extras, rescisão e benefícios (VA, VT, Assist. médica…) são lidas como valor do colaborador; as demais são ignoradas.</small></label>
+        <br><small>Colunas de adicionais, rescisão e benefícios (VA, VT, Assist. médica…) são lidas como valor do colaborador; as demais são ignoradas.</small></label>
       <div id="previa" class="previa"></div>
     </section>
     <section class="cartao base-situacao" style="margin-top:1.2rem" id="base-situacao"></section>
@@ -1856,7 +1857,7 @@ function baixarModeloBase() {
   if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
   const cab = ['MATRÍCULA', 'FUNCIONÁRIO', 'SEXO', 'REGIONAL', 'FILIAL', 'SITUAÇÃO', 'FUNÇÃO', 'CARGO', 'CÓD. C. CUSTO', 'CENTRO DE CUSTO', 'SALÁRIO', 'MÊS INÍCIO', 'MÊS FIM',
     ...RUBS_BASE.map(r => r.nome.toUpperCase())];
-  const exemplo = { periculosidade: 1252.68, horas_extras: 410.38, va: 1480, vt: 0, assist_medica: 2339.18, assist_odonto: 27, seguro_vida: 83.9 };
+  const exemplo = { periculosidade: 1252.68, va: 1480, vt: 0, assist_medica: 2339.18, assist_odonto: 27, seguro_vida: 83.9 };
   const ws = XLSX.utils.aoa_to_sheet([
     cab,
     ['10001', 'NOME DO COLABORADOR', 'F', 'NORTE', 'APARECIDA', 'Ativo', 'Operador I', '15-Operação - Produção', '17150', 'OPERAÇÃO', 4175.6, 1, 12, ...RUBS_BASE.map(r => exemplo[r.id] ?? null)],
@@ -1879,7 +1880,7 @@ function baixarModeloBase() {
     ['PERICULOSIDADE … RESCISÃO', 'Opcional. Valor do colaborador em R$ por mês, SEM dissídio (como o salário): 0 = não recebe · vazio = segue a regra da filial. Sobem com o dissídio da filial; férias, 13º e encargos são calculados sobre eles.'],
     ['VA / VR … FRETADO (OVERALL)', 'Opcional. Valor de cada benefício do colaborador em R$: 0 = não recebe · vazio = segue a regra da filial. Cada valor segue a periodicidade do item nas premissas (todo mês, 1x no ano…) e recebe o reajuste de benefícios da filial. Pode apagar as colunas que não usar.'],
     [''],
-    ['PPR, cesta natalina, férias, 13º, encargos e o grupo Demais (endomarketing, treinamento…) não vêm da planilha: seguem as premissas de cada filial.'],
+    ['Horas extras (total do ano de cada filial), PPR, cesta natalina, férias, 13º, encargos e o grupo Demais (endomarketing, treinamento…) não vêm da planilha: seguem as premissas de cada filial.'],
     [''],
     ['ABA "Condições próprias" (opcional)', 'Só para quem tem benefício diferente da regra da filial (ex.: sucedidos). Uma linha por colaborador e item:'],
     ['MATRÍCULA', 'A mesma da aba Base'],

@@ -100,13 +100,13 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   Painel com o total por regional, aviso de **colaboradores duplicados** (mesma matrícula + nome + filial; a mesma
   matrícula pode existir em empresas diferentes) com **Remover duplicados**, e **Apagar toda a base**. **Vagas** (situação “Nova Vaga” + mês de admissão) e **desligamentos previstos**.
   - **Valores por colaborador vindos da base**: colunas opcionais com o valor de cada pessoa — periculosidade,
-    insalubridade, penosidade, adicional de turno/noturno, horas extras, rescisão e benefícios (VA, 13º VR, VT, creche,
+    insalubridade, penosidade, adicional de turno/noturno, rescisão e benefícios (VA, 13º VR, VT, creche,
     educacional, material escolar, óculos (valor do ano ÷ 12), oftalmo, assistência médica, coparticipação, odonto, farmácia, seguro, previdência privada,
     auxílio dependente portadores, refeitório, fretado). **0 = não recebe**, **vazio = segue a regra da filial**. Na importação, a prévia mostra os itens encontrados e
     dá para desmarcar algum. Remuneração e rescisão entram sem dissídio e sobem com o dissídio da filial (quando a planilha
     traz a remuneração calculada sobre o salário com dissídio, a ferramenta detecta pela periculosidade e tira o dissídio);
-    benefícios seguem a periodicidade do item nas premissas e recebem o reajuste de benefícios. **PPR, cesta natalina e o
-    grupo Demais** continuam pelas premissas; férias, 13º e encargos são calculados sobre os valores. Ajustes feitos à mão
+    benefícios seguem a periodicidade do item nas premissas e recebem o reajuste de benefícios. **Horas extras, PPR, cesta
+    natalina e o grupo Demais** continuam pelas premissas (HE = total do ano de cada filial, a coluna da planilha é ignorada); férias, 13º e encargos são calculados sobre os valores. Ajustes feitos à mão
     no cadastro valem por cima da planilha e são mantidos ao reimportar.
   - **Condições próprias por colaborador** (ex.: sucedidos da empresa anterior): no cadastro do colaborador, valores
     próprios de qualquer benefício (R$ por mês, %, nº de salários ou “não recebe”), no lugar da regra da filial. Também
