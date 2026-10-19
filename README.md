@@ -91,12 +91,21 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
 - **Quadro de todas as filiais** – grade filial × item com o que cada filial tem. **Exporta para Excel**, você preenche
   (`30%`, `1480`, `8000 total`, `2,4 sal`, `Não`, vazio = herda) e **importa de volta**; valores iguais à regra da
   regional/geral não viram exceção.
-- **Base de colaboradores** – só os dados até o **salário** (sem dissídio), no **modelo Excel de 12 colunas** que a
-  própria tela baixa: matrícula, funcionário, regional, filial, situação, função, cargo, cód. e nome do centro de custo,
-  salário, mês início e mês fim. Benefícios, adicionais, encargos e provisões **não** vêm da planilha. Modo *substituir as
+- **Base de colaboradores** – dados até o **salário** (sem dissídio), no **modelo Excel** que a própria tela baixa:
+  matrícula, funcionário, sexo, regional, filial, situação, função, cargo, cód. e nome do centro de custo, salário, mês
+  início e mês fim — mais as colunas opcionais de valores por colaborador (abaixo). Modo *substituir as
   regionais do arquivo* ou *adicionar*. Padrão: **Substituir toda a base** (a base fica só com o que está nos arquivos).
   Painel com o total por regional, aviso de **colaboradores duplicados** (mesma matrícula + nome + filial; a mesma
   matrícula pode existir em empresas diferentes) com **Remover duplicados**, e **Apagar toda a base**. **Vagas** (situação “Nova Vaga” + mês de admissão) e **desligamentos previstos**.
+  - **Valores por colaborador vindos da base**: colunas opcionais com o valor de cada pessoa — periculosidade,
+    insalubridade, penosidade, adicional de turno/noturno, horas extras, rescisão e benefícios (VA, 13º VR, VT, creche,
+    educacional, material escolar, óculos, oftalmo, assistência médica, coparticipação, odonto, farmácia, seguro, refeitório,
+    fretado). **0 = não recebe**, **vazio = segue a regra da filial**. Na importação, a prévia mostra os itens encontrados e
+    dá para desmarcar algum. Remuneração e rescisão entram sem dissídio e sobem com o dissídio da filial (quando a planilha
+    traz a remuneração calculada sobre o salário com dissídio, a ferramenta detecta pela periculosidade e tira o dissídio);
+    benefícios seguem a periodicidade do item nas premissas e recebem o reajuste de benefícios. **PPR, cesta natalina e o
+    grupo Demais** continuam pelas premissas; férias, 13º e encargos são calculados sobre os valores. Ajustes feitos à mão
+    no cadastro valem por cima da planilha e são mantidos ao reimportar.
   - **Condições próprias por colaborador** (ex.: sucedidos da empresa anterior): no cadastro do colaborador, valores
     próprios de qualquer benefício (R$ por mês, %, nº de salários ou “não recebe”), no lugar da regra da filial. Também
     pela aba opcional *Condições próprias* do modelo (MATRÍCULA · ITEM · VALOR). Reimportar a base mantém essas condições

@@ -3,7 +3,7 @@
 //
 // Entrada:
 //   colaboradores: [{ id, matricula, nome, regional, filial, cargo, cc_cod, cc_nome, salario, mes_inicio, mes_fim, vaga, excecoes }]
-//                  excecoes: { [rubrica]: { metodo: 'nao' | 'fixo' | 'pct' | 'multiplo', valor } } — condições próprias do
+//                  excecoes: { [rubrica]: { metodo: 'nao' | 'fixo' | 'pct' | 'multiplo', valor, origem? } } — condições próprias do
 //                  colaborador (ex.: sucedidos de outra empresa com benefício diferente). Valem no lugar da regra da filial.
 //   filiais:       { [filial]: { regional, dissidio_pct, dissidio_mes, reaj_benef_pct, reaj_benef_mes } }
 //   premissas:     { [escopo]: { [rubrica]: premissa } }  escopo = '*' (geral), 'R:<regional>' ou '<filial>'
@@ -119,8 +119,11 @@
   /** Regra do colaborador: a da filial, ou a condição própria dele (exceção) quando houver. */
   function aplicarExcecao(p, exc) {
     if (!exc || !METODOS[exc.metodo]) return p;
-    const periodo = exc.metodo === p.metodo ? p.periodo : exc.metodo === 'multiplo' ? 'anual_diluido' : 'mensal';
-    return { ...p, metodo: exc.metodo, valor: num(exc.valor), periodo, quem: [], publico: '', publico_meses: [], por_nivel: false, por_funcao: {}, teto: exc.metodo === 'pct' ? p.teto : null };
+    // Valor vindo da planilha da base (origem 'base'): segue a periodicidade do item na premissa (todo mês, 1x no ano, anual ÷ 12).
+    const daBase = exc.origem === 'base' && exc.metodo === 'fixo';
+    const periodo = daBase ? (p.periodo === 'por_mes' || p.metodo === 'rateio' ? 'mensal' : p.periodo)
+      : exc.metodo === p.metodo ? p.periodo : exc.metodo === 'multiplo' ? 'anual_diluido' : 'mensal';
+    return { ...p, metodo: exc.metodo, valor: num(exc.valor), periodo, origem: daBase ? 'base' : undefined, quem: [], publico: '', publico_meses: [], por_nivel: false, por_funcao: {}, teto: exc.metodo === 'pct' ? p.teto : null };
   }
 
   /** Valor da regra para a função do colaborador: o valor próprio da função (ex.: VA do aprendiz) ou o valor geral. */
@@ -195,12 +198,12 @@
       const fim = num(c.mes_fim) || 12;
       return m + 1 >= ini && m + 1 <= fim;
     };
-    const salario = (i, m) => {
+    const fatorDissidio = (i, m) => {
       const f = cfg[i];
       const mesDiss = num(f.dissidio_mes);
-      const fator = mesDiss && m + 1 >= mesDiss ? 1 + num(f.dissidio_pct) / 100 : 1;
-      return num(colaboradores[i].salario) * fator;
+      return mesDiss && m + 1 >= mesDiss ? 1 + num(f.dissidio_pct) / 100 : 1;
     };
+    const salario = (i, m) => num(colaboradores[i].salario) * fatorDissidio(i, m);
     const salarioPpr = (i, p) => {
       const f = cfg[i];
       const reaj = !p.sem_dissidio && num(f.dissidio_pct) && num(f.dissidio_mes) ? 1 + num(f.dissidio_pct) / 100 : 1;
@@ -274,7 +277,9 @@
               if (p.teto != null && p.teto !== '' && num(p.teto) > 0) v = Math.min(v, num(p.teto));
               break;
             case 'fixo':
-              v = (p.periodo === 'por_mes' ? num(p.meses?.[m]) : valorDe(p, colaboradores[i].funcao)) * (ehBenef ? fatorBenef(i, m) : 1);
+              // Benefícios sobem com o reajuste de benefícios; remuneração vinda da base (sem dissídio) sobe com o dissídio.
+              v = (p.periodo === 'por_mes' ? num(p.meses?.[m]) : valorDe(p, colaboradores[i].funcao))
+                * (ehBenef ? fatorBenef(i, m) : p.origem === 'base' ? fatorDissidio(i, m) : 1);
               if (p.periodo === 'anual_mes') v = m + 1 === num(p.mes) ? v : 0;
               else if (p.periodo === 'anual_diluido') v = v / 12;
               break;

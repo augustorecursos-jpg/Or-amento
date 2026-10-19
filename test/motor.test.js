@@ -171,3 +171,24 @@ test('função: aprendiz com valor próprio e "quem recebe" por função', () =>
   perto(res.valor(0, Motor.IDX.fretado, 0), 0);
   perto(res.valor(1, Motor.IDX.fretado, 0), 200);
 });
+
+test('valores da base: benefício com periodicidade do item e reajuste; remuneração com dissídio; 0 = não recebe', () => {
+  const colaboradores = [
+    colab({ id: 1, salario: 5000, excecoes: { va: { metodo: 'fixo', valor: 800, origem: 'base' }, cesta_natalina: { metodo: 'fixo', valor: 270, origem: 'base' },
+      periculosidade: { metodo: 'fixo', valor: 1500, origem: 'base' }, horas_extras: { metodo: 'fixo', valor: 400, origem: 'base' }, vt: { metodo: 'nao', valor: 0, origem: 'base' } } }),
+    colab({ id: 2, salario: 5000 }),
+  ];
+  const filiais = { F1: { dissidio_pct: 10, dissidio_mes: 5, reaj_benef_pct: 5, reaj_benef_mes: 1 } };
+  const premissas = { '*': { va: { metodo: 'fixo', valor: 1000 }, vt: { metodo: 'fixo', valor: 300 }, horas_extras: { metodo: 'rateio', valor: 24000, periodo: 'anual_diluido' } } };
+  const res = Motor.calcular({ colaboradores: colaboradores.map(c => ({ ...c, filial: 'F1' })), filiais, premissas });
+  const v = (i, r, m) => res.valor(i, Motor.IDX[r], m);
+  perto(v(0, 'va', 0), 840);                 // 800 da base + 5% de reajuste
+  perto(v(1, 'va', 0), 1050);                // regra da filial
+  perto(v(0, 'cesta_natalina', 11), 283.5);  // 1x em dezembro, como a regra do item
+  perto(v(0, 'cesta_natalina', 5), 0);
+  perto(v(0, 'periculosidade', 0), 1500);
+  perto(v(0, 'periculosidade', 5), 1650);    // sobe com o dissídio de maio
+  perto(v(0, 'horas_extras', 0), 400);
+  perto(v(1, 'horas_extras', 0), 2000);      // o total da filial fica só com quem não veio da base
+  perto(v(0, 'vt', 0), 0);
+});

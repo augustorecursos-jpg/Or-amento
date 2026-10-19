@@ -385,7 +385,7 @@ function linhasSimulacao() {
       meses: [...a.meses],
       vaga: c?.vaga,
       colab: c ? c.id : null,
-      proprias: c ? temProprias(c) : false,
+      proprias: c ? temManuais(c) : false,
     };
   }).sort((a, b) => b.meses.reduce((s, x) => s + x, 0) - a.meses.reduce((s, x) => s + x, 0));
   const total = MESES.map((_, m) => linhas.reduce((s, l) => s + l.meses[m], 0));
@@ -409,7 +409,7 @@ function detalheColaborador(id) {
   const out = [];
   for (const g of GRUPOS) {
     const filhos = RUBRICAS.map((r, k) => ({ r, k })).filter(x => x.r.grupo === g.id).map(({ r, k }) => ({
-      rotulo: r.nome, meses: MESES.map((_, m) => E.res.valor(i, k, m)), propria: Boolean(c.excecoes?.[r.id]), conta: contaDoItem(c, r),
+      rotulo: r.nome, meses: MESES.map((_, m) => E.res.valor(i, k, m)), propria: c.excecoes?.[r.id] ? (c.excecoes[r.id].origem === 'base' ? 'base' : 'manual') : '', conta: contaDoItem(c, r),
     })).filter(f => f.meses.some(x => x));
     if (!filhos.length) continue;
     out.push({ rotulo: g.nome, cor: g.cor, meses: MESES.map((_, m) => filhos.reduce((s, f) => s + f.meses[m], 0)), det: 'grupo' });
@@ -426,7 +426,9 @@ function contaDoItem(c, rub) {
     // Benefício em R$: mostra o reajuste de benefícios da filial, que entra por cima do valor lançado.
     const f = filiaisComRascunho()[c.filial] || {};
     const pct = Number(f.reaj_benef_pct) || 0;
-    if (!pct) return '';
+    const daBase = c.excecoes?.[rub.id]?.origem === 'base';
+    if (!pct) return daBase ? `${brl.format(p.valor)} da planilha da base` : '';
+    if (daBase) return `${brl.format(p.valor)} da planilha da base + reajuste de benefícios da filial de ${fmtN(pct)}% a partir de ${MESES[(f.reaj_benef_mes || 1) - 1]} = ${brl.format(p.valor * (1 + pct / 100))}`;
     const v = Motor.valorDe(p, c.funcao);
     const deFuncao = !c.excecoes?.[rub.id] && Motor.valorDe(p, c.funcao) !== Number(p.valor) ? ` (${c.funcao})` : '';
     return `${brl.format(v)}${deFuncao} + reajuste de benefícios da filial de ${fmtN(pct)}% a partir de ${MESES[(f.reaj_benef_mes || 1) - 1]} = ${brl.format(v * (1 + pct / 100))}`;
@@ -461,7 +463,7 @@ function tabelaSimulacaoHtml() {
         if (l.det) {
           // Detalhe do colaborador: % é sobre o custo dele
           return `<tr class="det-${l.det}">
-            <td class="fixa" title="${esc(l.rotulo)}">${l.det === 'grupo' ? `<i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.propria ? ' <span class="etiqueta azul">valor próprio</span>' : ''}${l.conta ? `<span class="sub conta">${esc(l.conta)}</span>` : ''}</td>
+            <td class="fixa" title="${esc(l.rotulo)}">${l.det === 'grupo' ? `<i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.propria === 'manual' ? ' <span class="etiqueta azul">valor próprio</span>' : l.propria === 'base' ? ' <span class="etiqueta neutra">da base</span>' : ''}${l.conta ? `<span class="sub conta">${esc(l.conta)}</span>` : ''}</td>
             ${l.meses.map(cel).join('')}<td class="n"><b>${fmtVal(t)}</b></td><td class="n">${pctFmt(t / totColab)}</td></tr>`;
         }
         const cls = l.grupo ? `grupo${E.sim.fechados.has(l.grupo) ? ' fechado' : ''}` : l.filho ? 'filho' : l.colab != null ? `colab${l.aberto ? ' aberto' : ''}${l.vaga ? ' vaga' : ''}` : l.vaga ? 'vaga' : '';
@@ -1677,6 +1679,9 @@ function lerPlanilha(wb) {
       const mapa = Object.fromEntries(Object.keys(ALIASES).map(k => [k, achar(k)]));
       if (mapa.nome < 0 || mapa.salario < 0 || mapa.filial < 0) continue;
       if (mapa.cc_nome === mapa.cc_cod) mapa.cc_nome = -1;
+      const colunas = colunasValores(linhas[h] || []);
+      const iSalD = cab.findIndex(c => /^SALARIO C\/ ?DISSIDIO/.test(c));
+      const comDiss = remuneracaoComDissidio(linhas, h, mapa.salario, iSalD, colunas);
       const out = [];
       for (let i = h + 1; i < linhas.length; i++) {
         const l = linhas[i] || [];
@@ -1690,30 +1695,91 @@ function lerPlanilha(wb) {
           salario: typeof v('salario') === 'number' ? v('salario') : Number(String(v('salario') ?? '0').replace(/\./g, '').replace(',', '.')) || 0,
           mes_inicio: v('mes_inicio') ?? 1, mes_fim: v('mes_fim') ?? 12, sexo: v('sexo') ?? '',
           vaga: /vaga/i.test(situacao) || /vaga/i.test(String(v('nome'))),
+          ...valoresDaLinha(l, colunas, comDiss && Number(l[iSalD]) > 0 && Number(l[mapa.salario]) > 0 ? Number(l[mapa.salario]) / Number(l[iSalD]) : 1),
         });
       }
-      return { aba: nomeAba, mapa, linhas: out };
+      return { aba: nomeAba, mapa, colunas, comDiss, linhas: out };
     }
   }
   return null;
+}
+
+// Itens que podem vir preenchidos por colaborador na base: remuneração (adicionais, horas extras), rescisão e benefícios.
+// Ficam de fora o PPR (salário × target), a cesta natalina e o grupo Demais, que seguem as premissas; férias, 13º e
+// encargos seguem calculados sobre esses valores.
+const RUBS_BASE = RUBRICAS.filter(r => !r.fixa && r.id !== 'ppr' && r.id !== 'cesta_natalina' && (r.grupo === 'remuneracao' || r.grupo === 'beneficios' || r.id === 'rescisao'));
+const APELIDOS_BASE = { adic_turno: ['ADIC. NOTURNO', 'ADICIONAL NOTURNO', 'ADICIONAIS DE TURNO'] };
+
+/** Colunas da planilha com o valor de cada item por colaborador: [{ rub, col }]. */
+function colunasValores(cab) {
+  const porNome = new Map();
+  RUBS_BASE.forEach(r => [r.nome, ...(APELIDOS[r.id] || []), ...(APELIDOS_BASE[r.id] || [])].forEach(n => porNome.set(chaveNome(n), r.id)));
+  const vistos = new Set();
+  const out = [];
+  cab.forEach((c, col) => {
+    const rub = porNome.get(chaveNome(c));
+    if (rub && !vistos.has(rub)) { vistos.add(rub); out.push({ rub, col }); }
+  });
+  return out;
+}
+
+const numeroCelula = v => (typeof v === 'number' ? v : Number(String(v).replace(/[R$\s]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')));
+
+/**
+ * A remuneração da planilha foi calculada sobre o salário com dissídio? (planilhas com coluna SALÁRIO C/ DISSÍDIO)
+ * Compara a periculosidade com os dois salários: o % "redondo" (ex.: 30%) indica sobre qual ela foi calculada.
+ */
+function remuneracaoComDissidio(linhas, h, iSal, iSalD, colunas) {
+  const iPer = colunas.find(c => c.rub === 'periculosidade')?.col;
+  if (iSalD < 0 || iPer == null) return false;
+  const torto = x => Math.abs(x * 100 - Math.round(x * 100));
+  let comD = 0, semD = 0;
+  for (const l of linhas.slice(h + 1)) {
+    const per = Number(l?.[iPer]), sal = Number(l?.[iSal]), salD = Number(l?.[iSalD]);
+    if (!(per > 0 && sal > 0 && salD > sal)) continue;
+    if (torto(per / salD) < torto(per / sal)) comD++; else semD++;
+  }
+  return comD > semD;
+}
+
+/** Periodicidade do item na regra geral, para lembrar como o valor da planilha será lido (ex.: cesta 1x em dezembro). */
+function quandoGeral(rub) {
+  const p = Motor.premissaDe(E.dados.premissas, '', '', rub);
+  return p.periodo === 'anual_mes' ? ` · 1x em ${MESES[p.mes - 1]}` : p.periodo === 'anual_diluido' && p.metodo !== 'rateio' ? ' · anual ÷ 12' : '';
+}
+
+/** Valores da linha: número > 0 = R$ do colaborador; 0 = não recebe; vazio = segue a regra da filial. */
+function valoresDaLinha(l, colunas, deflator) {
+  if (!colunas.length) return {};
+  const vals = {};
+  for (const { rub, col } of colunas) {
+    const v = l[col];
+    if (v == null || String(v).trim() === '') continue;
+    let n = numeroCelula(v);
+    if (!Number.isFinite(n)) { if (/^(-|—|n|nao|não)$/i.test(String(v).trim())) n = 0; else continue; }
+    // Remuneração e rescisão entram sem dissídio (como o salário): a ferramenta aplica o dissídio da filial no mês da data-base.
+    if (RUBRICAS[IDX[rub]].grupo !== 'beneficios') n *= deflator;
+    vals[rub] = n > 0 ? { metodo: 'fixo', valor: Math.round(n * 100) / 100, origem: 'base' } : { metodo: 'nao', valor: 0, origem: 'base' };
+  }
+  return { valores_base: vals, colunas_arq: colunas.map(c => c.rub) };
 }
 
 function renderBase() {
   const el = painel('base');
   el.innerHTML = `
     <div class="cab-pagina"><div><h1 class="titulo-pagina">Base de <em>colaboradores</em></h1>
-      <p class="subtitulo">Suba só os dados cadastrais e o <b>salário</b> (sem dissídio) de cada colaborador. Periculosidade, horas extras, benefícios, encargos e provisões <b>não vêm da planilha</b>: a ferramenta calcula tudo pelas premissas de cada filial.</p></div>
+      <p class="subtitulo">Suba os dados cadastrais e o <b>salário</b> (sem dissídio) de cada colaborador. Adicionais, horas extras, rescisão e benefícios podem vir com o <b>valor de cada colaborador</b> em colunas opcionais (0 = não recebe; vazio = segue a regra da filial). PPR, cesta natalina, o grupo Demais, férias, 13º e encargos seguem as premissas.</p></div>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn btn-claro" id="nova-vaga">+ Nova vaga</button><button class="btn btn-claro" id="novo-colab">+ Colaborador</button></div></div>
     <section class="cartao importar">
       <h3>Importar base <small>· .xlsx ou .csv · pode ser uma planilha por regional ou todas juntas</small></h3>
       <div class="passos-modelo">
-        <div><b>1</b><span>Baixe o modelo — são só <b>13 colunas</b>, até o salário.</span><button class="btn btn-marinho btn-sm" id="baixar-modelo">⬇ Baixar modelo (Excel)</button></div>
+        <div><b>1</b><span>Baixe o modelo — <b>13 colunas</b> até o salário e, se quiser, os valores de adicionais e <b>benefícios</b> de cada colaborador.</span><button class="btn btn-marinho btn-sm" id="baixar-modelo">⬇ Baixar modelo (Excel)</button></div>
         <div><b>2</b><span>Cole os colaboradores (uma linha por pessoa). Vagas: situação “Nova Vaga” e o mês de admissão em <i>Mês início</i>.</span></div>
         <div><b>3</b><span>Suba o arquivo aqui embaixo e confira a prévia antes de importar.</span></div>
       </div>
       <label class="zona-arquivo" id="zona"><input type="file" id="arquivo" accept=".xlsx,.xls,.csv" multiple hidden>
         <strong>Clique ou arraste as planilhas aqui</strong><span class="zona-dica">Pode adicionar uma de cada vez — elas vão se juntando numa lista e você importa todas juntas.</span>Matrícula · Funcionário · Regional · Filial · Situação · Função · Cargo · Cód. C. Custo · Centro de custo · Salário · Mês início · Mês fim
-        <br><small>Colunas a mais na planilha são ignoradas.</small></label>
+        <br><small>Colunas de adicionais, horas extras, rescisão e benefícios (VA, VT, Assist. médica…) são lidas como valor do colaborador; as demais são ignoradas.</small></label>
       <div id="previa" class="previa"></div>
     </section>
     <section class="cartao base-situacao" style="margin-top:1.2rem" id="base-situacao"></section>
@@ -1773,13 +1839,15 @@ function aplicarCondicoesProprias(wb, lido) {
 
 function baixarModeloBase() {
   if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
-  const cab = ['MATRÍCULA', 'FUNCIONÁRIO', 'SEXO', 'REGIONAL', 'FILIAL', 'SITUAÇÃO', 'FUNÇÃO', 'CARGO', 'CÓD. C. CUSTO', 'CENTRO DE CUSTO', 'SALÁRIO', 'MÊS INÍCIO', 'MÊS FIM'];
+  const cab = ['MATRÍCULA', 'FUNCIONÁRIO', 'SEXO', 'REGIONAL', 'FILIAL', 'SITUAÇÃO', 'FUNÇÃO', 'CARGO', 'CÓD. C. CUSTO', 'CENTRO DE CUSTO', 'SALÁRIO', 'MÊS INÍCIO', 'MÊS FIM',
+    ...RUBS_BASE.map(r => r.nome.toUpperCase())];
+  const exemplo = { periculosidade: 1252.68, horas_extras: 410.38, va: 1480, vt: 0, assist_medica: 2339.18, assist_odonto: 27, seguro_vida: 83.9 };
   const ws = XLSX.utils.aoa_to_sheet([
     cab,
-    ['10001', 'NOME DO COLABORADOR', 'F', 'NORTE', 'APARECIDA', 'Ativo', 'Operador I', '15-Operação - Produção', '17150', 'OPERAÇÃO', 4175.6, 1, 12],
+    ['10001', 'NOME DO COLABORADOR', 'F', 'NORTE', 'APARECIDA', 'Ativo', 'Operador I', '15-Operação - Produção', '17150', 'OPERAÇÃO', 4175.6, 1, 12, ...RUBS_BASE.map(r => exemplo[r.id] ?? null)],
     ['', 'NOVA VAGA - OPERADOR I', '', 'NORTE', 'APARECIDA', 'Nova Vaga', 'Operador I', '15-Operação - Produção', '17150', 'OPERAÇÃO', 4000, 4, 12],
   ]);
-  ws['!cols'] = [12, 34, 7, 16, 22, 14, 28, 26, 14, 26, 12, 11, 10].map(wch => ({ wch }));
+  ws['!cols'] = [12, 34, 7, 16, 22, 14, 28, 26, 14, 26, 12, 11, 10, ...RUBS_BASE.map(() => 14)].map(wch => ({ wch }));
   const ajuda = XLSX.utils.aoa_to_sheet([
     ['Coluna', 'O que colocar'],
     ['MATRÍCULA', 'Chapa/matrícula (pode ficar vazia para vagas)'],
@@ -1793,7 +1861,10 @@ function baixarModeloBase() {
     ['MÊS INÍCIO', 'Opcional. 1 a 12 — para vagas, o mês de admissão. Vazio = janeiro'],
     ['MÊS FIM', 'Opcional. 1 a 12 — desligamento previsto. Vazio = dezembro'],
     [''],
-    ['Não inclua periculosidade, horas extras, benefícios, encargos ou provisões: eles são calculados pelas premissas de cada filial.'],
+    ['PERICULOSIDADE … RESCISÃO', 'Opcional. Valor do colaborador em R$ por mês, SEM dissídio (como o salário): 0 = não recebe · vazio = segue a regra da filial. Sobem com o dissídio da filial; férias, 13º e encargos são calculados sobre eles.'],
+    ['VA / VR … FRETADO (OVERALL)', 'Opcional. Valor de cada benefício do colaborador em R$: 0 = não recebe · vazio = segue a regra da filial. Cada valor segue a periodicidade do item nas premissas (todo mês, 1x no ano…) e recebe o reajuste de benefícios da filial. Pode apagar as colunas que não usar.'],
+    [''],
+    ['PPR, cesta natalina, férias, 13º, encargos e o grupo Demais (endomarketing, treinamento…) não vêm da planilha: seguem as premissas de cada filial.'],
     [''],
     ['ABA "Condições próprias" (opcional)', 'Só para quem tem benefício diferente da regra da filial (ex.: sucedidos). Uma linha por colaborador e item:'],
     ['MATRÍCULA', 'A mesma da aba Base'],
@@ -1845,6 +1916,7 @@ async function previaImportacao(arquivos) {
   const porReg = {};
   linhas.forEach(l => { (porReg[l.regional || '?'] ||= new Set()).add(l.filial); });
   const totalSal = linhas.reduce((s, l) => s + l.salario, 0);
+  const comValores = RUBS_BASE.map(r => r.id).filter(r => lidas.some(l => (l.colunas || []).some(c => c.rub === r)));
   prev.innerHTML = `
     <div class="fila-cab"><b>${lidas.length} arquivo(s) na lista</b><button class="btn btn-claro btn-sm" id="add-arquivo">+ Adicionar outra planilha</button><button class="btn-link" id="limpar-fila">Limpar lista</button></div>
     ${lidas.map((l, i) => l.erro ? `<p class="fila-item">❌ <b>${esc(l.arquivo)}</b>: não encontrei uma linha de cabeçalho com Funcionário, Filial e Salário. <button class="btn-ic" data-tirar="${i}" title="Tirar da lista">✕</button></p>`
@@ -1855,6 +1927,13 @@ async function previaImportacao(arquivos) {
     ${linhas.length ? `
       <div><b>${linhas.length}</b> colaboradores · <b>${linhas.filter(l => l.vaga).length}</b> vaga(s) · folha base de <b>${brl0.format(totalSal)}</b>/mês${linhas.some(l => l.excecoes) ? ` · <b>${linhas.filter(l => l.excecoes).length}</b> com condições próprias` : ''}</div>
       ${lidas.flatMap(l => l.avisosCond || []).map(a => `<p style="color:#b54d12;margin:0">⚠ ${esc(a)}</p>`).join('')}
+      ${comValores.length ? `<div class="benef-base">
+        <b>Valores por colaborador encontrados na planilha</b> <small>marque os itens que devem vir da planilha · valor = R$ do colaborador · 0 = não recebe · vazio = segue a regra da filial</small>
+        ${[['Remuneração e rescisão', 'entram sem dissídio, como o salário, e sobem com o dissídio da filial; férias, 13º e encargos são calculados sobre eles', r => RUBRICAS[IDX[r]].grupo !== 'beneficios'],
+          ['Benefícios', 'cada valor segue a periodicidade do item nas premissas (todo mês, 1x no ano…) e recebe o reajuste de benefícios da filial', r => RUBRICAS[IDX[r]].grupo === 'beneficios']]
+          .map(([titulo, dica, f]) => comValores.filter(f).length ? `<div class="benef-grupo"><span><b>${titulo}</b><small>${dica}</small></span><div class="chips">${comValores.filter(f).map(r => `<label class="chip ok"><input type="checkbox" data-usar="${r}" checked> ${esc(RUBRICAS[IDX[r]].nome)} <small>(${linhas.filter(l => l.valores_base?.[r]?.metodo === 'fixo').length})${quandoGeral(r)}</small></label>`).join('')}</div></div>` : '').join('')}
+        ${lidas.filter(l => l.comDiss).map(l => `<p style="margin:.3rem 0 0;color:#b54d12">ℹ ${esc(l.arquivo)}: a remuneração está calculada sobre o salário com dissídio — a ferramenta tira o dissídio desses valores, porque aplica o da filial no mês da data-base.</p>`).join('')}
+        <small>PPR, cesta natalina e o grupo Demais (endomarketing, treinamento…) continuam pelas premissas.</small></div>` : ''}
       <div class="chips">${Object.entries(porReg).map(([r, f]) => `<span class="chip">${esc(r)} · ${f.size} filiais</span>`).join('')}</div>
       ${semRegional ? `<p style="color:#b54d12">⚠ ${semRegional} linha(s) sem regional — serão ignoradas.</p>` : ''}
       <div class="linha">
@@ -1876,7 +1955,13 @@ async function previaImportacao(arquivos) {
     e.target.disabled = true;
     e.target.textContent = 'Importando…';
     try {
-      const r = await api('/api/colaboradores/importar', { method: 'POST', body: { modo, linhas: linhas.filter(l => l.regional) } });
+      const usar = new Set($$('[data-usar]:checked', prev).map(i => i.dataset.usar));
+      // Itens marcados vêm da planilha; os da aba "Condições próprias" (ajustados à mão) valem por cima deles.
+      const enviar = linhas.filter(l => l.regional).map(({ valores_base, colunas_arq, ...l }) => {
+        const vals = Object.fromEntries(Object.entries(valores_base || {}).filter(([r]) => usar.has(r)));
+        return { ...l, excecoes: { ...vals, ...(l.excecoes || {}) }, colunas_base: (colunas_arq || []).filter(r => usar.has(r)) };
+      });
+      const r = await api('/api/colaboradores/importar', { method: 'POST', body: { modo, linhas: enviar } });
       E.base.fila = [];
       await carregar();
       toast(`${r.importados} colaboradores importados (${r.regionais.join(', ')}).`);
@@ -1935,7 +2020,7 @@ function desenharBase() {
   desenharSituacaoBase();
   const busca = E.base.busca.toLowerCase();
   const idx = new Map(E.res.colaboradores.map((c, i) => [c.id, i]));
-  const lista = E.dados.colaboradores.filter(c => noFiltro(c) && (!E.base.soVagas || c.vaga) && (!E.base.soProprias || temProprias(c)) &&
+  const lista = E.dados.colaboradores.filter(c => noFiltro(c) && (!E.base.soVagas || c.vaga) && (!E.base.soProprias || temManuais(c)) &&
     (!busca || `${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome} ${c.cc_cod}`.toLowerCase().includes(busca)));
   const anual = c => { const i = idx.get(c.id); let s = 0; for (let k = 0; k < RN * 12; k++) s += E.res.valores[i * RN * 12 + k]; return s; };
   $('#base-resumo').innerHTML = `<span class="etiqueta azul">${lista.length} registro(s)</span><span class="etiqueta pend">${lista.filter(c => c.vaga).length} vaga(s)</span>`;
@@ -2016,7 +2101,15 @@ function editarColaborador(id, padrao = {}) {
 
 const TIPOS_PROPRIA = { fixo: 'R$ por mês', pct: '%', multiplo: 'Nº de salários', nao: 'Não recebe' };
 const temProprias = c => Boolean(c.excecoes && Object.keys(c.excecoes).length);
-const etiquetaProprias = c => (temProprias(c) ? ` <span class="etiqueta azul" title="${esc(Object.entries(c.excecoes).map(([r, e]) => `${RUBRICAS[IDX[r]].nome}: ${textoCurto({ ...e, periodo: 'mensal' })}`).join(' · '))}">condições próprias</span>` : '');
+// Condições ajustadas à mão (sucedidos etc.), sem contar os valores que vieram da planilha da base.
+const temManuais = c => Object.values(c.excecoes || {}).some(e => e.origem !== 'base');
+const etiquetaProprias = c => {
+  if (!temProprias(c)) return '';
+  const itens = Object.entries(c.excecoes);
+  const manuais = itens.filter(([, e]) => e.origem !== 'base');
+  const dica = lista => esc(lista.map(([r, e]) => `${RUBRICAS[IDX[r]].nome}: ${textoCurto({ ...e, periodo: 'mensal' })}`).join(' · '));
+  return `${manuais.length ? ` <span class="etiqueta azul" title="${dica(manuais)}">condições próprias</span>` : ''}${manuais.length < itens.length ? ` <span class="etiqueta neutra" title="${dica(itens.filter(([, e]) => e.origem === 'base'))}">benefícios da base</span>` : ''}`;
+};
 
 function montarProprias(d, c) {
   const box = $('#lista-proprias', d);
@@ -2028,12 +2121,14 @@ function montarProprias(d, c) {
   const linha = (rub = '', e = { metodo: 'fixo', valor: '' }) => {
     const div = document.createElement('div');
     div.className = 'propria-linha';
+    div.dataset.origem = e.origem || '';
+    div.addEventListener('change', () => { div.dataset.origem = ''; });
     div.innerHTML = `
       <select class="campo" data-p="rub"><option value="">Escolha o item…</option>${GRUPOS.filter(g => g.id !== 'provisoes' && g.id !== 'encargos').map(g => `<optgroup label="${g.nome}">${RUBRICAS.filter(r => r.grupo === g.id && !r.fixa).map(r => `<option value="${r.id}" ${r.id === rub ? 'selected' : ''}>${esc(r.nome)}</option>`).join('')}</optgroup>`).join('')}</select>
       <select class="campo" data-p="metodo">${Object.entries(TIPOS_PROPRIA).map(([k, v]) => `<option value="${k}" ${k === e.metodo ? 'selected' : ''}>${v}</option>`).join('')}</select>
       <input class="campo" type="number" step="any" data-p="valor" value="${e.valor ?? ''}" placeholder="valor" ${e.metodo === 'nao' ? 'disabled' : ''}>
       <button type="button" class="btn-ic" data-p="rem" title="Remover">✕</button>
-      <small data-p="regra">${rub ? esc(regra(rub)) : ''}</small>`;
+      <small data-p="regra">${e.origem === 'base' ? 'veio da planilha da base · ' : ''}${rub ? esc(regra(rub)) : ''}</small>`;
     div.querySelector('[data-p=rub]').addEventListener('change', ev => { div.querySelector('[data-p=regra]').textContent = ev.target.value ? regra(ev.target.value) : ''; });
     div.querySelector('[data-p=metodo]').addEventListener('change', ev => { div.querySelector('[data-p=valor]').disabled = ev.target.value === 'nao'; });
     div.querySelector('[data-p=rem]').addEventListener('click', () => div.remove());
@@ -2051,7 +2146,7 @@ function lerProprias(d) {
     if (!rub) continue;
     if (out[rub]) { toast(`O item ${RUBRICAS[IDX[rub]].nome} aparece duas vezes.`, 'erro'); return null; }
     const metodo = div.querySelector('[data-p=metodo]').value;
-    out[rub] = { metodo, valor: metodo === 'nao' ? 0 : Number(div.querySelector('[data-p=valor]').value) || 0 };
+    out[rub] = { metodo, valor: metodo === 'nao' ? 0 : Number(div.querySelector('[data-p=valor]').value) || 0, ...(div.dataset.origem === 'base' ? { origem: 'base' } : {}) };
   }
   return out;
 }
@@ -2151,7 +2246,7 @@ function detalheConferencia() {
           return `<tr class="linha-sel${c.vaga ? ' vaga' : ''}${E.conf.sel.has(c.id) ? ' marcada' : ''}" data-sel="${c.id}"><td class="fixa"><input type="checkbox" class="marca" data-marca="${c.id}" ${E.conf.sel.has(c.id) ? 'checked' : ''} aria-label="Selecionar ${esc(c.nome)} para ajuste"> ${esc(c.nome)}${c.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${etiquetaProprias(c)}<span class="sub" title="${esc(`${[c.matricula, c.funcao, c.cargo].filter(Boolean).join(' · ')} — CC ${[c.cc_cod, c.cc_nome].filter(Boolean).join(' · ')}`)}">${esc([c.funcao, c.cc_cod ? `CC ${c.cc_cod} ${c.cc_nome || ''}` : ''].filter(Boolean).join(' · '))}</span></td>
             <td>${meses === 12 ? 'Ano todo' : `${MESES[c.mes_inicio - 1]} – ${MESES[c.mes_fim - 1]}`}</td>
             <td class="n">${brl.format(c.salario)}</td>
-            ${cols.map(({ k }) => { const v = valorCel(c, k); return `<td class="n${v ? '' : ' zero'}${c.excecoes?.[RUBRICAS[k].id] ? ' propria-cel' : ''}">${v ? num2.format(v) : '–'}</td>`; }).join('')}
+            ${cols.map(({ k }) => { const v = valorCel(c, k); return `<td class="n${v ? '' : ' zero'}${c.excecoes?.[RUBRICAS[k].id] && c.excecoes[RUBRICAS[k].id].origem !== 'base' ? ' propria-cel' : ''}">${v ? num2.format(v) : '–'}</td>`; }).join('')}
             <td class="n"><b>${num2.format(porMes ? tot / meses : tot)}</b></td></tr>`;
         }).join('')}</tbody>
         <tfoot><tr class="total"><td class="fixa">Total da filial${porMes ? ' / mês' : ''}</td><td></td><td class="n">${num2.format(colabs.reduce((s, c) => s + c.salario, 0))}</td>

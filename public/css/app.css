@@ -57,6 +57,12 @@ body.app { display: flex; min-height: 100vh; }
 .linha-funcao { display: flex; align-items: center; gap: .4rem; justify-content: space-between; }
 .linha-funcao .check { flex: 1; min-width: 0; }
 .valor-funcao { width: 6.5rem; flex: none; padding: .25rem .4rem; font-size: .85rem; }
+.benef-base { background: var(--fundo-2); border-radius: 10px; padding: .6rem .8rem; }
+.benef-base > small, .benef-grupo span small { display: block; color: var(--texto-suave); margin-top: .2rem; }
+.benef-grupo { display: grid; grid-template-columns: 260px 1fr; gap: .8rem; margin-top: .6rem; align-items: start; }
+.benef-grupo .chips label { cursor: pointer; display: inline-flex; align-items: center; gap: .3rem; }
+.benef-grupo .chips small { color: var(--texto-suave); }
+@media (max-width: 760px) { .benef-grupo { grid-template-columns: 1fr; } }
 .nota-reajuste { display: block; color: var(--laranja, #ec6b24); font-size: .72rem; margin-top: .2rem; white-space: nowrap; }
 .valor-funcao::placeholder { color: #a9b4bf; font-style: italic; }
 

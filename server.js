@@ -293,8 +293,20 @@ function lerExcecoes(v) {
   const out = {};
   for (const [rub, e] of Object.entries(obj && typeof obj === 'object' ? obj : {})) {
     if (!RUBRICAS_VALIDAS.has(rub) || !e || !['nao', 'fixo', 'pct', 'multiplo'].includes(e.metodo)) continue;
-    out[rub] = { metodo: e.metodo, valor: e.metodo === 'nao' ? 0 : numero(e.valor) };
+    out[rub] = { metodo: e.metodo, valor: e.metodo === 'nao' ? 0 : numero(e.valor), ...(e.origem === 'base' ? { origem: 'base' } : {}) };
   }
+  return out;
+}
+
+/**
+ * Junta as condições já cadastradas com as da nova planilha. O que foi ajustado à mão (sem origem) é mantido;
+ * valores que vieram da base são trocados pelos da nova planilha nos itens que ela traz como coluna.
+ */
+function juntarExcecoes(velhas, novas, colunasBase) {
+  const cols = new Set(colunasBase || []);
+  const out = {};
+  for (const [rub, e] of Object.entries(velhas)) if (e.origem !== 'base' || !cols.has(rub)) out[rub] = e;
+  for (const [rub, e] of Object.entries(novas)) if (e.origem !== 'base' || !out[rub] || out[rub].origem === 'base') out[rub] = e;
   return out;
 }
 
@@ -308,6 +320,8 @@ app.post('/api/colaboradores/importar', exigirAdmin, (req, res) => {
   const erros = [];
   linhas.forEach((l, i) => {
     const c = lerColaborador(l);
+    // Itens que vieram como coluna da planilha (valores por colaborador): substituem os valores de base anteriores.
+    c.colunas_base = (Array.isArray(l.colunas_base) ? l.colunas_base : []).filter(r => RUBRICAS_VALIDAS.has(r));
     if (!c.nome || !c.regional || !c.filial) erros.push(`Linha ${i + 1}: nome, regional e filial são obrigatórios.`);
     else validos.push(c);
   });
@@ -324,8 +338,11 @@ app.post('/api/colaboradores/importar', exigirAdmin, (req, res) => {
         : db.prepare(`SELECT matricula, nome, excecoes FROM colaboradores WHERE matricula <> '' AND excecoes <> '{}' AND regional IN (${regionais.map(() => '?').join(',')})`).all(...regionais);
       // Mesma matrícula pode existir em empresas diferentes: casa por matrícula + nome.
       const chave = c => `${c.matricula}|${String(c.nome).trim().toUpperCase()}`;
-      const porMatricula = new Map(antigas.map(a => [chave(a), a.excecoes]));
-      for (const c of validos) if (c.excecoes === '{}' && porMatricula.has(chave(c))) c.excecoes = porMatricula.get(chave(c));
+      const porMatricula = new Map(antigas.map(a => [chave(a), lerExcecoes(a.excecoes)]));
+      for (const c of validos) {
+        const velhas = porMatricula.get(chave(c));
+        if (velhas) c.excecoes = JSON.stringify(juntarExcecoes(velhas, lerExcecoes(c.excecoes), c.colunas_base));
+      }
       if (modo === 'tudo') db.exec('DELETE FROM colaboradores');
       else {
         const del = db.prepare('DELETE FROM colaboradores WHERE regional = ?');
