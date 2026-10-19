@@ -535,7 +535,7 @@ function lerContabil() {
   let c = {};
   try { c = JSON.parse(linha?.valor || '{}'); } catch { c = {}; }
   return {
-    terceiro: 'N/A Custom1', cc_padrao: 'N/A Centro de Custo', contas: [], ccs: [], mapa_rubricas: {}, mapa_cc: {},
+    terceiro: 'N/A Custom1', cc_padrao: 'N/A Centro de Custo', contas: [], ccs: [], mapa_rubricas: {}, mapa_cc: {}, cc_rubricas: {},
     pacotes: ['PESSOAL', 'BENEFÍCIOS', 'PROVISÕES TRABALHISTAS'], mapa_pacotes: {}, ...c,
   };
 }
@@ -558,6 +558,8 @@ app.put('/api/contabil', exigirAdmin, (req, res) => {
     ccs: lista(b.ccs) ?? atual.ccs,
     mapa_rubricas: mapa(b.mapa_rubricas, k => RUBRICAS_VALIDAS.has(k)) ?? atual.mapa_rubricas,
     mapa_cc: mapa(b.mapa_cc, k => texto(k) !== '') ?? atual.mapa_cc,
+    // Centro de custo fixo de um item (ex.: VT e fretado no 25506); '-' = o centro de custo de cada colaborador.
+    cc_rubricas: mapa(b.cc_rubricas, k => RUBRICAS_VALIDAS.has(k)) ?? atual.cc_rubricas,
   };
   db.prepare("INSERT INTO config (chave, valor) VALUES ('contabil', ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").run(JSON.stringify(novo));
   registrar('Administrador', 'Alterou a configuração do relatório contábil', `${novo.contas.length} contas · ${novo.ccs.length} centros de custo`);

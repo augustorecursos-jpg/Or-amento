@@ -2520,6 +2520,9 @@ const CONTA_SUGERIDA = {
   saude_ocupacional: '67980 - EXAMES PERIÓDICOS', endomarketing: '105278 - ENDOMARKETING', treinamento: '246 - CURSOS E TREINAMENTOS DE PESSOAL',
   viagens: '68420 - DIÁRIAS', confraternizacoes: '251 - CONFRATERNIZAÇÕES',
 };
+// Itens lançados num centro de custo próprio, e não no do colaborador (editável na tela).
+const CC_MOBILIDADE = '25506 - TRANSPORTE CONTRATADO/MOBILIDADE';
+const CC_SUGERIDO = { vt: CC_MOBILIDADE, fretado: CC_MOBILIDADE, fretado_overall: CC_MOBILIDADE };
 // Pacote de cada item no arquivo da contabilidade (editável na tela).
 const PROVISOES_TRAB = new Set(['ferias', 'decimo', 'fgts_ferias', 'fgts_13', 'inss_ferias', 'inss_13']);
 function pacoteDoItem(cfg, rub) {
@@ -2543,6 +2546,15 @@ function contaDoItem2(cfg, rub) {
   return cfg.contas.find(c => codigoDe(c) === codigoDe(sug)) || sug;
 }
 
+/** Centro de custo fixo do item (ex.: VT e fretado no 25506) ou '' para usar o do colaborador. */
+function ccDoItem(cfg, rub) {
+  const v = cfg.cc_rubricas?.[rub];
+  if (v === '-') return '';
+  const cc = v || CC_SUGERIDO[rub];
+  if (!cc) return '';
+  return cfg.ccs.find(c => codigoDe(c) === codigoDe(cc)) || cc;
+}
+
 /** Centro de custo contábil de um CÓD. C. CUSTO da base: escolhido → mesmo código na lista → padrão. */
 function ccContabil(cfg, cod) {
   if (cfg.mapa_cc[cod]) return { cc: cfg.mapa_cc[cod], como: 'manual' };
@@ -2556,7 +2568,7 @@ function linhasContabeis(cfg) {
   const porChave = new Map();
   E.res.colaboradores.forEach((c, i) => {
     if (!noFiltro(c)) return;
-    const cc = ccContabil(cfg, c.cc_cod).cc;
+    const ccColab = ccContabil(cfg, c.cc_cod).cc;
     // Com "regional e filial", cada filial tem as suas linhas (para conferência); sem, soma como a contabilidade recebe.
     const regional = E.contabil.porFilial ? c.regional : '';
     const filial = E.contabil.porFilial ? c.filial : '';
@@ -2564,6 +2576,7 @@ function linhasContabeis(cfg) {
       const conta = contaDoItem2(cfg, r.id);
       if (!conta) return;
       const pacote = pacoteDoItem(cfg, r.id);
+      const cc = ccDoItem(cfg, r.id) || ccColab;
       const chave = `${regional}\u0000${filial}\u0000${pacote}\u0000${cc}\u0000${conta}`;
       if (!porChave.has(chave)) porChave.set(chave, { regional, filial, pacote, cc, conta, meses: new Float64Array(12) });
       const l = porChave.get(chave);
@@ -2619,12 +2632,13 @@ async function renderContabil() {
     </div>
 
     <section class="cartao" style="margin-top:1.2rem">
-      <h3>3 · Item do orçamento → Conta contábil <small>· sugestão inicial pelo nome da conta; troque o que precisar</small></h3>
-      <div class="tabela-wrap" style="max-height:420px"><table class="tabela contabil-itens"><thead><tr><th>Item</th><th class="n">Custo anual (${esc(escopo)})</th><th>Pacote</th><th>Conta contábil</th></tr></thead>
-      <tbody>${GRUPOS.map(g => `<tr class="grupo"><td colspan="4" style="cursor:default">${g.nome}</td></tr>${RUBRICAS.map((r, k) => ({ r, k })).filter(x => x.r.grupo === g.id).map(({ r, k }) => `
+      <h3>3 · Item do orçamento → Conta contábil <small>· sugestão inicial pelo nome da conta; troque o que precisar. Centro de custo: o do colaborador ou um fixo para o item (VT e fretado → 25506 Transporte Contratado/Mobilidade)</small></h3>
+      <div class="tabela-wrap" style="max-height:420px"><table class="tabela contabil-itens"><thead><tr><th>Item</th><th class="n">Custo anual (${esc(escopo)})</th><th>Pacote</th><th>Conta contábil</th><th>Centro de custo</th></tr></thead>
+      <tbody>${GRUPOS.map(g => `<tr class="grupo"><td colspan="5" style="cursor:default">${g.nome}</td></tr>${RUBRICAS.map((r, k) => ({ r, k })).filter(x => x.r.grupo === g.id).map(({ r, k }) => `
         <tr><td>${esc(r.nome)}</td><td class="n">${brl0.format(anualRub(k))}</td>
         <td><select class="campo" data-pacote="${r.id}">${cfg.pacotes.map(pc => `<option ${pc === pacoteDoItem(cfg, r.id) ? 'selected' : ''}>${esc(pc)}</option>`).join('')}</select></td>
-        <td><select class="campo" data-rub="${r.id}">${opcoes(cfg.contas.length ? cfg.contas : Object.values(CONTA_SUGERIDA), contaDoItem2(cfg, r.id), '— não enviar —')}</select></td></tr>`).join('')}`).join('')}</tbody></table></div>
+        <td><select class="campo" data-rub="${r.id}">${opcoes(cfg.contas.length ? cfg.contas : Object.values(CONTA_SUGERIDA), contaDoItem2(cfg, r.id), '— não enviar —')}</select></td>
+        <td><select class="campo" data-ccrub="${r.id}">${opcoes([...cfg.ccs, CC_MOBILIDADE], ccDoItem(cfg, r.id), '— o do colaborador —')}</select></td></tr>`).join('')}`).join('')}</tbody></table></div>
     </section>
 
     <section class="cartao" style="margin-top:1.2rem">
@@ -2646,6 +2660,7 @@ async function renderContabil() {
   });
   $$('[data-pacote]', el).forEach(s => s.addEventListener('change', () => salvar({ mapa_pacotes: { ...cfg.mapa_pacotes, [s.dataset.pacote]: s.value } })));
   $('#ct-terceiro', el).addEventListener('change', e => salvar({ terceiro: e.target.value }));
+  $$('[data-ccrub]', el).forEach(s => s.addEventListener('change', () => salvar({ cc_rubricas: { ...cfg.cc_rubricas, [s.dataset.ccrub]: s.value || '-' } })));
   $('#ct-zeradas', el).addEventListener('change', e => { E.contabil.zeradas = e.target.checked; renderContabil(); });
   $('#ct-filial', el).addEventListener('change', e => { E.contabil.porFilial = e.target.checked; renderContabil(); });
   $$('[data-cc]', el).forEach(s => s.addEventListener('change', () => {
