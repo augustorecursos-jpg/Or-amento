@@ -142,8 +142,8 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
 | Demais | Saúde ocupacional, Endomarketing, Treinamento, Viagens, Confraternizações |
 
 Padrões do sistema (regra do ADM de pessoal, ajustáveis em Premissas): periculosidade 30% do salário. Férias, 13º,
-FGTS e INSS sobre **salário + adicionais (periculosidade, insalubridade, penosidade, turno) + horas extras**: férias (1/3)
-= base ÷ 36; 13º = base ÷ 12; FGTS 8% (e 8% sobre férias e 13º); **INSS 29%**. PPR 2,4 salários/ano.
+FGTS e INSS sobre **salário + adicionais (periculosidade, insalubridade, penosidade, turno/noturno) + horas extras**: férias
++ 1/3 = base ÷ 12 + (base ÷ 12) ÷ 3 (= base ÷ 9); 13º = base ÷ 12; FGTS 8% (e 8% sobre férias e 13º); **INSS 29%**. PPR 2,4 salários/ano.
 O salário importado é **sem dissídio**: o reajuste entra a partir do mês da data-base de cada filial.
 
 ## Estrutura

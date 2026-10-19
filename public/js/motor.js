@@ -52,7 +52,8 @@
     { id: 'horas_extras', nome: 'Horas extras', grupo: 'remuneracao', dica: 'Custo total do ano da filial; vira média mensal por colaborador', padrao: P('rateio', { periodo: 'anual_diluido' }) },
 
     // Férias, 13º, FGTS e INSS sobre salário + adicionais (periculosidade, insalubridade…) + horas extras (regra do ADM de pessoal).
-    { id: 'ferias', nome: 'Férias (1/3)', grupo: 'provisoes', padrao: P('pct', { valor: 2.7778, base: 'folha' }) },
+    // Férias + 1/3 = base ÷ 12 + (base ÷ 12) ÷ 3 = base ÷ 9 (11,1111%).
+    { id: 'ferias', nome: 'Férias + 1/3', grupo: 'provisoes', padrao: P('pct', { valor: 11.1111, base: 'folha' }) },
     { id: 'decimo', nome: '13º salário', grupo: 'provisoes', padrao: P('pct', { valor: 8.3333, base: 'folha' }) },
     { id: 'rescisao', nome: 'Rescisão', grupo: 'provisoes', padrao: P('nao') },
 

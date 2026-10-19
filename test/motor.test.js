@@ -17,7 +17,7 @@ test('férias, 13º, FGTS e INSS sobre salário + adicionais + horas extras (dis
   perto(v('salario'), 5063.049288);
   perto(v('periculosidade'), 1518.9147864);
   const folha = 5063.049288 + 1518.9147864 + 300;
-  perto(v('ferias'), folha / 36);
+  perto(v('ferias'), folha / 12 + folha / 12 / 3);
   perto(v('decimo'), folha / 12);
   perto(v('fgts'), folha * 0.08);
   perto(v('inss'), folha * 0.29);
@@ -200,4 +200,10 @@ test('auxílio óculos da base: valor do ano dividido em 12', () => {
   const res = Motor.calcular({ colaboradores: [c], filiais: {}, premissas: {} });
   perto(res.valor(0, Motor.IDX.aux_oculos, 0), 250);
   perto(total(res, 'aux_oculos'), 3000);
+});
+
+test('férias do Rafael de Melo (regra do ADM): (salário c/ dissídio + periculosidade + insalubridade + HE) ÷ 9', () => {
+  const c = colab({ salario: 4858.04, excecoes: { periculosidade: { metodo: 'pct', valor: 30 }, horas_extras: { metodo: 'fixo', valor: 193.81, origem: 'base' } } });
+  const res = Motor.calcular({ colaboradores: [c], filiais: { CUIABA: { dissidio_pct: 4.22, dissidio_mes: 1 } }, premissas: {} });
+  perto(res.valor(0, Motor.IDX.ferias, 0), 753.77, 0.01);
 });

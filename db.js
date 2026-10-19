@@ -156,6 +156,16 @@ if (!db.prepare("SELECT 1 FROM config WHERE chave = 'encargos_folha'").get()) {
   db.prepare("INSERT INTO config (chave, valor) VALUES ('encargos_folha', 'ok')").run();
 }
 
+// Férias passam a ser férias + 1/3 (base ÷ 9 = 11,1111%) no lugar de só o 1/3 (base ÷ 36 = 2,7778%). Uma única vez.
+if (!db.prepare("SELECT 1 FROM config WHERE chave = 'ferias_terco'").get()) {
+  const gravar = db.prepare("UPDATE premissas SET dados = ? WHERE escopo = ? AND rubrica = 'ferias'");
+  for (const r of db.prepare("SELECT escopo, dados FROM premissas WHERE rubrica = 'ferias'").all()) {
+    const p = JSON.parse(r.dados);
+    if (p.metodo === 'pct' && Math.abs(Number(p.valor) - 2.7778) < 0.001) gravar.run(JSON.stringify({ ...p, valor: 11.1111 }), r.escopo);
+  }
+  db.prepare("INSERT INTO config (chave, valor) VALUES ('ferias_terco', 'ok')").run();
+}
+
 function registrar(quem, acao, detalhe = '') {
   db.prepare('INSERT INTO historico (quem, acao, detalhe) VALUES (?, ?, ?)').run(quem, acao, String(detalhe).slice(0, 500));
 }
