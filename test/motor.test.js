@@ -155,3 +155,19 @@ test('público por sexo: outubro rosa só mulheres, novembro azul só homens', (
   perto(item.valor(0, Motor.IDX.aux_creche, 0), 300);
   perto(item.valor(2, Motor.IDX.aux_creche, 0), 0);
 });
+
+test('função: aprendiz com valor próprio e "quem recebe" por função', () => {
+  const colaboradores = [colab({ id: 1, funcao: 'Operador', salario: 5000 }), colab({ id: 2, funcao: 'Jovem Aprendiz', salario: 1000 })];
+  const premissas = { '*': {
+    va: { metodo: 'fixo', valor: 1480, por_funcao: { 'JOVEM APRENDIZ': 600 } },
+    ppr: { metodo: 'multiplo', valor: 2.4, periodo: 'anual_mes', mes: 2, por_funcao: { 'Jovem Aprendiz': 1 } },
+    fretado: { metodo: 'fixo', valor: 200, quem: ['funcao:Jovem Aprendiz'] },
+  } };
+  const res = Motor.calcular({ colaboradores, filiais: {}, premissas });
+  perto(res.valor(0, Motor.IDX.va, 0), 1480);
+  perto(res.valor(1, Motor.IDX.va, 0), 600);
+  perto(res.valor(0, Motor.IDX.ppr, 1), 12000);
+  perto(res.valor(1, Motor.IDX.ppr, 1), 1000);
+  perto(res.valor(0, Motor.IDX.fretado, 0), 0);
+  perto(res.valor(1, Motor.IDX.fretado, 0), 200);
+});

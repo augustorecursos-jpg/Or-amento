@@ -26,6 +26,7 @@ const FUNCOES = [
   { funcao: 'Analista de Suprimentos Pl', cargo: '09-Administrativo', cc: ['17148', 'SUPRIMENTOS'], sal: [5600, 7200], peso: 1 },
   { funcao: 'Engenheiro de Manutenção', cargo: '19-Engenheiros', cc: ['17149', 'PLANEJAMENTO E ENGENHARIA'], sal: [11000, 15500], peso: 1 },
   { funcao: 'Gerente de Operações', cargo: '05-Gerentes', cc: ['17150', 'OPERAÇÃO'], sal: [19000, 24000], peso: 0.3 },
+  { funcao: 'Jovem Aprendiz', cargo: '15-Operação - Produção', cc: ['22153', 'ADMINISTRATIVO'], sal: [800, 1000], peso: 1 },
 ];
 const FUNCOES_ESCRITORIO = [
   { funcao: 'Analista Financeiro Pl', cargo: '09-Administrativo', cc: ['24356', 'FINANCEIRO'], sal: [6500, 8500], peso: 4 },

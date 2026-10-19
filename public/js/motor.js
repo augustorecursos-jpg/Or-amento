@@ -9,7 +9,9 @@
 //   premissas:     { [escopo]: { [rubrica]: premissa } }  escopo = '*' (geral), 'R:<regional>' ou '<filial>'
 //   niveis:        { [nível do cargo]: múltiplo de salários do PPR } — tabela geral, usada se a regra não tiver a sua
 //
-// Premissa: { metodo, valor, base, periodo, mes, rateio, teto, por_nivel, niveis, sem_dissidio, quem }
+// Premissa: { metodo, valor, base, periodo, mes, rateio, teto, por_nivel, niveis, sem_dissidio, quem, por_funcao }
+//   por_funcao { 'APRENDIZ': 900 } valor próprio por função (no lugar de `valor`, em %, R$ por colaborador e nº de salários)
+//   quem    tokens 'cc:<cód>', 'cargo:<nível>' e 'funcao:<função>' (basta bater um)
 //   metodo  'nao'      não se aplica
 //           'pct'      % sobre uma base (salário, remuneração, folha, férias ou 13º), com teto opcional
 //           'fixo'     R$ por colaborador
@@ -102,7 +104,8 @@
 
   /** O colaborador recebe a rubrica? (filtro "quem recebe" da premissa) */
   function elegivel(p, c, m) {
-    const quemOk = !p.quem || !p.quem.length || p.quem.includes('cc:' + (c.cc_cod || '')) || p.quem.includes('cargo:' + (c.cargo || ''));
+    const quemOk = !p.quem || !p.quem.length || p.quem.includes('cc:' + (c.cc_cod || '')) || p.quem.includes('cargo:' + (c.cargo || ''))
+      || p.quem.includes('funcao:' + (c.funcao || ''));
     if (!quemOk) return false;
     // Público por sexo: do item inteiro e, nos valores por mês, de cada mês (ex.: outubro rosa só mulheres)
     if ((p.publico === 'F' || p.publico === 'M') && c.sexo !== p.publico) return false;
@@ -117,11 +120,23 @@
   function aplicarExcecao(p, exc) {
     if (!exc || !METODOS[exc.metodo]) return p;
     const periodo = exc.metodo === p.metodo ? p.periodo : exc.metodo === 'multiplo' ? 'anual_diluido' : 'mensal';
-    return { ...p, metodo: exc.metodo, valor: num(exc.valor), periodo, quem: [], publico: '', publico_meses: [], por_nivel: false, teto: exc.metodo === 'pct' ? p.teto : null };
+    return { ...p, metodo: exc.metodo, valor: num(exc.valor), periodo, quem: [], publico: '', publico_meses: [], por_nivel: false, por_funcao: {}, teto: exc.metodo === 'pct' ? p.teto : null };
   }
 
-  /** Nº de salários do PPR para o nível do cargo: tabela da regra → tabela geral → valor da regra. */
-  function multiploDe(p, nivel, niveis) {
+  /** Valor da regra para a função do colaborador: o valor próprio da função (ex.: VA do aprendiz) ou o valor geral. */
+  const chaveFuncao = f => String(f || '').trim().toUpperCase();
+  function valorDaFuncao(p, funcao) {
+    if (!p.por_funcao || !funcao) return null;
+    const k = chaveFuncao(funcao);
+    for (const [f, v] of Object.entries(p.por_funcao)) if (chaveFuncao(f) === k && v !== '' && v != null) return num(v);
+    return null;
+  }
+  const valorDe = (p, funcao) => valorDaFuncao(p, funcao) ?? num(p.valor);
+
+  /** Nº de salários do PPR: valor próprio da função → tabela de nível da regra → tabela geral → valor da regra. */
+  function multiploDe(p, nivel, niveis, funcao) {
+    const proprio = valorDaFuncao(p, funcao);
+    if (proprio != null) return proprio;
     if (p.por_nivel) {
       if (p.niveis && p.niveis[nivel] != null && p.niveis[nivel] !== '') return num(p.niveis[nivel]);
       if (niveis && niveis[nivel] != null) return num(niveis[nivel]);
@@ -255,18 +270,18 @@
           let v = 0;
           switch (p.metodo) {
             case 'pct':
-              v = (num(p.valor) / 100) * base(i, rub.adicional ? 'salario' : p.base);
+              v = (valorDe(p, colaboradores[i].funcao) / 100) * base(i, rub.adicional ? 'salario' : p.base);
               if (p.teto != null && p.teto !== '' && num(p.teto) > 0) v = Math.min(v, num(p.teto));
               break;
             case 'fixo':
-              v = (p.periodo === 'por_mes' ? num(p.meses?.[m]) : num(p.valor)) * (ehBenef ? fatorBenef(i, m) : 1);
+              v = (p.periodo === 'por_mes' ? num(p.meses?.[m]) : valorDe(p, colaboradores[i].funcao)) * (ehBenef ? fatorBenef(i, m) : 1);
               if (p.periodo === 'anual_mes') v = m + 1 === num(p.mes) ? v : 0;
               else if (p.periodo === 'anual_diluido') v = v / 12;
               break;
             case 'multiplo': {
               // PPR = salário × target. Com dissídio na filial, usa o salário reajustado (o novo salário) no ano todo;
               // sem_dissidio força o salário da base.
-              v = multiploDe(p, colaboradores[i].cargo, niveis) * salarioPpr(i, p);
+              v = multiploDe(p, colaboradores[i].cargo, niveis, colaboradores[i].funcao) * salarioPpr(i, p);
               if (p.periodo === 'anual_mes') v = m + 1 === num(p.mes) ? v : 0;
               else if (p.periodo === 'anual_diluido' || p.periodo === 'por_mes') v = v / 12;
               break;
@@ -324,5 +339,5 @@
     return out;
   }
 
-  return { MESES, GRUPOS, RUBRICAS, METODOS, BASES, PERIODOS, IDX, premissaDe, origemDe, elegivel, aplicarExcecao, multiploDe, calcular, agregar, porGrupo };
+  return { MESES, GRUPOS, RUBRICAS, METODOS, BASES, PERIODOS, IDX, premissaDe, origemDe, elegivel, aplicarExcecao, multiploDe, valorDe, calcular, agregar, porGrupo };
 });

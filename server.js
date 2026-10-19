@@ -145,7 +145,9 @@ function limparPremissa(p) {
     publico_meses: Array.from({ length: 12 }, (_, i) => (Array.isArray(p.publico_meses) && ['F', 'M'].includes(p.publico_meses[i]) ? p.publico_meses[i] : '')),
     niveis: Object.fromEntries(Object.entries(p.niveis && typeof p.niveis === 'object' ? p.niveis : {})
       .filter(([k, v]) => texto(k) && v !== '' && v != null).slice(0, 100).map(([k, v]) => [texto(k, 120), numero(v)])),
-    quem: (Array.isArray(p.quem) ? p.quem : []).map(q => texto(q, 200)).filter(q => /^(cc|cargo):/.test(q)).slice(0, 300),
+    quem: (Array.isArray(p.quem) ? p.quem : []).map(q => texto(q, 200)).filter(q => /^(cc|cargo|funcao):/.test(q)).slice(0, 300),
+    por_funcao: Object.fromEntries(Object.entries(p.por_funcao && typeof p.por_funcao === 'object' ? p.por_funcao : {})
+      .filter(([k, v]) => texto(k) && v !== '' && v != null).slice(0, 200).map(([k, v]) => [texto(k, 120), numero(v)])),
     // Ao marcar "Não tem", guarda como era cobrado, para voltar igual se marcar "Sim" de novo.
     ultimo_metodo: Motor.METODOS[p.ultimo_metodo] && p.ultimo_metodo !== 'nao' ? p.ultimo_metodo : null,
   };

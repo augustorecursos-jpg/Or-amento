@@ -55,7 +55,7 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
 - **Premissas e regras** – para cada filial e cada item: **Tem? (Sim/Não)**, **como é calculado** (% sobre base,
   R$ por colaborador, R$ total da filial rateado, nº de salários) e **valor**. O botão ⚙ guarda os detalhes
   (periodicidade — todo mês, uma vez no ano, anual ÷ 12 —, base do %, teto e rateio por headcount ou salário) e 👥
-  define *quem recebe* (centros de custo / níveis de cargo). Herança em três níveis: **regra geral → regional → filial**.
+  define *quem recebe* (centros de custo / níveis de cargo / funções). Herança em três níveis: **regra geral → regional → filial**.
   Mostra o custo anual de cada item antes de salvar e a **distribuição por centro de custo e colaborador** (🔍).
   Filtros de **regional** e **filial** em listas suspensas. Na filial: dissídio e reajuste de benefícios com mês de
   início. Copiar regras de uma filial para outras e dissídio em lote.
@@ -64,6 +64,10 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   - **Público por sexo**: coluna opcional **SEXO** (F/M) na base; o item pode valer só para mulheres ou só para homens
     (👥 Quem recebe) e, nos valores por mês, cada mês tem o seu público — ex.: outubro rosa só mulheres, novembro azul só
     homens. No total da filial, o valor é dividido só entre o público do mês. Quem está sem sexo na base não entra.
+  - **Por função** (👥 Quem recebe): marque funções da base (coluna FUNÇÃO, ex.: *Jovem Aprendiz*) para o item valer só
+    para elas e/ou informe um **valor diferente por função** — ex.: VA de R$ 1.480 para todos e R$ 600 para o aprendiz.
+    Vale para %, R$ por colaborador e nº de salários. O valor por função fica na regra em que foi lançado: uma filial com
+    VA próprio precisa do valor do aprendiz na regra dela.
   - **Aplicar a forma de pagamento às regras próprias**: na Regra geral (ou numa regional), o ⚙ permite levar a
     periodicidade/mês para as regionais e filiais que têm regra própria, mantendo os valores de cada uma — ex.: PPR inteiro
     em fevereiro em todas as unidades, cada uma com o seu target.

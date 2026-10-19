@@ -53,6 +53,11 @@ body.app { display: flex; min-height: 100vh; }
 .cartao > h3 small, .cartao h3 small { font-weight: 400; color: var(--texto-suave); font-size: .8rem; font-family: var(--fonte); }
 .grade-2 { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 1.2rem; margin-top: 1.2rem; }
 .grade-2-igual { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.2rem; margin-top: 1.2rem; }
+.grade-3-quem { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.2rem; }
+.linha-funcao { display: flex; align-items: center; gap: .4rem; justify-content: space-between; }
+.linha-funcao .check { flex: 1; min-width: 0; }
+.valor-funcao { width: 6.5rem; flex: none; padding: .25rem .4rem; font-size: .85rem; }
+.valor-funcao::placeholder { color: #a9b4bf; font-style: italic; }
 
 /* ---------- Destaque do painel ---------- */
 .hero {
@@ -285,7 +290,7 @@ body.app { display: flex; min-height: 100vh; }
 
 @media (max-width: 1200px) {
   .hero { grid-template-columns: 1fr; }
-  .grade-2, .grade-2-igual { grid-template-columns: 1fr; }
+  .grade-2, .grade-2-igual, .grade-3-quem { grid-template-columns: 1fr; }
   .sim-grade { grid-template-columns: 1fr; }
   .simulador { position: static; max-height: none; }
   .sim-lista { max-height: 360px; }

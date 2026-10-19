@@ -423,7 +423,7 @@ function contaDoItem(c, rub) {
   if (rub.fixa) return '';
   const p = Motor.aplicarExcecao(Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rub.id), c.excecoes?.[rub.id]);
   if (p.metodo !== 'multiplo') return '';
-  const mult = Motor.multiploDe(p, c.cargo, E.dados.niveis);
+  const mult = Motor.multiploDe(p, c.cargo, E.dados.niveis, c.funcao);
   const quando = p.periodo === 'anual_mes' ? `pago em ${MESES[p.mes - 1]}` : p.periodo === 'anual_diluido' ? 'diluído em 12 meses' : 'todo mês';
   const alvo = `${fmtN(mult)} salário${mult === 1 ? '' : 's'}${p.por_nivel && c.cargo ? ` (${c.cargo})` : ''}`;
   const f = filiaisComRascunho()[c.filial] || {};
@@ -850,7 +850,7 @@ function linhaPremHtml(rub, previa) {
     <td class="${desab}"><select class="campo" data-campo="metodo">${Object.entries(tipos).map(([k, v]) => `<option value="${k}" ${k === tipo ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
     <td class="${desab}">${valorHtml}</td>
     <td class="${desab}"><button class="btn-detalhe" data-detalhes title="Base, periodicidade, rateio e teto">⚙ ${esc(resumoDetalhes({ ...p, metodo: tipo }))}</button></td>
-    <td class="${desab}"><button class="btn-detalhe" data-quem title="Quem recebe esta rubrica">👥 ${[p.publico === 'F' ? '♀ Mulheres' : p.publico === 'M' ? '♂ Homens' : '', p.quem?.length ? `${p.quem.length} grupo(s)` : ''].filter(Boolean).join(' · ') || 'Todos'}${p.periodo === 'por_mes' && p.publico_meses?.some(Boolean) ? ' · público por mês' : ''}</button></td>
+    <td class="${desab}"><button class="btn-detalhe" data-quem title="Quem recebe esta rubrica">👥 ${[p.publico === 'F' ? '♀ Mulheres' : p.publico === 'M' ? '♂ Homens' : '', p.quem?.length ? `${p.quem.length} grupo(s)` : ''].filter(Boolean).join(' · ') || 'Todos'}${Object.keys(p.por_funcao || {}).length ? ' · valor por função' : ''}${p.periodo === 'por_mes' && p.publico_meses?.some(Boolean) ? ' · público por mês' : ''}</button></td>
     <td class="n" data-anual>${anual ? brl0.format(anual) : '–'}</td>
     <td><span class="acoes">${anual ? '<button class="btn-ic" data-ver title="Ver distribuição por centro de custo e colaborador">🔍</button>' : ''}${propria ? `<button class="btn-ic" data-reset title="${escopo === '*' ? 'Voltar ao padrão do sistema' : 'Remover regra própria (volta a herdar)'}">↺</button>` : ''}</span></td>
   </tr>`;
@@ -1503,7 +1503,7 @@ function avisoSemSexo(colabs = E.dados.colaboradores.filter(colabsDoEscopo(E.pre
   return n ? `⚠ ${num0.format(n)} colaborador(es) sem sexo informado na base não entram nas ações por público — inclua a coluna SEXO na base.` : '';
 }
 
-/** Filtro "quem recebe": marca centros de custo e/ou níveis de cargo do escopo atual. */
+/** Filtro "quem recebe": marca centros de custo, níveis de cargo e/ou funções do escopo atual; valor próprio por função. */
 function escolherQuem(rub) {
   const atual = { ...premEfetiva(E.prem.escopo, rub).p };
   const marcados = new Set(atual.quem || []);
@@ -1511,8 +1511,14 @@ function escolherQuem(rub) {
   const contar = (campo, v) => colabs.filter(c => (c[campo] || '') === v).length;
   const ccs = [...new Map(colabs.map(c => [c.cc_cod || '', c.cc_nome || ''])).entries()].sort((a, b) => a[1].localeCompare(b[1]));
   const cargos = [...new Set(colabs.map(c => c.cargo || ''))].sort();
+  const funcoes = [...new Set(colabs.map(c => c.funcao || '').filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  // Valor próprio por função: só faz sentido quando o valor é por colaborador (%, R$ por colaborador, nº de salários).
+  const unidade = { pct: '%', fixo: 'R$', multiplo: 'salários' }[atual.metodo];
+  const comValor = unidade && atual.periodo !== 'por_mes';
+  const proprios = atual.por_funcao || {};
+  const valorProprio = f => { const k = Object.keys(proprios).find(x => x.trim().toUpperCase() === f.trim().toUpperCase()); return k == null ? '' : proprios[k]; };
   // Também mantém marcações que não aparecem neste escopo (vindas de outra filial), para não perdê-las ao salvar.
-  const lista = (titulo, itens) => `<div><b style="color:var(--marinho)">${titulo}</b><div style="display:grid;gap:.3rem;margin-top:.5rem;max-height:260px;overflow-y:auto">${itens}</div></div>`;
+  const lista = (titulo, itens, extra = '') => `<div><b style="color:var(--marinho)">${titulo}</b>${extra}<div style="display:grid;gap:.3rem;margin-top:.5rem;max-height:260px;overflow-y:auto">${itens || '<small class="sub">Nenhum na base deste escopo.</small>'}</div></div>`;
   const d = abrirModal({
     titulo: `Quem recebe: ${RUBRICAS[IDX[rub]].nome}`, sup: 'PREMISSA', largo: true,
     corpo: `<div class="publico-item"><b>Público</b>
@@ -1520,19 +1526,31 @@ function escolherQuem(rub) {
         <label class="check"><input type="radio" name="publico" value="F" ${atual.publico === 'F' ? 'checked' : ''}> ♀ Só mulheres <small>(${colabs.filter(c => c.sexo === 'F').length})</small></label>
         <label class="check"><input type="radio" name="publico" value="M" ${atual.publico === 'M' ? 'checked' : ''}> ♂ Só homens <small>(${colabs.filter(c => c.sexo === 'M').length})</small></label>
         <small>${avisoSemSexo(colabs)}</small></div>
-      <p class="subtitulo" style="margin:0">Sem nada marcado, a rubrica vale para <b>todos</b>. Marcando centros de custo e/ou níveis de cargo, vale só para quem estiver em algum deles — inclusive no rateio do total da filial (ex.: horas extras só para Operação e Manutenção).</p>
-      <div class="grade-2-igual" style="margin-top:0">
+      <p class="subtitulo" style="margin:0">Sem nada marcado, a rubrica vale para <b>todos</b>. Marcando centros de custo, níveis de cargo e/ou funções, vale só para quem estiver em algum deles — inclusive no rateio do total da filial (ex.: horas extras só para Operação e Manutenção).</p>
+      <div class="grade-3-quem">
         ${lista('Centros de custo', ccs.map(([cod, nome]) => `<label class="check"><input type="checkbox" value="cc:${esc(cod)}" ${marcados.has('cc:' + cod) ? 'checked' : ''}> ${esc(cod)} · ${esc(nome || 'Sem nome')} <small class="sub" style="display:inline">(${contar('cc_cod', cod)})</small></label>`).join(''))}
         ${lista('Níveis de cargo', cargos.map(c => `<label class="check"><input type="checkbox" value="cargo:${esc(c)}" ${marcados.has('cargo:' + c) ? 'checked' : ''}> ${esc(c || 'Sem nível')} <small class="sub" style="display:inline">(${contar('cargo', c)})</small></label>`).join(''))}
+        ${lista('Funções', funcoes.map(f => `<div class="linha-funcao"><label class="check"><input type="checkbox" value="funcao:${esc(f)}" ${marcados.has('funcao:' + f) ? 'checked' : ''}> ${esc(f)} <small class="sub" style="display:inline">(${contar('funcao', f)})</small></label>${comValor ? `<input type="number" step="any" class="valor-funcao" data-funcao="${esc(f)}" value="${esc(valorProprio(f))}" placeholder="geral" title="Valor próprio desta função (vazio = valor geral)">` : ''}</div>`).join(''),
+          comValor ? `<small class="sub" style="display:block">Valor diferente por função (${unidade}): deixe vazio para usar o valor geral (${esc(fmtN(Number(atual.valor) || 0))}). Ex.: VA do aprendiz.</small>` : '')}
       </div>`,
     rodape: '<button class="btn btn-claro" id="quem-todos">Todos recebem</button><button class="btn btn-laranja" id="quem-ok">Aplicar</button>',
   });
-  const aplicar = quem => { E.prem.edits[rub] = { ...atual, quem, publico: $('input[name=publico]:checked', d)?.value || '' }; d.close(); desenharTabelaPrem(); };
+  const lerProprios = () => {
+    // Mantém valores de funções que não aparecem neste escopo.
+    const visiveis = new Set(funcoes.map(f => f.toUpperCase()));
+    const novo = Object.fromEntries(Object.entries(proprios).filter(([f]) => !visiveis.has(f.trim().toUpperCase())));
+    $$('.valor-funcao', d).forEach(i => { if (i.value !== '') novo[i.dataset.funcao] = Number(i.value); });
+    return novo;
+  };
+  const aplicar = quem => {
+    E.prem.edits[rub] = { ...atual, quem, publico: $('input[name=publico]:checked', d)?.value || '', ...(comValor ? { por_funcao: lerProprios() } : {}) };
+    d.close(); desenharTabelaPrem();
+  };
   $('#quem-todos', d).addEventListener('click', () => { $('input[name=publico][value=""]', d).checked = true; aplicar([]); });
   $('#quem-ok', d).addEventListener('click', () => {
     const visiveis = new Set($$('input[type=checkbox]', d).map(i => i.value));
     const fora = [...marcados].filter(q => !visiveis.has(q));
-    aplicar([...fora, ...$$('input:checked', d).map(i => i.value)]);
+    aplicar([...fora, ...$$('input[type=checkbox]:checked', d).map(i => i.value)]);
   });
 }
 
@@ -1750,7 +1768,7 @@ function baixarModeloBase() {
     ['SEXO', 'Opcional. F ou M — usado em ações para públicos específicos (ex.: outubro rosa, novembro azul)'],
     ['REGIONAL / FILIAL', 'Iguais em todas as linhas da mesma unidade (ex.: NORTE / APARECIDA)'],
     ['SITUAÇÃO', 'Ativo, Férias, Afastado… Use "Nova Vaga" para vagas previstas'],
-    ['FUNÇÃO / CARGO', 'Cargo = nível do cargo (ex.: 07-Supervisores), usado no PPR por nível e no filtro "quem recebe"'],
+    ['FUNÇÃO / CARGO', 'Cargo = nível do cargo (ex.: 07-Supervisores), usado no PPR por nível. Função (ex.: Aprendiz) e cargo servem no filtro "quem recebe" e no valor diferente por função'],
     ['CÓD. C. CUSTO / CENTRO DE CUSTO', 'Código e nome do centro de custo'],
     ['SALÁRIO', 'Salário mensal atual, SEM o dissídio (o reajuste é aplicado pela ferramenta no mês da data-base)'],
     ['MÊS INÍCIO', 'Opcional. 1 a 12 — para vagas, o mês de admissão. Vazio = janeiro'],
@@ -2035,7 +2053,7 @@ function descreverPremissa(p) {
     default: return 'Não se aplica';
   }
 }
-const descreverComQuem = p => `${descreverPremissa(p)}${p.publico === 'F' ? ' · só mulheres' : p.publico === 'M' ? ' · só homens' : ''}${p.periodo === 'por_mes' && p.publico_meses?.some(Boolean) ? ` · ${p.publico_meses.map((x, i) => (x ? `${MESES[i]} só ${x === 'F' ? 'mulheres' : 'homens'}` : '')).filter(Boolean).join(', ')}` : ''}${p.quem?.length ? ' · só para alguns CCs/cargos' : ''}`;
+const descreverComQuem = p => `${descreverPremissa(p)}${p.publico === 'F' ? ' · só mulheres' : p.publico === 'M' ? ' · só homens' : ''}${p.periodo === 'por_mes' && p.publico_meses?.some(Boolean) ? ` · ${p.publico_meses.map((x, i) => (x ? `${MESES[i]} só ${x === 'F' ? 'mulheres' : 'homens'}` : '')).filter(Boolean).join(', ')}` : ''}${p.quem?.length ? ' · só para alguns CCs/cargos/funções' : ''}${Object.keys(p.por_funcao || {}).length && ['pct', 'fixo', 'multiplo'].includes(p.metodo) ? ` · ${Object.entries(p.por_funcao).map(([f, v]) => `${f}: ${p.metodo === 'fixo' ? brl.format(v) : p.metodo === 'pct' ? `${num2.format(v)}%` : `${num2.format(v)} sal`}`).join(', ')}` : ''}`;
 
 function renderConferencia() {
   const el = painel('conferencia');
