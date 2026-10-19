@@ -50,7 +50,11 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   desligamentos previstos, HC janeiro → dezembro, headcount mês a mês (ocupadas × vagas) e a tabela de **cadeiras por
   regional, filial, centro de custo, gestor, nível do cargo ou função**, com custo no ano e custo médio por mês; exporta Excel.
   O gestor vem da coluna opcional **GESTOR** da base.
-- **Simulação mês a mês** – tabela Jan–Dez por rubrica, filial, centro de custo ou colaborador (R$ ou R$ mil). Na visão
+- **Filtros do topo** – regional, estado, filial e **centro de custo**, valendo para painel, simulação, base, conferência e
+  relatório contábil.
+- **Simulação mês a mês** – tabela Jan–Dez por rubrica, filial, centro de custo ou colaborador (R$ ou R$ mil). Nas visões
+  por filial e por centro de custo, clique na linha (ou em *Abrir contas de todos*) para ver as **contas lançadas por grupo**;
+  o Excel traz a aba *Contas por filial e CC*. Na visão
   por colaborador, clique na pessoa para abrir o que está orçado para ela (salário, adicionais, provisões, encargos,
   PPR, convênio, VA…), mês a mês e no ano. Inclui o
   **simulador de dissídio**: altere o % e o mês da data-base de cada filial e o custo muda na hora; nada é salvo até

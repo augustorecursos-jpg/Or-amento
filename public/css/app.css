@@ -33,7 +33,7 @@ a.lateral-item { text-decoration: none; }
 .barra-titulo small { font-family: var(--fonte-titulo); font-size: .64rem; letter-spacing: .14em; font-weight: 700; color: var(--laranja); }
 .barra-titulo strong { font-family: var(--fonte-titulo); color: var(--marinho); font-size: 1.05rem; }
 .barra-filtros { display: flex; gap: .5rem; margin-left: auto; flex-wrap: wrap; }
-.barra-filtros .campo { width: auto; min-width: 170px; padding: .5rem .75rem; font-size: .88rem; }
+.barra-filtros .campo { width: auto; min-width: 130px; max-width: 190px; padding: .5rem .75rem; font-size: .88rem; }
 .barra-usuario { display: flex; align-items: center; gap: .65rem; }
 .avatar { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: var(--marinho); color: #fff; border: 2px solid var(--laranja); font-size: .85rem; }
 .barra-nome { display: flex; flex-direction: column; line-height: 1.2; text-align: right; }
@@ -581,3 +581,6 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .hc-barra b { margin-left: .5rem; font-size: .82rem; color: var(--texto); }
 .tabela-hc td:first-child { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tabela-hc tfoot td { font-weight: 800; background: var(--fundo); position: sticky; bottom: 0; }
+
+/* Com os 4 filtros, em telas médias o nome do usuário some e fica só o avatar */
+@media (max-width: 1700px) { .barra-nome { display: none; } }

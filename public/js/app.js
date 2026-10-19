@@ -17,9 +17,9 @@ const E = {
   resSalvo: null,     // cálculo só com o que está salvo (para medir o impacto do rascunho)
   resSemDissidio: null,
   rascunho: {},       // filial → { dissidio_pct, dissidio_mes }
-  filtro: { regional: '', uf: '', filial: '' },
+  filtro: { regional: '', uf: '', filial: '', cc: '' },
   aba: 'painel',
-  sim: { visao: 'rubricas', mil: false, fechados: new Set(), busca: '', abertos: new Set() },
+  sim: { visao: 'rubricas', mil: false, fechados: new Set(), busca: '', abertos: new Set(), abertosAg: new Set() },
   prem: { escopo: '*', uf: '', edits: {}, filial: {}, propagar: {}, busca: '', visao: 'filial', ocultarVazios: true, quadroReg: '' },
   base: { busca: '', soVagas: false, soProprias: false, fila: [] },
   conf: { filial: '', modo: 'mes', sel: new Set() },
@@ -61,11 +61,14 @@ async function carregar() {
 // Estado (UF) da filial; '_' = ainda não definido
 const ufDe = filial => E.dados.filiais[filial]?.uf || '';
 const bateUf = (filial, uf = E.filtro.uf) => !uf || (uf === '_' ? !ufDe(filial) : ufDe(filial) === uf);
-const noFiltro = c => (!E.filtro.regional || c.regional === E.filtro.regional) && bateUf(c.filial) && (!E.filtro.filial || c.filial === E.filtro.filial);
+const noFiltro = c => (!E.filtro.regional || c.regional === E.filtro.regional) && bateUf(c.filial) && (!E.filtro.filial || c.filial === E.filtro.filial)
+  && (!E.filtro.cc || String(c.cc_cod || '') === E.filtro.cc);
+const rotuloCc = c => `${c.cc_cod || '—'} · ${c.cc_nome || 'Sem centro de custo'}`;
 const regionais = () => [...new Set(Object.values(E.dados.filiais).map(f => f.regional))].sort();
 const filiaisDa = regional => Object.values(E.dados.filiais).filter(f => !regional || f.regional === regional).map(f => f.filial).sort();
 /** Filiais que passam pelos filtros do topo (regional, estado e filial). */
-const filiaisVisiveis = () => filiaisDa(E.filtro.regional).filter(f => bateUf(f) && (!E.filtro.filial || f === E.filtro.filial));
+const filiaisVisiveis = () => filiaisDa(E.filtro.regional).filter(f => bateUf(f) && (!E.filtro.filial || f === E.filtro.filial)
+  && (!E.filtro.cc || E.dados.colaboradores.some(c => c.filial === f && String(c.cc_cod || '') === E.filtro.cc)));
 const UFS_BR = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
 /** Opções de estado presentes nas filiais (mais "a definir" se houver). */
 function opcoesUf(fils, sel, rotuloTodos = 'Todos os estados') {
@@ -93,7 +96,16 @@ function montarFiltros() {
   const fils = doReg.filter(x => bateUf(x));
   if (!fils.includes(E.filtro.filial)) E.filtro.filial = '';
   f.innerHTML = `<option value="">Todas as filiais</option>${fils.map(x => `<option ${x === E.filtro.filial ? 'selected' : ''}>${esc(x)}</option>`).join('')}`;
+  // Centros de custo das filiais que passam pelos filtros acima
+  const ccs = new Map();
+  E.dados.colaboradores.filter(c => fils.includes(c.filial) && (!E.filtro.filial || c.filial === E.filtro.filial))
+    .forEach(c => ccs.set(String(c.cc_cod || ''), rotuloCc(c)));
+  if (E.filtro.cc && !ccs.has(E.filtro.cc)) E.filtro.cc = '';
+  $('#f-cc').innerHTML = `<option value="">Todos os centros de custo</option>${[...ccs].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR', { numeric: true }))
+    .map(([cod, rot]) => `<option value="${esc(cod)}" ${cod === E.filtro.cc ? 'selected' : ''}>${esc(rot)}</option>`).join('')}`;
 }
+/** Texto do centro de custo filtrado no topo (para títulos). */
+const ccFiltrado = () => { const c = E.filtro.cc && E.dados.colaboradores.find(x => String(x.cc_cod || '') === E.filtro.cc); return c ? rotuloCc(c) : ''; };
 
 const TITULOS = {
   painel: 'Painel', simulacao: 'Simulação mês a mês', premissas: 'Premissas e regras', base: 'Base de colaboradores',
@@ -190,7 +202,7 @@ function renderPainel() {
   const fil = filiaisComRascunho();
   const mesesDiss = [...new Set(col.map(c => fil[c.filial]).filter(f => f && f.dissidio_pct).map(f => f.dissidio_mes - 1))].sort((a, b) => a - b);
   const encBen = (somaG('encargos') + somaG('beneficios')) / (ag.total || 1);
-  const escopo = E.filtro.filial || [E.filtro.regional, E.filtro.uf && (E.filtro.uf === '_' ? 'estado a definir' : E.filtro.uf)].filter(Boolean).join(' · ') || (E.eu.admin ? 'Todas as regionais' : E.eu.regionais.join(' · '));
+  const escopo = [E.filtro.filial || [E.filtro.regional, E.filtro.uf && (E.filtro.uf === '_' ? 'estado a definir' : E.filtro.uf)].filter(Boolean).join(' · ') || (E.eu.admin ? 'Todas as regionais' : E.eu.regionais.join(' · ')), ccFiltrado()].filter(Boolean).join(' · ');
   const nivelCards = E.filtro.filial ? 'cc' : E.filtro.regional ? 'filial' : 'regional';
   const tituloCards = { regional: 'Custo por regional', filial: `Filiais da regional ${E.filtro.regional}`, cc: `Centros de custo · ${E.filtro.filial}` }[nivelCards];
 
@@ -514,10 +526,22 @@ function linhasSimulacao() {
       vaga: c?.vaga,
       colab: c ? c.id : null,
       proprias: c ? temManuais(c) : false,
+      ag: c ? null : k,
+      porRubrica: c ? null : a.porRubrica,
     };
   }).sort((a, b) => b.meses.reduce((s, x) => s + x, 0) - a.meses.reduce((s, x) => s + x, 0));
   const total = MESES.map((_, m) => linhas.reduce((s, l) => s + l.meses[m], 0));
-  if (v !== 'colaboradores') return { linhas, total, comHc: true };
+  if (v !== 'colaboradores') {
+    // Filial / centro de custo: clique abre as contas lançadas, por grupo
+    if (linhas.length === 1) E.sim.abertosAg.add(`${v}|${linhas[0].ag}`);
+    const comContas = [];
+    for (const l of linhas) {
+      l.aberto = E.sim.abertosAg.has(`${v}|${l.ag}`);
+      comContas.push(l);
+      if (l.aberto) comContas.push(...detalheAgregado(l.porRubrica));
+    }
+    return { linhas: comContas, total, comHc: true };
+  }
   // Uma pessoa só na busca: já abre o detalhe dela.
   if (linhas.length === 1) E.sim.abertos.add(linhas[0].colab);
   const comDetalhe = [];
@@ -527,6 +551,20 @@ function linhasSimulacao() {
     if (l.aberto) comDetalhe.push(...detalheColaborador(l.colab));
   }
   return { linhas: comDetalhe, total, comHc: false };
+}
+
+/** Contas lançadas de uma filial / centro de custo: subtotal por grupo e cada rubrica, mês a mês. */
+function detalheAgregado(porRubrica) {
+  const out = [];
+  for (const g of GRUPOS) {
+    const filhos = RUBRICAS.map((r, k) => ({ r, k })).filter(x => x.r.grupo === g.id)
+      .map(({ r, k }) => ({ rotulo: r.nome, meses: [...porRubrica.slice(k * 12, k * 12 + 12)] }))
+      .filter(f => f.meses.some(x => x));
+    if (!filhos.length) continue;
+    out.push({ rotulo: g.nome, cor: g.cor, meses: MESES.map((_, m) => filhos.reduce((s, f) => s + f.meses[m], 0)), det: 'grupo' });
+    filhos.forEach(f => out.push({ ...f, det: 'rubrica' }));
+  }
+  return out;
 }
 
 /** Linhas com o que está orçado para um colaborador: subtotal por grupo e cada rubrica, mês a mês. */
@@ -597,15 +635,15 @@ function tabelaSimulacaoHtml() {
       let totColab = 1;
       return linhas.map(l => {
         const t = l.meses.reduce((a, b) => a + b, 0);
-        if (l.colab != null) totColab = t || 1;
+        if (l.colab != null || l.ag != null) totColab = t || 1;
         if (l.det) {
           // Detalhe do colaborador: % é sobre o custo dele
           return `<tr class="det-${l.det}">
             <td class="fixa" title="${esc(l.rotulo)}">${l.det === 'grupo' ? `<i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.propria === 'manual' ? ' <span class="etiqueta azul">valor próprio</span>' : l.propria === 'base' ? ' <span class="etiqueta neutra">da base</span>' : ''}${l.conta ? `<span class="sub conta">${esc(l.conta)}</span>` : ''}</td>
-            ${l.meses.map(cel).join('')}<td class="n"><b>${fmtVal(t)}</b></td><td class="n">${pctFmt(t / totColab)}</td></tr>`;
+            ${comHc ? '<td></td>' : ''}${l.meses.map(cel).join('')}<td class="n"><b>${fmtVal(t)}</b></td><td class="n">${pctFmt(t / totColab)}</td></tr>`;
         }
-        const cls = l.grupo ? `grupo${E.sim.fechados.has(l.grupo) ? ' fechado' : ''}` : l.filho ? 'filho' : l.colab != null ? `colab${l.aberto ? ' aberto' : ''}${l.vaga ? ' vaga' : ''}` : l.vaga ? 'vaga' : '';
-        return `<tr class="${cls}" ${l.grupo ? `data-grupo="${l.grupo}"` : ''}${l.colab != null ? ` data-colab="${l.colab}" title="Clique para ${l.aberto ? 'fechar' : 'ver'} o detalhe"` : ''}>
+        const cls = l.grupo ? `grupo${E.sim.fechados.has(l.grupo) ? ' fechado' : ''}` : l.filho ? 'filho' : l.colab != null || l.ag != null ? `colab${l.aberto ? ' aberto' : ''}${l.vaga ? ' vaga' : ''}` : l.vaga ? 'vaga' : '';
+        return `<tr class="${cls}" ${l.grupo ? `data-grupo="${l.grupo}"` : ''}${l.colab != null ? ` data-colab="${l.colab}" title="Clique para ${l.aberto ? 'fechar' : 'ver'} o detalhe"` : ''}${l.ag != null ? ` data-ag="${esc(l.ag)}" title="Clique para ${l.aberto ? 'fechar' : 'ver'} as contas por grupo"` : ''}>
           <td class="fixa" title="${esc(l.rotulo)}">${l.grupo ? `<i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.proprias ? ' <span class="etiqueta azul">condições próprias</span>' : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}</td>
           ${comHc ? `<td class="n">${l.hc ?? ''}</td>` : ''}${l.meses.map(cel).join('')}<td class="n"><b>${fmtVal(t)}</b></td><td class="n">${pctFmt(t / totAno)}</td></tr>`;
       }).join('');
@@ -647,6 +685,7 @@ function renderSimulacao() {
           <div class="segmentos" id="sim-visao">${[['rubricas', 'Rubricas'], ['filiais', 'Filiais'], ['cc', 'Centros de custo'], ['colaboradores', 'Colaboradores']].map(([v, r]) => `<button data-v="${v}" class="${E.sim.visao === v ? 'ativo' : ''}">${r}</button>`).join('')}</div>
           ${E.sim.visao !== 'rubricas' ? `<input class="campo" id="sim-busca" placeholder="${E.sim.visao === 'colaboradores' ? 'Buscar nome, matrícula, função…' : 'Buscar…'}" value="${esc(E.sim.busca)}">` : ''}
           ${E.sim.visao === 'colaboradores' ? `<button class="btn btn-claro btn-sm" id="sim-abrir-todos">${E.sim.abertos.size ? 'Fechar detalhes' : 'Abrir detalhe de todos'}</button>` : ''}
+          ${E.sim.visao === 'filiais' || E.sim.visao === 'cc' ? `<button class="btn btn-claro btn-sm" id="sim-abrir-ag">${[...E.sim.abertosAg].some(k => k.startsWith(E.sim.visao + '|')) ? 'Fechar contas' : 'Abrir contas de todos'}</button>` : ''}
           <div class="direita">
             <div class="segmentos" id="sim-unid"><button data-u="0" class="${E.sim.mil ? '' : 'ativo'}">R$</button><button data-u="1" class="${E.sim.mil ? 'ativo' : ''}">R$ mil</button></div>
             <button class="btn btn-marinho btn-sm" id="sim-excel">⬇ Exportar Excel</button>
@@ -672,12 +711,24 @@ function renderSimulacao() {
     }
     renderSimulacao();
   });
+  $('#sim-abrir-ag', el)?.addEventListener('click', () => {
+    const v = E.sim.visao;
+    const abertos = [...E.sim.abertosAg].filter(k => k.startsWith(v + '|'));
+    if (abertos.length) abertos.forEach(k => E.sim.abertosAg.delete(k));
+    else linhasSimulacao().linhas.filter(l => l.ag != null).forEach(l => E.sim.abertosAg.add(`${v}|${l.ag}`));
+    renderSimulacao();
+  });
   ligarTabelaSim();
   if (admin) ligarSimulador();
 }
 
 function ligarTabelaSim() {
-  $$('#sim-tabela tr.colab').forEach(tr => tr.addEventListener('click', () => {
+  $$('#sim-tabela tr[data-ag]').forEach(tr => tr.addEventListener('click', () => {
+    const k = `${E.sim.visao}|${tr.dataset.ag}`;
+    E.sim.abertosAg.has(k) ? E.sim.abertosAg.delete(k) : E.sim.abertosAg.add(k);
+    atualizarTabelaSim();
+  }));
+  $$('#sim-tabela tr[data-colab]').forEach(tr => tr.addEventListener('click', () => {
     const id = Number(tr.dataset.colab);
     E.sim.abertos.has(id) ? E.sim.abertos.delete(id) : E.sim.abertos.add(id);
     atualizarTabelaSim();
@@ -759,6 +810,20 @@ function exportarExcel() {
   };
   XLSX.utils.book_append_sheet(wb, porChave(c => `${c.regional} · ${c.filial}`, 'Regional · Filial'), 'Por filial');
   XLSX.utils.book_append_sheet(wb, porChave(c => `${c.filial} · ${c.cc_cod || ''} ${c.cc_nome || ''}`.trim(), 'Filial · Centro de custo'), 'Por centro de custo');
+  // Contas por grupo em cada filial e centro de custo (uma linha por conta lançada)
+  const contas = [['Regional', 'Filial', 'Cód. C. Custo', 'Centro de custo', 'Grupo', 'Conta', ...MESES, 'Total ano']];
+  const sep = '\u0000';
+  for (const [k, a] of Motor.agregar(E.res, c => [c.regional, c.filial, c.cc_cod || '', c.cc_nome || ''].join(sep), noFiltro)) {
+    const [regional, filial, cod, nome] = k.split(sep);
+    RUBRICAS.forEach((r, i) => {
+      const meses = [...a.porRubrica.slice(i * 12, i * 12 + 12)].map(r2);
+      const t = meses.reduce((x, y) => x + y, 0);
+      if (Math.abs(t) >= 0.005) contas.push([regional, filial, cod, nome, NOME_GRUPO[r.grupo], r.nome, ...meses, r2(t)]);
+    });
+  }
+  const wsContas = XLSX.utils.aoa_to_sheet(contas);
+  wsContas['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: contas.length - 1, c: contas[0].length - 1 } }) };
+  XLSX.utils.book_append_sheet(wb, wsContas, 'Contas por filial e CC');
 
   // Formato próximo da planilha BZO: uma linha por colaborador, com o total anual de cada rubrica.
   const fil = filiaisComRascunho();
@@ -2735,7 +2800,7 @@ async function renderContabil() {
   const semCc = ccsBase.filter(([cod]) => ccContabil(cfg, cod).como === 'sem');
   const opcoes = (lista, sel, vazio) => `<option value="">${vazio}</option>${[...new Set([...lista, sel].filter(Boolean))].map(x => `<option ${x === sel ? 'selected' : ''}>${esc(x)}</option>`).join('')}`;
   const anualRub = k => { let s = 0; E.res.colaboradores.forEach((c, i) => { if (noFiltro(c)) for (let m = 0; m < 12; m++) s += E.res.valor(i, k, m); }); return s; };
-  const escopo = E.filtro.filial || [E.filtro.regional, E.filtro.uf && (E.filtro.uf === '_' ? 'estado a definir' : E.filtro.uf)].filter(Boolean).join(' · ') || 'Todas as regionais';
+  const escopo = [E.filtro.filial || [E.filtro.regional, E.filtro.uf && (E.filtro.uf === '_' ? 'estado a definir' : E.filtro.uf)].filter(Boolean).join(' · ') || 'Todas as regionais', ccFiltrado()].filter(Boolean).join(' · ');
 
   el.innerHTML = `
     <div class="cab-pagina"><div><h1 class="titulo-pagina">Relatório <em>contábil</em></h1>
@@ -2958,7 +3023,8 @@ async function iniciar() {
   $('#sair').addEventListener('click', async () => { await api('/api/logout', { method: 'POST' }); location.replace('index.html'); });
   $('#f-regional').addEventListener('change', e => { E.filtro.regional = e.target.value; E.filtro.filial = ''; montarFiltros(); renderAba(); });
   $('#f-uf').addEventListener('change', e => { E.filtro.uf = e.target.value; E.filtro.filial = ''; montarFiltros(); renderAba(); });
-  $('#f-filial').addEventListener('change', e => { E.filtro.filial = e.target.value; renderAba(); });
+  $('#f-filial').addEventListener('change', e => { E.filtro.filial = e.target.value; montarFiltros(); renderAba(); });
+  $('#f-cc').addEventListener('change', e => { E.filtro.cc = e.target.value; renderAba(); });
   window.addEventListener('beforeunload', e => {
     if (Object.keys(E.rascunho).length || Object.keys(E.prem.edits).length) { e.preventDefault(); e.returnValue = ''; }
   });
