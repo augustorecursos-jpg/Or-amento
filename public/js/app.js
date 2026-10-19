@@ -831,7 +831,7 @@ function metodoAoLigar(rub, p) {
 
 /** Resumo curto dos detalhes (base, periodicidade, rateio, teto). */
 function resumoDetalhes(p) {
-  if (p.metodo === 'pct') return `s/ ${BASES[p.base].toLowerCase()}${p.teto ? ` · teto ${brl0.format(p.teto)}` : ''}`;
+  if (p.metodo === 'pct') return `s/ ${BASES[p.base].toLowerCase()}${p.teto ? ` · teto ${brl0.format(p.teto)}` : ''}${p.inicio > 1 ? ` · a partir de ${MESES[p.inicio - 1]}` : ''}`;
   const per = { mensal: 'todo mês', anual_mes: `1x no ano · ${MESES[p.mes - 1]}`, anual_diluido: 'anual ÷ 12', por_mes: 'valor por mês' }[p.periodo];
   if (p.metodo === 'rateio') return `${{ mensal: 'total do mês', anual_mes: `total em ${MESES[p.mes - 1]}`, anual_diluido: 'total do ano ÷ 12', por_mes: 'total de cada mês' }[p.periodo]}${p.dividir === 'escopo' ? ' · dividido entre as filiais' : ''} · ${p.rateio === 'salario' ? 'proporcional ao salário' : 'média por colaborador'}`;
   if (p.metodo === 'multiplo') return per;
@@ -937,7 +937,8 @@ function editarDetalhes(rub) {
     corpo: `<form class="form-grade" id="form-detalhes">
       ${m === 'pct' ? `
         <label class="rotulo">% calculado sobre${sel('base', bases, p.base)}<small>Remuneração = salário + adicionais. Folha = remuneração + horas extras.</small></label>
-        <label class="rotulo">Teto mensal (R$) <small>opcional</small><input class="campo" name="teto" type="number" step="any" value="${p.teto ?? ''}" placeholder="sem teto"></label>`
+        <label class="rotulo">Teto mensal (R$) <small>opcional</small><input class="campo" name="teto" type="number" step="any" value="${p.teto ?? ''}" placeholder="sem teto"></label>
+        <label class="rotulo">A partir de<select class="campo" name="inicio">${opcoesMes(p.inicio || 1)}</select><small>Mês em que o % passa a valer (ex.: méritos de 2% a partir de abril). Janeiro = o ano todo.</small></label>`
       : `
         <label class="rotulo">Quando é pago${sel('periodo', m === 'multiplo' ? Object.fromEntries(Object.entries(PERIODOS).filter(([k]) => k !== 'por_mes')) : PERIODOS, p.periodo)}<small>“Uma vez no ano” lança o valor inteiro no mês escolhido (ex.: PPR em fevereiro). “Valor diferente em cada mês” serve para gastos que variam (ex.: ações de endomarketing).</small></label>
         <label class="rotulo" id="box-mes">Mês do pagamento<select class="campo" name="mes">${opcoesMes(p.mes)}</select></label>
@@ -982,6 +983,7 @@ function editarDetalhes(rub) {
     const novo = { ...p };
     if (f.base) novo.base = f.base.value;
     if (f.teto) novo.teto = f.teto.value === '' ? null : Number(f.teto.value);
+    if (f.inicio) novo.inicio = Number(f.inicio.value);
     if (f.periodo) novo.periodo = f.periodo.value;
     if (f.mes) novo.mes = Number(f.mes.value);
     if (f.rateio) novo.rateio = f.rateio.value;
@@ -1723,7 +1725,7 @@ function lerPlanilha(wb) {
 // como total do ano de cada filial e distribuídas pela ferramenta.
 // Ficam de fora o PPR (salário × target), a cesta natalina e o grupo Demais, que seguem as premissas; férias, 13º e
 // encargos seguem calculados sobre esses valores.
-const RUBS_BASE = RUBRICAS.filter(r => !r.fixa && r.id !== 'ppr' && r.id !== 'cesta_natalina' && r.id !== 'horas_extras' && (r.grupo === 'remuneracao' || r.grupo === 'beneficios' || r.id === 'rescisao'));
+const RUBS_BASE = RUBRICAS.filter(r => !r.fixa && r.id !== 'ppr' && r.id !== 'cesta_natalina' && r.id !== 'horas_extras' && r.id !== 'promocoes' && (r.grupo === 'remuneracao' || r.grupo === 'beneficios' || r.id === 'rescisao'));
 const APELIDOS_BASE = { adic_turno: ['ADIC. NOTURNO', 'ADICIONAL NOTURNO', 'ADICIONAIS DE TURNO'] };
 
 /** Colunas da planilha com o valor de cada item por colaborador: [{ rub, col }]. */
@@ -2176,7 +2178,7 @@ function descreverPremissa(p) {
     return `valor diferente por mês · ${brl.format((p.meses || []).reduce((a, b) => a + (Number(b) || 0), 0))} no ano${p.metodo === 'rateio' ? ' (total da filial)' : ' por colaborador'}`;
   }
   switch (p.metodo) {
-    case 'pct': return `${num2.format(v)}% s/ ${BASES[p.base].split(' (')[0].toLowerCase()}${p.teto ? ` · teto ${brl.format(p.teto)}` : ''}`;
+    case 'pct': return `${num2.format(v)}% s/ ${BASES[p.base].split(' (')[0].toLowerCase()}${p.teto ? ` · teto ${brl.format(p.teto)}` : ''}${p.inicio > 1 ? ` · a partir de ${MESES[p.inicio - 1]}` : ''}`;
     case 'fixo': return `${brl.format(v)} por colaborador${per}`;
     case 'rateio': return `${brl.format(v)} ${p.dividir === 'escopo' ? 'total único dividido entre as filiais' : 'total da filial'} · rateio ${p.rateio === 'salario' ? 'pelo salário' : 'por HC'}${per}`;
     case 'multiplo': return `${p.por_nivel ? 'pela tabela de nível' : `${num2.format(v)} salário(s)`}${per}`;
@@ -2508,7 +2510,7 @@ function abrirItem(s) {
 // Vínculo sugerido item → conta contábil (pelo código da conta); pode ser trocado na tela.
 const CONTA_SUGERIDA = {
   salario: '218 - SALÁRIOS E ORDENADOS', periculosidade: '1833725 - INSALUBRIDADE / PERICULOSIDADE', insalubridade: '1833725 - INSALUBRIDADE / PERICULOSIDADE',
-  penosidade: '1833725 - INSALUBRIDADE / PERICULOSIDADE', adic_turno: '1833726 - ADICIONAL NOTURNO', horas_extras: '219 - HORAS EXTRAS',
+  penosidade: '1833725 - INSALUBRIDADE / PERICULOSIDADE', adic_turno: '1833726 - ADICIONAL NOTURNO', horas_extras: '219 - HORAS EXTRAS', promocoes: '218 - SALÁRIOS E ORDENADOS',
   ferias: '223 - PROV.TRABALHISTAS-FÉRIAS', decimo: '118516 - PROV.TRABALHISTAS-13º SALÁRIO', rescisao: '220 - DESPESAS COM RESCISÃO DE FUNCIONÁRIOS',
   fgts: '221 - F.G.T.S.', fgts_ferias: '118519 - PROV.TRABALHISTAS-FGTS S/FÉRIAS', fgts_13: '118520 - PROV.TRABALHISTAS-FGTS S/13º SALÁRIO',
   inss: '222 - I.N.S.S.', inss_ferias: '118517 - PROV.TRABALHISTAS-INSS S/FÉRIAS', inss_13: '118518 - PROV.TRABALHISTAS-INSS S/13º SALÁRIO',

@@ -75,6 +75,9 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
     média por colaborador (só entre quem recebe). Dá para trocar para total por mês no ⚙. Numa regra da regional (ou
     geral), o ⚙ tem **“De quem é este total”**: *de cada filial* (cada filial tem o valor) ou *da regional toda* (um total
     único dividido entre os colaboradores de todas as filiais que seguem a regra — as que têm regra própria ficam fora).
+  - **Promoções e méritos** (grupo Remuneração): budget de aumentos — *% sobre o salário* com **“A partir de”** no ⚙ (ex.: 2%
+    a partir de abril) ou *Total da filial* (valor do ano ÷ 12). Entra na base de férias, 13º, FGTS e INSS; conta sugerida
+    218 - Salários e ordenados (pacote PESSOAL).
   - **PPR = salário × target**: ex.: R$ 13.780 × 2 = R$ 27.560 no ano. Se a filial tem dissídio, usa o **novo salário**
     (ex.: 13.780 × 1,05 × 2); no ⚙ dá para ignorar o dissídio. O valor do ano é lançado no mês escolhido ou
     diluído em 12 meses, e a conta aparece no detalhe do colaborador na Simulação.
@@ -143,7 +146,7 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
 
 | Grupo | Rubricas |
 |---|---|
-| Remuneração | Salário, Periculosidade, Insalubridade, Penosidade, Adicionais de turno, Horas extras |
+| Remuneração | Salário, Periculosidade, Insalubridade, Penosidade, Adicionais de turno, Horas extras, Promoções e méritos |
 | Provisões | Férias (1/3), 13º salário, Rescisão |
 | Encargos | FGTS, FGTS férias, FGTS 13º, INSS, INSS férias, INSS 13º |
 | Benefícios | PPR, VA/VR, VA natal / 13º VR, Vale-transporte, Auxílio-creche, Auxílio educacional (ou educação), Material escolar, Auxílio óculos, Oftalmo, Assistência médica, Coparticipação convênio médico, Assistência odontológica, Farmácia, Seguro de vida, Previdência privada, Auxílio dependente portadores, Refeitório, Fretado, Fretado (overall), Cesta natalina |

@@ -9,7 +9,8 @@
 //   premissas:     { [escopo]: { [rubrica]: premissa } }  escopo = '*' (geral), 'R:<regional>' ou '<filial>'
 //   niveis:        { [nível do cargo]: múltiplo de salários do PPR } — tabela geral, usada se a regra não tiver a sua
 //
-// Premissa: { metodo, valor, base, periodo, mes, rateio, teto, por_nivel, niveis, sem_dissidio, quem, por_funcao }
+// Premissa: { metodo, valor, base, periodo, mes, inicio, rateio, teto, por_nivel, niveis, sem_dissidio, quem, por_funcao }
+//   inicio  no %: mês a partir do qual vale (1 = o ano todo)
 //   dividir 'escopo' no total (rateio) de uma regra da regional/geral: o total é de toda a regional/empresa, não de cada filial
 //   por_funcao { 'APRENDIZ': 900 } valor próprio por função (no lugar de `valor`, em %, R$ por colaborador e nº de salários)
 //   quem    tokens 'cc:<cód>', 'cargo:<nível>' e 'funcao:<função>' (basta bater um)
@@ -51,6 +52,7 @@
     { id: 'penosidade', nome: 'Penosidade', grupo: 'remuneracao', adicional: true, padrao: P('nao') },
     { id: 'adic_turno', nome: 'Adicionais de turno', grupo: 'remuneracao', adicional: true, dica: 'Inclui adicional intrajornada e passagem de turno', padrao: P('nao') },
     { id: 'horas_extras', nome: 'Horas extras', grupo: 'remuneracao', dica: 'Custo total do ano da filial; vira média mensal por colaborador', padrao: P('rateio', { periodo: 'anual_diluido' }) },
+    { id: 'promocoes', nome: 'Promoções e méritos', grupo: 'remuneracao', dica: 'Budget de aumentos por promoção e mérito: % sobre o salário a partir de um mês, ou total da filial', padrao: P('nao', { base: 'salario' }) },
 
     // Férias, 13º, FGTS e INSS sobre salário + adicionais (periculosidade, insalubridade…) + horas extras (regra do ADM de pessoal).
     // Férias + 1/3 = base ÷ 12 + (base ÷ 12) ÷ 3 = base ÷ 9 (11,1111%).
@@ -300,7 +302,9 @@
           let v = 0;
           switch (p.metodo) {
             case 'pct':
-              v = (valorDe(p, colaboradores[i].funcao) / 100) * base(i, rub.adicional ? 'salario' : p.base, rub.grupo !== 'encargos');
+              // "A partir de" (inicio): o % só vale desse mês em diante (ex.: budget de méritos de 2% a partir de abril).
+              v = num(p.inicio) > 1 && m + 1 < num(p.inicio) ? 0
+                : (valorDe(p, colaboradores[i].funcao) / 100) * base(i, rub.adicional ? 'salario' : p.base, rub.grupo !== 'encargos');
               if (p.teto != null && p.teto !== '' && num(p.teto) > 0) v = Math.min(v, num(p.teto));
               break;
             case 'fixo':

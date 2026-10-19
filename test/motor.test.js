@@ -235,3 +235,14 @@ test('total da regional toda: treinamento de 8.293,08 por mês dividido entre as
   const cada = Motor.calcular({ colaboradores, filiais: {}, premissas: { 'R:SUL': { treinamento: { ...regra, dividir: '' } } } });
   perto(cada.valor(2, Motor.IDX.treinamento, 0), 8293.08);
 });
+
+test('promoções e méritos: 2% do salário a partir de abril, entrando na base de férias, 13º e encargos', () => {
+  const premissas = { '*': { periculosidade: { metodo: 'nao' }, promocoes: { metodo: 'pct', valor: 2, base: 'salario', inicio: 4 } } };
+  const res = Motor.calcular({ colaboradores: [colab({ salario: 5000 })], filiais: {}, premissas });
+  const v = (r, m) => res.valor(0, Motor.IDX[r], m);
+  perto(v('promocoes', 2), 0);
+  perto(v('promocoes', 3), 100);
+  perto(total(res, 'promocoes'), 900);
+  perto(v('fgts', 3), 5100 * 0.08);
+  perto(v('decimo', 3), 5100 / 12);
+});
