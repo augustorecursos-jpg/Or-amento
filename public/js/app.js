@@ -25,7 +25,7 @@ const E = {
   conf: { filial: '', modo: 'mes', sel: new Set() },
   solic: [],
   solicFiltro: 'pendentes',
-  contabil: { cfg: null, zeradas: false },
+  contabil: { cfg: null, zeradas: false, porFilial: true },
 };
 
 const $ = (sel, raiz = document) => raiz.querySelector(sel);
@@ -2552,12 +2552,15 @@ function linhasContabeis(cfg) {
   E.res.colaboradores.forEach((c, i) => {
     if (!noFiltro(c)) return;
     const cc = ccContabil(cfg, c.cc_cod).cc;
+    // Com "regional e filial", cada filial tem as suas linhas (para conferência); sem, soma como a contabilidade recebe.
+    const regional = E.contabil.porFilial ? c.regional : '';
+    const filial = E.contabil.porFilial ? c.filial : '';
     RUBRICAS.forEach((r, k) => {
       const conta = contaDoItem2(cfg, r.id);
       if (!conta) return;
       const pacote = pacoteDoItem(cfg, r.id);
-      const chave = `${pacote}\u0000${cc}\u0000${conta}`;
-      if (!porChave.has(chave)) porChave.set(chave, { pacote, cc, conta, meses: new Float64Array(12) });
+      const chave = `${regional}\u0000${filial}\u0000${pacote}\u0000${cc}\u0000${conta}`;
+      if (!porChave.has(chave)) porChave.set(chave, { regional, filial, pacote, cc, conta, meses: new Float64Array(12) });
       const l = porChave.get(chave);
       for (let m = 0; m < 12; m++) l.meses[m] += E.res.valor(i, k, m);
     });
@@ -2565,7 +2568,7 @@ function linhasContabeis(cfg) {
   const ordemConta = new Map(cfg.contas.map((c, i) => [c, i]));
   return [...porChave.values()]
     .filter(l => E.contabil.zeradas || l.meses.some(v => Math.abs(v) >= 0.005))
-    .sort((a, b) => cfg.pacotes.indexOf(a.pacote) - cfg.pacotes.indexOf(b.pacote) || a.cc.localeCompare(b.cc, 'pt-BR', { numeric: true }) || (ordemConta.get(a.conta) ?? 999) - (ordemConta.get(b.conta) ?? 999) || a.conta.localeCompare(b.conta));
+    .sort((a, b) => a.regional.localeCompare(b.regional, 'pt-BR') || a.filial.localeCompare(b.filial, 'pt-BR') || cfg.pacotes.indexOf(a.pacote) - cfg.pacotes.indexOf(b.pacote) || a.cc.localeCompare(b.cc, 'pt-BR', { numeric: true }) || (ordemConta.get(a.conta) ?? 999) - (ordemConta.get(b.conta) ?? 999) || a.conta.localeCompare(b.conta));
 }
 
 async function renderContabil() {
@@ -2621,10 +2624,10 @@ async function renderContabil() {
 
     <section class="cartao" style="margin-top:1.2rem">
       <div class="ferramentas" style="margin-bottom:.8rem"><h3 style="margin:0">Prévia · ${esc(escopo)} <small>· ${linhas.length} linha(s) · ${colabs.length} colaborador(es)</small></h3>
-        <span class="direita"><label class="check"><input type="checkbox" id="ct-zeradas" ${E.contabil.zeradas ? 'checked' : ''}> incluir linhas zeradas</label></span></div>
-      <div class="tabela-wrap alta"><table class="tabela tabela-contabil"><thead><tr><th>Pacote</th><th>Centro de Custo</th><th>Conta Contábil</th><th>Terceiro</th>${meses.map(m => `<th class="n">${m}</th>`).join('')}</tr></thead>
-      <tbody>${linhas.slice(0, 400).map(l => `<tr><td>${esc(l.pacote)}</td><td>${esc(l.cc)}</td><td>${esc(l.conta)}</td><td>${esc(cfg.terceiro)}</td>${[...l.meses].map(v => `<td class="n">${Math.round(v) ? num0.format(Math.round(v)) : '-'}</td>`).join('')}</tr>`).join('')
-        || '<tr><td colspan="16" class="vazio">Nada para mostrar com esses filtros.</td></tr>'}</tbody></table></div>
+        <span class="direita" style="display:flex;gap:1rem;flex-wrap:wrap"><label class="check" title="Desmarque para gerar no formato original da contabilidade (somado por centro de custo e conta)"><input type="checkbox" id="ct-filial" ${E.contabil.porFilial ? 'checked' : ''}> colunas de regional e filial</label><label class="check"><input type="checkbox" id="ct-zeradas" ${E.contabil.zeradas ? 'checked' : ''}> incluir linhas zeradas</label></span></div>
+      <div class="tabela-wrap alta"><table class="tabela tabela-contabil"><thead><tr>${E.contabil.porFilial ? '<th>Regional</th><th>Filial</th>' : ''}<th>Pacote</th><th>Centro de Custo</th><th>Conta Contábil</th><th>Terceiro</th>${meses.map(m => `<th class="n">${m}</th>`).join('')}</tr></thead>
+      <tbody>${linhas.slice(0, 400).map(l => `<tr>${E.contabil.porFilial ? `<td>${esc(l.regional)}</td><td>${esc(l.filial)}</td>` : ''}<td>${esc(l.pacote)}</td><td>${esc(l.cc)}</td><td>${esc(l.conta)}</td><td>${esc(cfg.terceiro)}</td>${[...l.meses].map(v => `<td class="n">${Math.round(v) ? num0.format(Math.round(v)) : '-'}</td>`).join('')}</tr>`).join('')
+        || '<tr><td colspan="18" class="vazio">Nada para mostrar com esses filtros.</td></tr>'}</tbody></table></div>
       ${linhas.length > 400 ? `<p class="subtitulo" style="margin:.6rem 0 0">Mostrando 400 de ${linhas.length} linhas — o Excel traz todas.</p>` : ''}
     </section>`;
 
@@ -2639,6 +2642,7 @@ async function renderContabil() {
   $$('[data-pacote]', el).forEach(s => s.addEventListener('change', () => salvar({ mapa_pacotes: { ...cfg.mapa_pacotes, [s.dataset.pacote]: s.value } })));
   $('#ct-terceiro', el).addEventListener('change', e => salvar({ terceiro: e.target.value }));
   $('#ct-zeradas', el).addEventListener('change', e => { E.contabil.zeradas = e.target.checked; renderContabil(); });
+  $('#ct-filial', el).addEventListener('change', e => { E.contabil.porFilial = e.target.checked; renderContabil(); });
   $$('[data-cc]', el).forEach(s => s.addEventListener('change', () => {
     const mapa = { ...cfg.mapa_cc };
     if (s.value) mapa[s.dataset.cc] = s.value; else delete mapa[s.dataset.cc];
@@ -2683,16 +2687,18 @@ function baixarContabil(cfg) {
   const ano = String(E.dados.config.ano);
   const meses = MESES.map(m => `${m}/${ano.slice(-2)}`);
   const linhas = linhasContabeis(cfg);
-  const aoa = [['Pacote', 'Centro de Custo', 'Conta Contábil', 'Terceiro', ...meses],
-    ...linhas.map(l => [l.pacote, l.cc, l.conta, cfg.terceiro, ...[...l.meses].map(v => Math.round(v * 100) / 100)])];
+  const pf = E.contabil.porFilial;
+  const ini = pf ? 6 : 4; // primeira coluna de mês
+  const aoa = [[...(pf ? ['Regional', 'Filial'] : []), 'Pacote', 'Centro de Custo', 'Conta Contábil', 'Terceiro', ...meses],
+    ...linhas.map(l => [...(pf ? [l.regional, l.filial] : []), l.pacote, l.cc, l.conta, cfg.terceiro, ...[...l.meses].map(v => Math.round(v * 100) / 100)])];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   // Formato da contabilidade: milhar sem centavos e "-" no zero
-  for (let r = 1; r < aoa.length; r++) for (let c = 4; c < 16; c++) {
+  for (let r = 1; r < aoa.length; r++) for (let c = ini; c < ini + 12; c++) {
     const ref = XLSX.utils.encode_cell({ r, c });
     if (ws[ref]) ws[ref].z = '#,##0;-#,##0;"-"';
   }
-  ws['!cols'] = [{ wch: 12 }, { wch: 46 }, { wch: 56 }, { wch: 14 }, ...meses.map(() => ({ wch: 12 }))];
-  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: 15 } }) };
+  ws['!cols'] = [...(pf ? [{ wch: 16 }, { wch: 26 }] : []), { wch: 12 }, { wch: 46 }, { wch: 56 }, { wch: 14 }, ...meses.map(() => ({ wch: 12 }))];
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: ini + 11 } }) };
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Pessoal');
   const nome = [ano, E.filtro.regional, E.filtro.uf, E.filtro.filial].filter(Boolean).join('-').replace(/[^\w-]+/g, '_');

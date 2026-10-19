@@ -111,7 +111,8 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
     pela aba opcional *Condições próprias* do modelo (MATRÍCULA · ITEM · VALOR). Reimportar a base mantém essas condições
     pela matrícula.
 - **Relatório contábil** – arquivo no formato da contabilidade: *Pacote · Centro de Custo · Conta Contábil · Terceiro ·
-  Jan/AA … Dez/AA*. Importe a planilha com as abas *Conta contabil* e *Centro de Custo Contabil*; cada item do orçamento
+  Jan/AA … Dez/AA*, com as colunas **Regional** e **Filial** na frente para conferência (desmarque “colunas de regional e
+  filial” para gerar somado, no formato original da contabilidade). Importe a planilha com as abas *Conta contabil* e *Centro de Custo Contabil*; cada item do orçamento
   (salário, férias, 13º, FGTS, PPR, plano de saúde, creche…) é ligado a uma conta contábil (sugestão inicial pelo nome,
   editável) e cada CÓD. C. CUSTO da base ao centro de custo contábil de mesmo código (automático, com ajuste manual e
   “N/A Centro de Custo” para o que não bater). Respeita os filtros de regional e filial.
