@@ -99,7 +99,7 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   matrícula pode existir em empresas diferentes) com **Remover duplicados**, e **Apagar toda a base**. **Vagas** (situação “Nova Vaga” + mês de admissão) e **desligamentos previstos**.
   - **Valores por colaborador vindos da base**: colunas opcionais com o valor de cada pessoa — periculosidade,
     insalubridade, penosidade, adicional de turno/noturno, horas extras, rescisão e benefícios (VA, 13º VR, VT, creche,
-    educacional, material escolar, óculos, oftalmo, assistência médica, coparticipação, odonto, farmácia, seguro, refeitório,
+    educacional, material escolar, óculos (valor do ano ÷ 12), oftalmo, assistência médica, coparticipação, odonto, farmácia, seguro, refeitório,
     fretado). **0 = não recebe**, **vazio = segue a regra da filial**. Na importação, a prévia mostra os itens encontrados e
     dá para desmarcar algum. Remuneração e rescisão entram sem dissídio e sobem com o dissídio da filial (quando a planilha
     traz a remuneração calculada sobre o salário com dissídio, a ferramenta detecta pela periculosidade e tira o dissídio);

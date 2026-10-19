@@ -192,3 +192,10 @@ test('valores da base: benefício com periodicidade do item e reajuste; remunera
   perto(v(1, 'horas_extras', 0), 2000);      // o total da filial fica só com quem não veio da base
   perto(v(0, 'vt', 0), 0);
 });
+
+test('auxílio óculos da base: valor do ano dividido em 12', () => {
+  const c = colab({ excecoes: { aux_oculos: { metodo: 'fixo', valor: 3000, origem: 'base' } } });
+  const res = Motor.calcular({ colaboradores: [c], filiais: {}, premissas: {} });
+  perto(res.valor(0, Motor.IDX.aux_oculos, 0), 250);
+  perto(total(res, 'aux_oculos'), 3000);
+});

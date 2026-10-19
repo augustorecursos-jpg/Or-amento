@@ -69,7 +69,7 @@
     { id: 'aux_creche', nome: 'Auxílio-creche', grupo: 'beneficios', padrao: P('nao') },
     { id: 'educacional', nome: 'Auxílio educacional', grupo: 'beneficios', padrao: P('nao') },
     { id: 'material_escolar', nome: 'Material escolar', grupo: 'beneficios', padrao: P('nao', { periodo: 'anual_mes', mes: 1 }) },
-    { id: 'aux_oculos', nome: 'Auxílio óculos', grupo: 'beneficios', padrao: P('nao') },
+    { id: 'aux_oculos', nome: 'Auxílio óculos', grupo: 'beneficios', dica: 'Valor do ano, dividido em 12 meses', padrao: P('nao', { periodo: 'anual_diluido' }) },
     { id: 'oftalmo', nome: 'Oftalmo', grupo: 'beneficios', padrao: P('nao') },
     { id: 'assist_medica', nome: 'Assistência médica', grupo: 'beneficios', padrao: P('fixo') },
     { id: 'coparticipacao', nome: 'Coparticipação convênio médico', grupo: 'beneficios', padrao: P('nao') },

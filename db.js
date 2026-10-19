@@ -130,6 +130,18 @@ if (!db.prepare("SELECT 1 FROM config WHERE chave = 'ppr_holding'").get()) {
   db.prepare("INSERT INTO config (chave, valor) VALUES ('ppr_holding', 'ok')").run();
 }
 
+// Auxílio óculos é pago uma vez no ano: o valor (da regra ou da base) é dividido em 12 meses.
+// Ajusta uma única vez as regras já gravadas em R$ por colaborador (ou "não tem"); total da filial fica como está.
+if (!db.prepare("SELECT 1 FROM config WHERE chave = 'oculos_anual'").get()) {
+  const gravar = db.prepare("UPDATE premissas SET dados = ? WHERE escopo = ? AND rubrica = 'aux_oculos'");
+  for (const r of db.prepare("SELECT escopo, dados FROM premissas WHERE rubrica = 'aux_oculos'").all()) {
+    const p = JSON.parse(r.dados);
+    if (p.metodo === 'rateio' || p.periodo === 'por_mes') continue;
+    gravar.run(JSON.stringify({ ...p, periodo: 'anual_diluido' }), r.escopo);
+  }
+  db.prepare("INSERT INTO config (chave, valor) VALUES ('oculos_anual', 'ok')").run();
+}
+
 function registrar(quem, acao, detalhe = '') {
   db.prepare('INSERT INTO historico (quem, acao, detalhe) VALUES (?, ?, ?)').run(quem, acao, String(detalhe).slice(0, 500));
 }
