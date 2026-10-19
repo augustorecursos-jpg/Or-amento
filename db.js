@@ -142,6 +142,20 @@ if (!db.prepare("SELECT 1 FROM config WHERE chave = 'oculos_anual'").get()) {
   db.prepare("INSERT INTO config (chave, valor) VALUES ('oculos_anual', 'ok')").run();
 }
 
+// Regra do ADM de pessoal: férias, 13º, FGTS e INSS sobre salário + adicionais + horas extras; INSS de 29%.
+// Ajusta uma única vez as regras já gravadas (mantém os percentuais; só troca a base). Depois, vale o que for editado na tela.
+if (!db.prepare("SELECT 1 FROM config WHERE chave = 'encargos_folha'").get()) {
+  const gravar = db.prepare('UPDATE premissas SET dados = ? WHERE escopo = ? AND rubrica = ?');
+  for (const r of db.prepare("SELECT escopo, rubrica, dados FROM premissas WHERE rubrica IN ('ferias', 'decimo', 'fgts', 'inss')").all()) {
+    let p = JSON.parse(r.dados);
+    if (p.metodo === 'pct' && ['salario', 'remuneracao'].includes(p.base || 'salario')) p = { ...p, base: 'folha' };
+    else if (r.rubrica === 'inss' && r.escopo === '*' && p.metodo === 'nao') p = { ...p, metodo: 'pct', valor: 29, base: 'folha' };
+    else continue;
+    gravar.run(JSON.stringify(p), r.escopo, r.rubrica);
+  }
+  db.prepare("INSERT INTO config (chave, valor) VALUES ('encargos_folha', 'ok')").run();
+}
+
 function registrar(quem, acao, detalhe = '') {
   db.prepare('INSERT INTO historico (quem, acao, detalhe) VALUES (?, ?, ?)').run(quem, acao, String(detalhe).slice(0, 500));
 }

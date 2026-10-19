@@ -141,8 +141,9 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
 | Benefícios | PPR, VA/VR, VA natal / 13º VR, Vale-transporte, Auxílio-creche, Auxílio educacional, Material escolar, Auxílio óculos, Oftalmo, Assistência médica, Coparticipação convênio médico, Assistência odontológica, Farmácia, Seguro de vida, Refeitório, Fretado, Fretado (overall), Cesta natalina |
 | Demais | Saúde ocupacional, Endomarketing, Treinamento, Viagens, Confraternizações |
 
-Padrões do sistema (iguais às fórmulas da planilha BZO e ajustáveis): periculosidade 30% do salário; férias
-(1/3) = remuneração ÷ 36; 13º = salário ÷ 12; FGTS 8% (sobre salário, férias e 13º); PPR 2,4 salários/ano.
+Padrões do sistema (regra do ADM de pessoal, ajustáveis em Premissas): periculosidade 30% do salário. Férias, 13º,
+FGTS e INSS sobre **salário + adicionais (periculosidade, insalubridade, penosidade, turno) + horas extras**: férias (1/3)
+= base ÷ 36; 13º = base ÷ 12; FGTS 8% (e 8% sobre férias e 13º); **INSS 29%**. PPR 2,4 salários/ano.
 O salário importado é **sem dissídio**: o reajuste entra a partir do mês da data-base de cada filial.
 
 ## Estrutura

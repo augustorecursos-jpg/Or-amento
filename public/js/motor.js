@@ -51,14 +51,15 @@
     { id: 'adic_turno', nome: 'Adicionais de turno', grupo: 'remuneracao', adicional: true, dica: 'Inclui adicional intrajornada e passagem de turno', padrao: P('nao') },
     { id: 'horas_extras', nome: 'Horas extras', grupo: 'remuneracao', dica: 'Custo total do ano da filial; vira média mensal por colaborador', padrao: P('rateio', { periodo: 'anual_diluido' }) },
 
-    { id: 'ferias', nome: 'Férias (1/3)', grupo: 'provisoes', padrao: P('pct', { valor: 2.7778, base: 'remuneracao' }) },
-    { id: 'decimo', nome: '13º salário', grupo: 'provisoes', padrao: P('pct', { valor: 8.3333 }) },
+    // Férias, 13º, FGTS e INSS sobre salário + adicionais (periculosidade, insalubridade…) + horas extras (regra do ADM de pessoal).
+    { id: 'ferias', nome: 'Férias (1/3)', grupo: 'provisoes', padrao: P('pct', { valor: 2.7778, base: 'folha' }) },
+    { id: 'decimo', nome: '13º salário', grupo: 'provisoes', padrao: P('pct', { valor: 8.3333, base: 'folha' }) },
     { id: 'rescisao', nome: 'Rescisão', grupo: 'provisoes', padrao: P('nao') },
 
-    { id: 'fgts', nome: 'FGTS', grupo: 'encargos', padrao: P('pct', { valor: 8 }) },
+    { id: 'fgts', nome: 'FGTS', grupo: 'encargos', padrao: P('pct', { valor: 8, base: 'folha' }) },
     { id: 'fgts_ferias', nome: 'FGTS férias', grupo: 'encargos', padrao: P('pct', { valor: 8, base: 'ferias' }) },
     { id: 'fgts_13', nome: 'FGTS 13º', grupo: 'encargos', padrao: P('pct', { valor: 8, base: 'decimo' }) },
-    { id: 'inss', nome: 'INSS', grupo: 'encargos', padrao: P('nao', { base: 'remuneracao' }) },
+    { id: 'inss', nome: 'INSS', grupo: 'encargos', padrao: P('pct', { valor: 29, base: 'folha' }) },
     { id: 'inss_ferias', nome: 'INSS férias', grupo: 'encargos', padrao: P('nao', { base: 'ferias' }) },
     { id: 'inss_13', nome: 'INSS 13º', grupo: 'encargos', padrao: P('nao', { base: 'decimo' }) },
 
@@ -95,7 +96,7 @@
     rateio: 'Total da filial (rateio)',
     multiplo: 'Nº de salários',
   };
-  const BASES = { salario: 'Salário', remuneracao: 'Remuneração', folha: 'Folha c/ HE', ferias: 'Férias', decimo: '13º salário' };
+  const BASES = { salario: 'Salário', remuneracao: 'Remuneração', folha: 'Salário + adicionais + horas extras', ferias: 'Férias', decimo: '13º salário' };
   const PERIODOS = { mensal: 'Todo mês', anual_mes: 'Uma vez no ano (mês)', anual_diluido: 'Anual diluído (÷12)', por_mes: 'Valor diferente em cada mês' };
 
   const R = RUBRICAS.length;

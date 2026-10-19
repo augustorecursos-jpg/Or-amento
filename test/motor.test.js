@@ -7,20 +7,22 @@ const perto = (a, b) => assert.ok(Math.abs(a - b) < 0.01, `${a} ≠ ${b}`);
 const colab = (extra = {}) => ({ id: 1, nome: 'Teste', regional: 'CENTRO OESTE', filial: 'CUIABA', cargo: '14-Operação - Apoio', cc_cod: '17151', salario: 4858.04, mes_inicio: 1, mes_fim: 12, ...extra });
 const total = (res, rub, i = 0) => { let s = 0; for (let m = 0; m < 12; m++) s += res.valor(i, Motor.IDX[rub], m); return s; };
 
-test('reproduz as fórmulas da planilha (dissídio desde janeiro)', () => {
+test('férias, 13º, FGTS e INSS sobre salário + adicionais + horas extras (dissídio desde janeiro)', () => {
   const res = Motor.calcular({
-    colaboradores: [colab()],
+    colaboradores: [colab({ excecoes: { horas_extras: { metodo: 'fixo', valor: 300 } } })],
     filiais: { CUIABA: { dissidio_pct: 4.22, dissidio_mes: 1 } },
     premissas: {},
   });
   const v = rub => res.valor(0, Motor.IDX[rub], 0);
   perto(v('salario'), 5063.049288);
   perto(v('periculosidade'), 1518.9147864);
-  perto(v('ferias'), (5063.049288 + 1518.9147864) / 36);
-  perto(v('decimo'), 5063.049288 / 12);
-  perto(v('fgts'), 405.04394304);
+  const folha = 5063.049288 + 1518.9147864 + 300;
+  perto(v('ferias'), folha / 36);
+  perto(v('decimo'), folha / 12);
+  perto(v('fgts'), folha * 0.08);
+  perto(v('inss'), folha * 0.29);
   perto(v('fgts_ferias'), v('ferias') * 0.08);
-  perto(v('fgts_13'), 33.75366192);
+  perto(v('fgts_13'), v('decimo') * 0.08);
 });
 
 test('dissídio só a partir do mês da data-base', () => {
