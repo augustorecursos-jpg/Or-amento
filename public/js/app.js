@@ -1166,7 +1166,8 @@ const chaveNome = s => normCab(s).replace(/[^A-Z0-9%]/g, '');
 const APELIDOS = {
   va: ['VA/VR', 'VA', 'VR'], va_natal: ['VA NATAL (DEZEMBRO)', '13° VR', '13º VR'], vt: ['VT'], assist_medica: ['ASSIST. MÉDICA', 'ASSIST. MÉDICA (EMPRESA)'],
   assist_odonto: ['ASSIST. ODONTO', 'ASSIST. ODONTO (EMPRESA)'], aux_creche: ['AUXÍLIO CRECHÊ', 'AUXÍLIO CRECHE'], adic_turno: ['ADICIONAIS DE TURNO (INCLUSOS ADIC. INTRAJORNADA E PASSAGEM DE TURNO)'],
-  decimo: ['13° SALÁRIO'], coparticipacao: ['COPARTICIPAÇÃO CONVÊNIO MÉDICO'], educacional: ['EDUCACIONAL'], farmacia: ['FARMACIA'],
+  decimo: ['13° SALÁRIO'], coparticipacao: ['COPARTICIPAÇÃO CONVÊNIO MÉDICO'], educacional: ['EDUCACIONAL', 'AUXÍLIO EDUCAÇÃO'], farmacia: ['FARMACIA'],
+  previdencia: ['PREVIDÊNCIA', 'PREVIDÊNCIA PRIVADA (EMPRESA)'], aux_dependente: ['AUXÍLIO DEPENDENTE PORTADOR', 'AUXÍLIO FILHO EXCEPCIONAL'],
 };
 
 function lerCelulaPremissa(v) {
@@ -2510,7 +2511,7 @@ const CONTA_SUGERIDA = {
   vt: '236 - VALE TRANSPORTE', aux_creche: '67994 - DESPESAS COM CRECHES E LAZER', educacional: '3447914 - OUTROS BENEFICIOS SOCIAIS',
   material_escolar: '3447914 - OUTROS BENEFICIOS SOCIAIS', aux_oculos: '3447914 - OUTROS BENEFICIOS SOCIAIS', oftalmo: '67996 - DESPESAS MÉDICAS/HOSPITALARES/ODONTOLÓGICAS',
   assist_medica: '147480 - PLANO DE SAUDE', coparticipacao: '147480 - PLANO DE SAUDE', assist_odonto: '67996 - DESPESAS MÉDICAS/HOSPITALARES/ODONTOLÓGICAS',
-  farmacia: '163562 - MEDICAMENTOS', seguro_vida: '78061 - SEGUROS DE FUNCIONÁRIOS', refeitorio: '1291020 - ALIMENTOS PARA REFEITÓRIO',
+  farmacia: '163562 - MEDICAMENTOS', seguro_vida: '78061 - SEGUROS DE FUNCIONÁRIOS', previdencia: '2909419 - PREVIDENCIA PRIVADA', aux_dependente: '206192 - AUXILIO FILHO EXCEPCIONAL', refeitorio: '1291020 - ALIMENTOS PARA REFEITÓRIO',
   fretado: '67975 - TRANSPORTE CONTRATADO/PRÓPRIO', fretado_overall: '67975 - TRANSPORTE CONTRATADO/PRÓPRIO', cesta_natalina: '67993 - CESTAS NATALINAS',
   saude_ocupacional: '67980 - EXAMES PERIÓDICOS', endomarketing: '105278 - ENDOMARKETING', treinamento: '246 - CURSOS E TREINAMENTOS DE PESSOAL',
   viagens: '68420 - DIÁRIAS', confraternizacoes: '251 - CONFRATERNIZAÇÕES',
