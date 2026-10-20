@@ -261,11 +261,15 @@ const Graficos = (() => {
     const x = m => me + ((L - me - md) / (rotulos.length - 1)) * m;
     let svg = `<svg class="grafico-svg" viewBox="0 0 ${L} ${A}" role="img" aria-label="${esc(titulo)}">`;
     for (let k = 0; k <= 4; k++) { const v = min + ((max - min) * k) / 4; svg += `<line class="grade" x1="${me}" x2="${L - md}" y1="${y(v)}" y2="${y(v)}"/><text x="${me - 8}" y="${y(v) + 4}" text-anchor="end">${formato(Math.round(v))}</text>`; }
-    series.forEach(s => {
+    const u = rotulos.length - 1;
+    // rótulos do fim das linhas: afasta os que ficariam um sobre o outro
+    const fins = series.map((s, k) => ({ k, y: y(s.valores[u]) })).sort((a, b) => a.y - b.y);
+    fins.forEach((f, i) => { if (i && f.y - fins[i - 1].y < 14) f.y = fins[i - 1].y + 14; });
+    const yFim = new Map(fins.map(f => [f.k, f.y]));
+    series.forEach((s, k) => {
       svg += `<polyline points="${s.valores.map((v, m) => `${x(m)},${y(v)}`).join(' ')}" fill="none" stroke="${s.cor}" stroke-width="2" stroke-linejoin="round"/>`;
       s.valores.forEach((v, m) => { svg += `<circle cx="${x(m)}" cy="${y(v)}" r="4" fill="${s.cor}" stroke="#fff" stroke-width="2"/>`; });
-      const u = s.valores.length - 1;
-      svg += `<text x="${x(u) + 9}" y="${y(s.valores[u]) + 4}" style="font-weight:800;fill:${s.cor}">${formato(s.valores[u])}</text>`;
+      svg += `<text x="${x(u) + 9}" y="${yFim.get(k) + 4}" style="font-weight:800;fill:${s.cor}">${formato(s.valores[u])}</text>`;
     });
     rotulos.forEach((r, m) => {
       svg += `<text x="${x(m)}" y="${A - 8}" text-anchor="middle">${r}</text>`;

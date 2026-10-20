@@ -164,6 +164,13 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
 **Comparativo com o ano anterior (ex.: 2026 × 2027)**
 - Em **Base de colaboradores › Histórico do ano anterior**: modelo em Excel (matrícula, funcionário, regional, filial,
   função, cargo, CC e o salário pago em JAN…DEZ). A importação substitui o histórico; a regional é completada pela filial.
+  Aceita também **uma linha por colaborador por mês** (colunas Mês/Ano — ex.: "mar./2026" — e Salário; Gp. Cargo vira o
+  nível). A pessoa é matrícula + nome + filial (a mesma matrícula existe em empresas diferentes) e o nome da filial é
+  ligado ao da ferramenta ("NORTE FLUMINENSE" → "UTE NORTE FLUMINENSE"). Sem centro de custo na planilha, quem ainda está
+  na base usa o CC da base.
+- Ano que ainda não fechou: os meses depois do último mês da planilha são **projetados** com o salário desse mês de quem
+  estava ativo nele (ex.: nov–dez = salário de outubro). Os meses projetados aparecem com * nas telas e no Excel;
+  importar de novo com a folha real substitui a projeção.
 - O ano anterior é calculado com o salário de cada mês + as **mesmas premissas** do orçamento, **sem dissídio** e **sem
   reajuste de benefícios**. Quem ainda está na base (mesma matrícula) herda os valores próprios da planilha.
   Outros lançamentos só entram no ano do orçamento. O comparativo vai até os encargos: **remuneração, provisões,

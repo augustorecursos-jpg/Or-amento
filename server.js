@@ -272,14 +272,18 @@ app.post('/api/ano-anterior/importar', exigirAdmin, (req, res) => {
   try {
     db.exec('DELETE FROM ano_anterior');
     linhas.forEach(l => ins.run(...campos.map(k => (k === 'salarios' ? JSON.stringify(l.salarios) : l[k]))));
+    // Meses realizados (os seguintes foram projetados com o salário do último mês)
+    const reais = Math.min(12, Math.max(1, Math.round(numero(req.body?.meses_reais)) || 12));
+    db.prepare("INSERT INTO config (chave, valor) VALUES ('anterior_meses_reais', ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").run(String(reais));
     db.exec('COMMIT');
   } catch (e) { db.exec('ROLLBACK'); throw e; }
-  registrar('Administrador', 'Importou o histórico do ano anterior', `${linhas.length} colaborador(es)`);
+  registrar('Administrador', 'Importou o histórico do ano anterior', `${linhas.length} colaborador(es)${Number(req.body?.meses_reais) < 12 ? ` · realizado até o mês ${Number(req.body.meses_reais)}, demais meses projetados` : ''}`);
   res.json({ ok: true, importados: linhas.length });
 });
 
 app.delete('/api/ano-anterior', exigirAdmin, (req, res) => {
   db.exec('DELETE FROM ano_anterior');
+  db.prepare("DELETE FROM config WHERE chave = 'anterior_meses_reais'").run();
   registrar('Administrador', 'Apagou o histórico do ano anterior');
   res.json({ ok: true });
 });

@@ -85,20 +85,29 @@ function soGruposComparados(res) {
   for (let i = 0; i < res.n; i++) for (const k of fora) valores.fill(0, (i * RN + k) * 12, (i * RN + k) * 12 + 12);
   return { ...res, valores, valor: (i, r, m) => valores[(i * RN + r) * 12 + m] };
 }
+/** Meses do ano anterior que são realizados; os seguintes foram projetados com o salário do último mês. */
+const mesesReaisAnt = () => Number(E.dados.config.anterior_meses_reais) || 12;
+const rotulosAnt = () => MESES.map((m, i) => (i >= mesesReaisAnt() ? `${m}*` : m));
+const notaProjecao = () => {
+  const r = mesesReaisAnt();
+  if (r >= 12) return '';
+  return `${anoAnt()}: ${MESES[0]}–${MESES[r - 1]} realizado · ${MESES[r]}${r < 11 ? `–${MESES[11]}` : ''}* projetado com o salário de ${MESES[r - 1]}`;
+};
 const anoAnt = () => Number(E.dados.config.ano) - 1;
 /** Histórico do ano anterior como colaboradores do cálculo. Quem ainda está na base herda dela as condições próprias
  * (benefícios da planilha, sucedidos), o sexo e o gestor — casando pela matrícula e nome. */
 function anteriorComoColaboradores() {
   const atuais = new Map(E.dados.colaboradores.filter(c => c.matricula).map(c => [`${c.matricula}|${String(c.nome).trim().toUpperCase()}`, c]));
-  const porMat = new Map(E.dados.colaboradores.filter(c => c.matricula).map(c => [String(c.matricula), c]));
+  // a mesma matrícula existe em empresas diferentes: sem o nome igual, só casa na mesma filial
+  const porMat = new Map(E.dados.colaboradores.filter(c => c.matricula).map(c => [`${c.matricula}|${c.filial}`, c]));
   return (E.dados.anterior || []).map((a, k) => {
-    const atual = atuais.get(`${a.matricula}|${String(a.nome).trim().toUpperCase()}`) || (a.matricula ? porMat.get(String(a.matricula)) : null);
+    const atual = atuais.get(`${a.matricula}|${String(a.nome).trim().toUpperCase()}`) || (a.matricula ? porMat.get(`${a.matricula}|${a.filial}`) : null);
     const meses = a.salarios.map(Number);
     const ini = meses.findIndex(v => v > 0) + 1;
     const fim = 12 - [...meses].reverse().findIndex(v => v > 0);
     return {
       id: -1000000 - k, matricula: a.matricula, nome: a.nome, regional: a.regional, filial: a.filial, situacao: 'Histórico',
-      funcao: a.funcao || atual?.funcao || '', cargo: a.cargo || atual?.cargo || '', cc_cod: a.cc_cod, cc_nome: a.cc_nome || atual?.cc_nome || '',
+      funcao: a.funcao || atual?.funcao || '', cargo: a.cargo || atual?.cargo || '', cc_cod: a.cc_cod || atual?.cc_cod || '', cc_nome: a.cc_nome || (a.cc_cod ? '' : atual?.cc_nome) || '',
       salario: meses[fim - 1] || 0, salarios: meses, mes_inicio: ini || 1, mes_fim: fim || 12, vaga: false,
       excecoes: atual?.excecoes || {}, sexo: atual?.sexo || '', gestor: atual?.gestor || '',
     };
@@ -431,7 +440,7 @@ function desenharComparativo(box) {
       <div class="pontilhado"></div>
       <div class="hero2-num">
         <small>CUSTO ANUAL DE PESSOAL · ${ant} × ${esc(ano)}</small>
-        <p class="comp-escopo">Remuneração, provisões, encargos e benefícios · o grupo Demais (treinamento, viagens, serviços…) fica fora do comparativo</p>
+        <p class="comp-escopo">Remuneração, provisões, encargos e benefícios · o grupo Demais (treinamento, viagens, serviços…) fica fora do comparativo${notaProjecao() ? `<br>${notaProjecao()}` : ''}</p>
         <div class="comp-totais">
           <div><span style="--c:${COR_ANT}">${ant} · realizado</span><b>${brl0.format(a0.total)}</b></div>
           <div class="comp-seta">→</div>
@@ -452,8 +461,8 @@ function desenharComparativo(box) {
       ${kpi('💼', '#8b5fbf', 'Custo médio por colaborador', brl0.format(medio1), `por mês · ${ant}: ${brl0.format(medio0)} (${deltaPct(medio1 - medio0, medio0)})`)}
       ${kpi('🔺', '#c2410c', 'Maior aumento', maior && maior.d > 0 ? esc(maior.r.nome) : '–', maior && maior.d > 0 ? `${deltaFmt(maior.d)} · ${pctFmt(d > 0 ? maior.d / d : 0)} da variação` : 'nenhuma conta sobe')}
     </div>
-    <section class="cartao"><h3>Custo mês a mês <small>· ${ant} realizado × ${esc(ano)} orçado</small></h3><div id="gc-meses"></div>
-      <div class="tabela-wrap" style="margin-top:.6rem"><table class="tabela tabela-comp-mes"><thead><tr><th></th>${MESES.map(m => `<th class="n">${m}</th>`).join('')}<th class="n">Ano</th></tr></thead><tbody>
+    <section class="cartao"><h3>Custo mês a mês <small>· ${ant} realizado × ${esc(ano)} orçado${notaProjecao() ? ` · * ${notaProjecao()}` : ''}</small></h3><div id="gc-meses"></div>
+      <div class="tabela-wrap" style="margin-top:.6rem"><table class="tabela tabela-comp-mes"><thead><tr><th></th>${rotulosAnt().map(m => `<th class="n"${m.endsWith('*') ? ` title="${esc(notaProjecao())}"` : ''}>${m}</th>`).join('')}<th class="n">Ano</th></tr></thead><tbody>
         <tr><td><i class="bola" style="background:${COR_ANT}"></i>${ant}</td>${[...a0.meses].map(v => `<td class="n">${Graficos.curto(v)}</td>`).join('')}<td class="n"><b>${Graficos.curto(a0.total)}</b></td></tr>
         <tr><td><i class="bola" style="background:${COR_ATUAL}"></i>${esc(ano)}</td>${[...a1.meses].map(v => `<td class="n">${Graficos.curto(v)}</td>`).join('')}<td class="n"><b>${Graficos.curto(a1.total)}</b></td></tr>
         <tr class="linha-delta"><td>Δ R$</td>${MESES.map((_, m) => { const x = a1.meses[m] - a0.meses[m]; return `<td class="n ${clsDelta(x)}">${sinal(x)}${Graficos.curto(Math.abs(x))}</td>`; }).join('')}<td class="n ${clsDelta(d)}"><b>${sinal(d)}${Graficos.curto(Math.abs(d))}</b></td></tr>
@@ -470,8 +479,8 @@ function desenharComparativo(box) {
     <section class="cartao" style="margin-top:1.2rem"><h3>${nomeNivel} <small>· ${ant} × ${esc(ano)}</small></h3>
       <div class="tabela-wrap"><table class="tabela tabela-ranking" id="gc-escopo"></table></div></section>`;
 
-  Graficos.linhas($('#gc-mini', box), { rotulos: MESES, series: [{ nome: String(ant), cor: COR_ANT, valores: [...a0.meses] }, { nome: String(ano), cor: '#9cc3e4', valores: [...a1.meses] }], formato: v => Graficos.curto(v), titulo: 'Custo por mês' });
-  Graficos.colunasAgrupadas($('#gc-meses', box), { rotulos: MESES, series: [{ nome: `${ant} realizado`, cor: COR_ANT, valores: [...a0.meses] }, { nome: `${ano} orçado`, cor: COR_ATUAL, valores: [...a1.meses] }], titulo: `Custo por mês ${ant} × ${ano}` });
+  Graficos.linhas($('#gc-mini', box), { rotulos: rotulosAnt(), series: [{ nome: String(ant), cor: COR_ANT, valores: [...a0.meses] }, { nome: String(ano), cor: '#9cc3e4', valores: [...a1.meses] }], formato: v => Graficos.curto(v), titulo: 'Custo por mês' });
+  Graficos.colunasAgrupadas($('#gc-meses', box), { rotulos: rotulosAnt(), series: [{ nome: `${ant} realizado`, cor: COR_ANT, valores: [...a0.meses] }, { nome: `${ano} orçado`, cor: COR_ATUAL, valores: [...a1.meses] }], titulo: `Custo por mês ${ant} × ${ano}` });
   // Ponte: as 7 contas que mais mexem no total; o resto junto
   const porImpacto = [...contas].sort((x, y) => Math.abs(y.d) - Math.abs(x.d));
   const top = porImpacto.slice(0, 7).sort((x, y) => y.d - x.d);
@@ -580,7 +589,7 @@ function legendaPremissasHtml() {
   return `<details class="cartao legenda-premissas" id="legenda-premissas"${E.legendaAberta ? ' open' : ''}>
     <summary><h3 style="display:inline">📖 Legenda das premissas <small>· como cada conta é calculada${E.comparar && E.resAnt ? ` em ${esc(E.dados.config.ano)} e em ${anoAnt()}` : ''}</small></h3></summary>
     <p class="subtitulo" style="margin:.4rem 0 .8rem">Dissídio ${lista(diss)} · reajuste de benefícios ${lista(reaj)}.
-      ${E.resAnt ? `<br>${anoAnt()}: salário realmente pago em cada mês (histórico carregado) com as mesmas regras abaixo, <b>sem</b> dissídio e <b>sem</b> o reajuste de benefícios do orçamento. Outros lançamentos só entram em ${esc(E.dados.config.ano)}. O comparativo considera ${GRUPOS_CMP_TXT}; o grupo Demais fica fora.` : ''}</p>
+      ${E.resAnt ? `<br>${anoAnt()}: salário realmente pago em cada mês (histórico carregado${notaProjecao() ? `; ${notaProjecao().replace(/^\d+: /, '')}` : ''}) com as mesmas regras abaixo, <b>sem</b> dissídio e <b>sem</b> o reajuste de benefícios do orçamento. Outros lançamentos só entram em ${esc(E.dados.config.ano)}. O comparativo considera ${GRUPOS_CMP_TXT}; o grupo Demais fica fora.` : ''}</p>
     <table class="tabela tabela-legenda"><thead><tr><th>Conta</th><th>Grupo</th><th>Premissa</th></tr></thead><tbody>
       ${linhas.map(({ r }) => `<tr><td><b>${esc(r.nome)}</b></td><td><i class="bola" style="background:${COR_GRUPO[r.grupo]}"></i>${esc(NOME_GRUPO[r.grupo])}</td>
         <td>${esc(regraDaRubrica(r.id, fils))}${NOTAS_LEGENDA[r.id] ? `<span class="sub">${esc(NOTAS_LEGENDA[r.id])}</span>` : ''}${r.dica ? `<span class="sub">${esc(r.dica)}</span>` : ''}</td></tr>`).join('')}
@@ -642,7 +651,7 @@ function desenharHeadcount(el, col) {
       ${kpi('🚪', '#8b5fbf', 'Desligamentos previstos', num0.format(n.deslig), 'saídas antes de dezembro')}
       ${kpi('📅', '#2a9d8f', 'HC janeiro → dezembro', `${num0.format(n.jan)} → ${num0.format(n.dez)}`, varAno ? `${varAno > 0 ? '+' : ''}${num0.format(varAno)} no ano` : 'estável no ano')}
     </div>
-    ${comp ? `<section class="cartao" style="margin-bottom:1.2rem"><h3>Evolução do headcount <small>· ${anoAnt()} realizado × ${esc(E.dados.config.ano)} orçado (ocupadas + vagas) · dez/${a2} ${num0.format(antMes[11])} → dez/${a1} ${num0.format(n.dez)} (${sinal(n.dez - antMes[11])}${num0.format(Math.abs(n.dez - antMes[11]))})</small></h3><div id="g-hc-comp"></div></section>` : ''}
+    ${comp ? `<section class="cartao" style="margin-bottom:1.2rem"><h3>Evolução do headcount <small>· ${anoAnt()} realizado × ${esc(E.dados.config.ano)} orçado (ocupadas + vagas) · dez/${a2} ${num0.format(antMes[11])} → dez/${a1} ${num0.format(n.dez)} (${sinal(n.dez - antMes[11])}${num0.format(Math.abs(n.dez - antMes[11]))})${notaProjecao() ? ` · * ${notaProjecao()}` : ''}</small></h3><div id="g-hc-comp"></div></section>` : ''}
     <section class="cartao"><h3>Headcount mês a mês <small>· pessoas ativas em cada mês, ocupadas e vagas</small></h3><div id="g-hc-meses"></div></section>
     <section class="cartao" style="margin-top:1.2rem">
       <div class="ferramentas" style="margin-bottom:.8rem">
@@ -658,7 +667,7 @@ function desenharHeadcount(el, col) {
 
   if (comp) {
     Graficos.linhas($('#g-hc-comp', el), {
-      rotulos: MESES, titulo: 'Headcount por mês nos dois anos', formato: v => num0.format(v),
+      rotulos: rotulosAnt(), titulo: 'Headcount por mês nos dois anos', formato: v => num0.format(v),
       series: [{ nome: `${anoAnt()} realizado`, cor: COR_ANT, valores: antMes }, { nome: `${E.dados.config.ano} orçado`, cor: COR_ATUAL, valores: MESES.map((_, m) => n.ocupadasMes[m] + n.vagasMes[m]) }],
     });
   }
@@ -1033,7 +1042,7 @@ function tabelaComparadaHtml() {
   const regra = l => { const r = (l.filho || l.det === 'rubrica') && RUBRICAS.find(x => x.nome === l.rotulo); return r ? ` title="${esc(regraDaRubrica(r.id))}"` : ` title="${esc(l.rotulo)}"`; };
   return `<table class="tabela tabela-sim-comp">
     <thead><tr><th class="fixa">${{ rubricas: 'Rubrica', filiais: 'Filial', cc: 'Centro de custo', colaboradores: 'Colaborador' }[E.sim.visao]}<span class="sub">${so ? `Δ ${ant} → ${esc(ano)} por mês` : `${esc(ano)} <span class="sub-ant" style="display:inline">· ${ant} abaixo</span>`} · ${GRUPOS_CMP_TXT}</span></th>
-      ${MESES.map(m => `<th class="n">${m}</th>`).join('')}<th class="n">Total ${ant}</th><th class="n">Total ${esc(ano)}</th><th class="n">Δ R$</th><th class="n">Δ %</th></tr></thead>
+      ${rotulosAnt().map(m => `<th class="n"${m.endsWith('*') ? ` title="${esc(notaProjecao())}"` : ''}>${m}</th>`).join('')}<th class="n">Total ${ant}</th><th class="n">Total ${esc(ano)}</th><th class="n">Δ R$</th><th class="n">Δ %</th></tr></thead>
     <tbody>${linhas.map(l => {
       const cls = l.det ? `det-${l.det}` : l.grupo ? `grupo${E.sim.fechados.has(l.grupo) ? ' fechado' : ''}` : l.filho ? 'filho' : l.colab != null || l.ag != null ? `colab${l.aberto ? ' aberto' : ''}${l.vaga ? ' vaga' : ''}` : '';
       const attrs = l.det ? '' : `${l.grupo ? ` data-grupo="${l.grupo}"` : ''}${l.colab != null ? ` data-colab="${l.colab}"` : ''}${l.ag != null ? ` data-ag="${esc(l.ag)}"` : ''}`;
@@ -1270,7 +1279,7 @@ function exportarExcel() {
     const ano = E.dados.config.ano, ant = anoAnt();
     const ag0 = totalDe(E.resAnt);
     const ag = totalDe(E.resCmp);
-    const cmp = [['Grupo', 'Conta', ...MESES.map(m => `${m}/${ant}`), `Total ${ant}`, ...MESES.map(m => `${m}/${ano}`), `Total ${ano}`, 'Δ R$', 'Δ %', 'Premissa']];
+    const cmp = [['Grupo', 'Conta', ...MESES.map((m, i) => `${m}/${ant}${i >= mesesReaisAnt() ? ' (projetado)' : ''}`), `Total ${ant}`, ...MESES.map(m => `${m}/${ano}`), `Total ${ano}`, 'Δ R$', 'Δ %', 'Premissa']];
     RUBRICAS.forEach((r, i) => {
       const m0 = [...ag0.porRubrica.slice(i * 12, i * 12 + 12)].map(r2), m1 = [...ag.porRubrica.slice(i * 12, i * 12 + 12)].map(r2);
       const t0 = m0.reduce((a, b) => a + b, 0), t1 = m1.reduce((a, b) => a + b, 0);
@@ -2324,7 +2333,7 @@ const ALIASES = {
   filial: ['FILIAL'],
   situacao: ['DSITUACAO', 'SITUACAO'],
   funcao: ['FUNCAO'],
-  cargo: ['CARGO', 'GP. FUNCAO', 'NIVEL CARGO', 'NIVEL DO CARGO'],
+  cargo: ['CARGO', 'GP. FUNCAO', 'NIVEL CARGO', 'NIVEL DO CARGO', 'GP. CARGO', 'GRUPO CARGO', 'GRUPO DE CARGO'],
   cc_cod: ['CODCCUSTORED', 'COD. C. CUSTO', 'COD. CENTRO DE CUSTO', 'CODIGO CENTRO DE CUSTO'],
   cc_nome: ['NOMECCUSTO', 'DESCRICAO CENTRO DE CUSTO', 'DESCRICAO - CENTRO DE CUSTO', 'CENTRO DE CUSTO'],
   salario: ['SALARIO S/PROV DISSIDIO', 'SALARIO S/ PROV DISSIDIO', 'SALARIO BASE', 'SALARIO'],
@@ -2661,12 +2670,12 @@ function desenharAnoAnterior(box) {
   const hcMes = MESES.map((_, m) => ant.filter(x => Number(x.salarios[m]) > 0).length);
   box.innerHTML = `
     <h3>Histórico ${a} <small>· salário pago em cada mês, para comparar ${a} × ${E.dados.config.ano}</small></h3>
-    <p class="subtitulo" style="margin:0 0 .8rem">Uma linha por colaborador com o salário de cada mês de ${a}. A ferramenta aplica as regras das premissas (adicionais, férias + 1/3, 13º, FGTS, INSS, benefícios, PPR…) <b>sem o dissídio e sem o reajuste de benefícios de ${E.dados.config.ano}</b> e monta o custo de ${a} para o comparativo no Painel e na Simulação. Mês vazio ou 0 = a pessoa não estava na empresa naquele mês.</p>
+    <p class="subtitulo" style="margin:0 0 .8rem">Uma linha por colaborador com o salário de cada mês de ${a}. A ferramenta aplica as regras das premissas (adicionais, férias + 1/3, 13º, FGTS, INSS, benefícios, PPR…) <b>sem o dissídio e sem o reajuste de benefícios de ${E.dados.config.ano}</b> e monta o custo de ${a} para o comparativo no Painel e na Simulação. Mês vazio ou 0 = a pessoa não estava na empresa naquele mês. Aceita também <b>uma linha por mês</b> (colunas Mês/Ano e Salário). Se o ano ainda não fechou, os meses que faltam são projetados com o salário do último mês de quem estava ativo nele.</p>
     <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center">
       <button class="btn btn-claro btn-sm" id="ant-modelo">⬇ Modelo do histórico</button>
       <label class="btn btn-marinho btn-sm" style="cursor:pointer">⬆ Importar histórico ${a}<input type="file" id="ant-arquivo" accept=".xlsx,.xls,.csv" hidden></label>
       ${ant.length ? `<button class="btn btn-claro btn-sm" id="ant-apagar" style="color:var(--vermelho)">Apagar histórico</button>
-        <span class="chip ok">✓ ${num0.format(ant.length)} colaborador(es) · ${new Set(ant.map(x => x.filial)).size} filiais · folha ${a} ${brl0.format(folha)} · HC jan ${hcMes[0]} → dez ${hcMes[11]}</span>` : '<span class="chip falta">Sem histórico carregado</span>'}
+        <span class="chip ok">✓ ${num0.format(ant.length)} colaborador(es) · ${new Set(ant.map(x => x.filial)).size} filiais · folha ${a} ${brl0.format(folha)} · HC jan ${hcMes[0]} → dez ${hcMes[11]}</span>${notaProjecao() ? `<span class="chip">* ${esc(notaProjecao())}</span>` : ''}` : '<span class="chip falta">Sem histórico carregado</span>'}
     </div>`;
   $('#ant-modelo', box).addEventListener('click', baixarModeloAnterior);
   $('#ant-arquivo', box).addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importarAnoAnterior(f); });
@@ -2689,37 +2698,95 @@ function baixarModeloAnterior() {
   XLSX.writeFile(wb, `Modelo-historico-${anoAnt()}.xlsx`);
 }
 
+/** Mês (0–11) de um rótulo de competência: "mar./2026", "MAR/26", "03/2026", "2026-03", data do Excel… (-1 se não for mês) */
+function mesDaCompetencia(v) {
+  if (v instanceof Date) return v.getMonth();
+  if (typeof v === 'number' && v > 20000 && v < 80000) return new Date(Math.round((v - 25569) * 864e5)).getUTCMonth(); // data serial do Excel
+  const t = normCab(v).replace(/[^A-Z0-9/-]/g, '');
+  const i = MESES.findIndex(m => t.startsWith(normCab(m)));
+  if (i >= 0) return i;
+  const l = MESES_LONGOS.findIndex(m => t.startsWith(m));
+  if (l >= 0) return l;
+  let n = t.match(/^(\d{1,2})[/-]\d{2,4}$/);
+  if (n) return Number(n[1]) - 1;
+  n = t.match(/^\d{4}-(\d{1,2})/);
+  return n ? Number(n[1]) - 1 : -1;
+}
+
+/** Nome da filial como está na ferramenta ("NORTE FLUMINENSE" → "UTE NORTE FLUMINENSE"), quando dá para saber sem dúvida. */
+function filialDaFerramenta(nome) {
+  const f = normCab(nome);
+  const todas = Object.keys(E.dados.filiais);
+  const igual = todas.find(x => normCab(x) === f);
+  if (igual || !f) return igual || nome.toUpperCase();
+  const contem = todas.filter(x => { const n = normCab(x); return n.endsWith(` ${f}`) || n.startsWith(`${f} `) || n.includes(` ${f} `); });
+  return contem.length === 1 ? contem[0] : nome.toUpperCase();
+}
+
 async function importarAnoAnterior(arquivo) {
   try {
-    const wb = XLSX.read(await arquivo.arrayBuffer(), { type: 'array' });
+    const wb = XLSX.read(await arquivo.arrayBuffer(), { type: 'array', cellDates: true });
+    const num = v => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[R$\s]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')) || 0);
     let lido = null;
+    let mesesReais = 12;
     for (const nomeAba of wb.SheetNames) {
       const l = XLSX.utils.sheet_to_json(wb.Sheets[nomeAba], { header: 1, raw: true, defval: null });
       for (let h = 0; h < Math.min(l.length, 40) && !lido; h++) {
         const cab = (l[h] || []).map(normCab);
-        const achar = campo => { for (const al of ALIASES[campo]) { const i = cab.indexOf(al); if (i >= 0) return i; } return -1; };
+        const achar = (campo, lista = ALIASES[campo]) => { for (const al of lista) { const i = cab.indexOf(al); if (i >= 0) return i; } return -1; };
         const col = Object.fromEntries(['matricula', 'nome', 'regional', 'filial', 'funcao', 'cargo', 'cc_cod', 'cc_nome'].map(k => [k, achar(k)]));
         if (col.nome < 0 || col.filial < 0) continue;
-        // meses: "JAN/26", "JAN", "JANEIRO", "01/2026"…
-        const mesDe = c => { const t = c.replace(/[^A-Z0-9/]/g, ''); const i = MESES.findIndex(m => t.startsWith(normCab(m))); if (i >= 0) return i; const n = t.match(/^(\d{1,2})\//); return n ? Number(n[1]) - 1 : MESES_LONGOS.findIndex(m => t.startsWith(m)); };
-        const colMes = Array(12).fill(-1);
-        cab.forEach((c, i) => { if (Object.values(col).includes(i)) return; const m = mesDe(c); if (m >= 0 && m < 12 && colMes[m] < 0) colMes[m] = i; });
-        if (colMes.filter(i => i >= 0).length < 1) continue;
-        const num = v => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[R$\s]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')) || 0);
         const txt = (r, k) => (col[k] >= 0 ? String(r[col[k]] ?? '').trim() : '');
-        lido = l.slice(h + 1).filter(r => r && txt(r, 'nome') && txt(r, 'filial')).map(r => ({
+        const linhas = l.slice(h + 1).filter(r => r && txt(r, 'nome') && txt(r, 'filial'));
+        const pessoa = r => ({
           matricula: txt(r, 'matricula'), nome: txt(r, 'nome'), regional: txt(r, 'regional'), filial: txt(r, 'filial'), funcao: txt(r, 'funcao'),
-          cargo: txt(r, 'cargo'), cc_cod: txt(r, 'cc_cod'), cc_nome: txt(r, 'cc_nome'), salarios: colMes.map(i => (i >= 0 ? num(r[i]) : 0)),
-        }));
+          cargo: txt(r, 'cargo'), cc_cod: txt(r, 'cc_cod'), cc_nome: txt(r, 'cc_nome'),
+        });
+        // Formato "uma linha por mês": colunas Mês/Ano (competência) e Salário
+        const cMes = achar('', ['MES/ANO', 'MES / ANO', 'MESANO', 'COMPETENCIA', 'MES COMPETENCIA', 'MES', 'PERIODO']);
+        const cSal = achar('salario');
+        if (cMes >= 0 && cSal >= 0) {
+          const porPessoa = new Map();
+          for (const r of linhas) {
+            const m = mesDaCompetencia(r[cMes]);
+            if (m < 0) continue;
+            const p = pessoa(r);
+            // a mesma matrícula existe em empresas diferentes: a pessoa é matrícula + nome + filial
+            const k = `${p.matricula}|${normCab(p.nome)}|${normCab(p.filial)}`;
+            if (!porPessoa.has(k)) porPessoa.set(k, { ...p, salarios: Array(12).fill(0) });
+            const x = porPessoa.get(k);
+            x.salarios[m] += num(r[cSal]);
+            Object.assign(x, Object.fromEntries(Object.entries(p).filter(([, v]) => v))); // fica a função/cargo do mês mais recente
+          }
+          lido = [...porPessoa.values()];
+        } else {
+          // Formato "uma coluna por mês": JAN/26, JAN, JANEIRO, 01/2026…
+          const colMes = Array(12).fill(-1);
+          cab.forEach((c, i) => { if (Object.values(col).includes(i)) return; const m = mesDaCompetencia(c); if (m >= 0 && m < 12 && colMes[m] < 0) colMes[m] = i; });
+          if (colMes.filter(i => i >= 0).length < 1) continue;
+          lido = linhas.map(r => ({ ...pessoa(r), salarios: colMes.map(i => (i >= 0 ? num(r[i]) : 0)) }));
+        }
       }
       if (lido) break;
     }
-    if (!lido || !lido.length) return toast('Não encontrei as colunas Funcionário, Filial e os meses (JAN/26 … DEZ/26). Use o modelo.', 'erro');
-    // Sem regional na planilha: usa a da filial na base
-    lido.forEach(x => { if (!x.regional) x.regional = E.dados.filiais[x.filial.toUpperCase()]?.regional || ''; });
-    if (!confirm(`${lido.length} colaborador(es) no histórico de ${anoAnt()}. Substituir o histórico atual por este?`)) return;
-    const r = await api('/api/ano-anterior/importar', { method: 'POST', body: { linhas: lido } });
-    toast(`Histórico de ${anoAnt()} carregado: ${r.importados} colaborador(es).`);
+    if (!lido || !lido.length) return toast('Não encontrei as colunas Funcionário, Filial e os meses (JAN/26 … DEZ/26, ou Mês/Ano + Salário). Use o modelo.', 'erro');
+    lido.forEach(x => {
+      x.filial = filialDaFerramenta(x.filial);
+      if (!x.regional) x.regional = E.dados.filiais[x.filial]?.regional || '';
+    });
+    // Meses que ainda não fecharam (ex.: só até outubro): projeta com o salário do último mês de quem estava ativo nele
+    const ultimo = Math.max(...lido.map(x => x.salarios.reduce((u, v, m) => (v > 0 ? m : u), -1)));
+    let proj = 0;
+    if (ultimo >= 0 && ultimo < 11) {
+      mesesReais = ultimo + 1;
+      lido.forEach(x => {
+        if (x.salarios[ultimo] > 0) { proj++; for (let m = ultimo + 1; m < 12; m++) x.salarios[m] = x.salarios[ultimo]; }
+      });
+    }
+    const msgProj = proj ? `\n\nA planilha vai até ${MESES[ultimo]}/${anoAnt()}: ${MESES[ultimo + 1]}–Dez serão projetados com o salário de ${MESES[ultimo]} das ${proj} pessoas ativas em ${MESES[ultimo]}.` : '';
+    if (!confirm(`${lido.length} colaborador(es) no histórico de ${anoAnt()}.${msgProj}\n\nSubstituir o histórico atual por este?`)) return;
+    const r = await api('/api/ano-anterior/importar', { method: 'POST', body: { linhas: lido, meses_reais: mesesReais } });
+    toast(`Histórico de ${anoAnt()} carregado: ${r.importados} colaborador(es)${proj ? ` · ${MESES[ultimo + 1]}–Dez projetados` : ''}.`);
     await recarregarTudo();
   } catch (e) { toast(e.message || 'Não consegui ler o arquivo.', 'erro'); }
 }
