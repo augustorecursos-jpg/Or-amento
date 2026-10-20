@@ -127,7 +127,9 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
     pela aba opcional *Condições próprias* do modelo (MATRÍCULA · ITEM · VALOR). Reimportar a base mantém essas condições
     pela matrícula.
 - **Outros lançamentos** – custos que não são de um colaborador (consultorias, Gupy, uma rescisão prevista num centro de
-  custo em um mês…): descrição, regional, filial (ou só a regional), centro de custo (da base ou da lista contábil, ex.:
+  custo em um mês…): descrição, regional (ou **Todas as regionais · Brasil**), filial — sem filial, o valor pode ser
+  **dividido entre as filiais pelo headcount** de cada mês (calculado no servidor com a base inteira) ou ficar como valor
+  único da regional/empresa —, centro de custo (da base ou da lista contábil, ex.:
   25506), item da ferramenta (Rescisão, Treinamento, Viagens…) ou **Outra conta** com a conta contábil escolhida, pacote e o
   valor de cada mês (preenchimento rápido: só num mês, todos os meses ou total do ano ÷ 12; aceita colar a linha do Excel).
   Entram no Painel, na Simulação (📌 lançamento) e no Relatório contábil com a conta e o centro de custo escolhidos; não

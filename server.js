@@ -246,19 +246,51 @@ app.get('/api/dados', exigirLogin, (req, res) => {
   }
   const niveis = Object.fromEntries(db.prepare('SELECT * FROM niveis ORDER BY nivel').all().map(n => [n.nivel, n.multiplo]));
   const config = Object.fromEntries(db.prepare('SELECT * FROM config').all().map(c => [c.chave, c.valor]));
-  const lancamentos = db.prepare(`SELECT * FROM lancamentos ${filtro} ORDER BY regional, filial, descricao`).all(...params).map(lerLancamentoDb);
-  res.json({ config, colaboradores, filiais, premissas, niveis, lancamentos });
+  const todosLanc = db.prepare('SELECT * FROM lancamentos ORDER BY regional, filial, descricao').all().map(lerLancamentoDb);
+  const visivel = reg => u.admin || u.regionais.includes(reg);
+  // lancamentos = os cadastrados (para a tela); linhasLanc = o que entra no cálculo, já dividido entre as filiais
+  const lancamentos = todosLanc.filter(l => l.regional === '*' || visivel(l.regional));
+  // (o valor único da empresa, sem regional, só entra na visão do administrador)
+  const linhasLanc = expandirLancamentos(todosLanc).filter(l => visivel(l.regional) || (u.admin && l.regional === '*'));
+  res.json({ config, colaboradores, filiais, premissas, niveis, lancamentos, linhasLanc });
 });
 
 // ----- outros lançamentos (custos fora dos colaboradores) -----
 
 const lerLancamentoDb = l => ({ ...l, meses: (() => { try { return JSON.parse(l.meses); } catch { return []; } })() });
-const CAMPOS_LANC = ['descricao', 'regional', 'filial', 'cc_cod', 'cc_nome', 'cc_contabil', 'rubrica', 'conta', 'pacote', 'meses'];
+const CAMPOS_LANC = ['descricao', 'regional', 'filial', 'cc_cod', 'cc_nome', 'cc_contabil', 'rubrica', 'conta', 'pacote', 'meses', 'dividir'];
+
+/**
+ * Lançamentos sem filial com dividir = 'hc' (ex.: Gupy para o Brasil todo) viram uma linha por filial, com o valor de cada
+ * mês proporcional ao headcount da filial naquele mês (colaboradores + vagas ativos). Usa a base inteira, para que cada
+ * coordenador veja a parte certa da sua regional.
+ */
+function expandirLancamentos(lista) {
+  if (!lista.some(l => l.dividir === 'hc' && !l.filial)) return lista.map(l => ({ ...l, parte: null }));
+  const hc = new Map(); // filial → { regional, meses[12] }
+  for (const c of db.prepare('SELECT regional, filial, mes_inicio, mes_fim FROM colaboradores').all()) {
+    if (!hc.has(c.filial)) hc.set(c.filial, { regional: c.regional, meses: Array(12).fill(0) });
+    const h = hc.get(c.filial);
+    for (let m = 0; m < 12; m++) if (m + 1 >= (c.mes_inicio || 1) && m + 1 <= (c.mes_fim || 12)) h.meses[m]++;
+  }
+  const out = [];
+  for (const l of lista) {
+    if (l.dividir !== 'hc' || l.filial) { out.push({ ...l, parte: null }); continue; }
+    const alvo = [...hc].filter(([, h]) => l.regional === '*' || h.regional === l.regional);
+    const tot = Array.from({ length: 12 }, (_, m) => alvo.reduce((a, [, h]) => a + h.meses[m], 0));
+    for (const [filial, h] of alvo) {
+      const meses = (l.meses || []).map((v, m) => (tot[m] ? (Number(v) || 0) * h.meses[m] / tot[m] : 0));
+      if (meses.some(v => Math.abs(v) >= 0.005)) out.push({ ...l, regional: h.regional, filial, meses, parte: l.id });
+    }
+  }
+  return out;
+}
 
 function lerLancamento(b) {
   return {
     descricao: texto(b.descricao, 200),
-    regional: texto(b.regional, 80).toUpperCase(),
+    // '*' = todas as regionais (nível Brasil)
+    regional: /^(\*|TODAS|TODAS AS REGIONAIS|BRASIL)$/i.test(texto(b.regional)) ? '*' : texto(b.regional, 80).toUpperCase(),
     filial: texto(b.filial, 120).toUpperCase(),
     cc_cod: texto(b.cc_cod, 40),
     cc_nome: texto(b.cc_nome, 160),
@@ -267,6 +299,8 @@ function lerLancamento(b) {
     conta: texto(b.conta, 160),
     pacote: texto(b.pacote, 80),
     meses: JSON.stringify(Array.from({ length: 12 }, (_, i) => numero(Array.isArray(b.meses) ? b.meses[i] : 0))),
+    // 'hc' = sem filial, dividido entre as filiais (da regional ou de todas) pelo headcount de cada mês
+    dividir: /^(hc|headcount|dividir|sim)$/i.test(texto(b.dividir)) && !texto(b.filial) ? 'hc' : '',
   };
 }
 const lancValido = l => (!l.descricao || !l.regional ? 'Informe a descrição e a regional.' : '');

@@ -45,8 +45,10 @@ function filiaisComRascunho() {
 
 /** Outros lançamentos como linhas "avulsas" do cálculo: somam custo na filial/CC, mas não são pessoas. */
 function lancamentosComoLinhas() {
-  return (E.dados.lancamentos || []).map(l => ({
-    id: -l.id, matricula: '', nome: l.descricao, regional: l.regional, filial: l.filial || `(regional ${l.regional})`, situacao: 'Outro lançamento', funcao: 'Outro lançamento',
+  // linhasLanc já vem do servidor com os lançamentos "dividir pelo headcount" repartidos por filial
+  return (E.dados.linhasLanc || E.dados.lancamentos || []).map((l, k) => ({
+    id: -(k + 1), matricula: '', nome: l.descricao, regional: l.regional === '*' ? 'TODAS AS REGIONAIS' : l.regional,
+    filial: l.filial || (l.regional === '*' ? '(empresa · Brasil)' : `(regional ${l.regional})`), situacao: 'Outro lançamento', funcao: 'Outro lançamento',
     cargo: '', cc_cod: l.cc_cod, cc_nome: l.cc_nome, salario: 0, mes_inicio: 1, mes_fim: 12, vaga: false, excecoes: {}, sexo: '', gestor: '',
     avulso: { rubrica: l.rubrica, meses: l.meses, conta: l.conta, pacote: l.pacote, cc_contabil: l.cc_contabil, id: l.id },
   }));
@@ -3003,8 +3005,10 @@ function baixarContabil(cfg) {
 
 const RUBS_LANC = RUBRICAS.filter(r => !r.fixa && r.grupo !== 'encargos');
 const nomeItemLanc = id => (id === 'outras' ? 'Outra conta' : RUBRICAS[IDX[id]]?.nome || id);
-const noFiltroLanc = l => (!E.filtro.regional || l.regional === E.filtro.regional) && (!E.filtro.filial || l.filial === E.filtro.filial)
+const noFiltroLanc = l => (l.regional === '*' || !E.filtro.regional || l.regional === E.filtro.regional) && (!E.filtro.filial || l.filial === E.filtro.filial)
   && (!l.filial || bateUf(l.filial)) && (!E.filtro.cc || String(l.cc_cod || '') === E.filtro.cc);
+const regionalLanc = l => (l.regional === '*' ? 'Todas as regionais (Brasil)' : l.regional);
+const filialLanc = l => l.filial || (l.dividir === 'hc' ? `Todas as filiais${l.regional === '*' ? '' : ' da regional'} · por headcount` : l.regional === '*' ? '— empresa (valor único) —' : '— só a regional —');
 const somaMeses = l => (l.meses || []).reduce((a, b) => a + (Number(b) || 0), 0);
 const ccDoLanc = l => l.cc_contabil || [l.cc_cod, l.cc_nome].filter(Boolean).join(' · ') || '—';
 
@@ -3025,8 +3029,8 @@ async function renderLancamentos() {
       ${lista.length ? `<div class="tabela-wrap alta"><table class="tabela tabela-lanc"><thead><tr><th class="fixa">Descrição</th><th>Filial</th><th>Centro de custo</th><th>Item / conta contábil</th><th>Pacote</th>
         ${MESES.map(m => `<th class="n">${m}</th>`).join('')}<th class="n">Total ano</th><th></th></tr></thead>
         <tbody>${lista.map(l => `<tr data-lanc="${l.id}">
-          <td class="fixa" title="${esc(l.descricao)}">${esc(l.descricao)}<span class="sub">${esc(l.regional)}</span></td>
-          <td>${esc(l.filial || '— regional —')}</td><td>${esc(ccDoLanc(l))}</td>
+          <td class="fixa" title="${esc(l.descricao)}">${esc(l.descricao)}<span class="sub">${esc(regionalLanc(l))}</span></td>
+          <td>${esc(filialLanc(l))}</td><td>${esc(ccDoLanc(l))}</td>
           <td>${esc(nomeItemLanc(l.rubrica))}<span class="sub">${esc(l.conta || contaDoItem2(cfg, l.rubrica) || '— sem conta —')}</span></td>
           <td>${esc(l.pacote || pacoteDoItem(cfg, l.rubrica))}</td>
           ${MESES.map((_, m) => { const v = Number(l.meses?.[m]) || 0; return `<td class="n${v ? '' : ' zero'}">${v ? num2.format(v) : '–'}</td>`; }).join('')}
@@ -3066,15 +3070,19 @@ function lerCcLanc(txt, cfg) {
 
 function editarLancamento(l) {
   const cfg = E.contabil.cfg;
-  const a = l || { descricao: '', regional: E.filtro.regional || regionais()[0] || '', filial: E.filtro.filial || '', cc_cod: E.filtro.cc || '', cc_nome: '', cc_contabil: '', rubrica: 'outras', conta: '', pacote: '', meses: Array(12).fill(0) };
+  const a = l || { descricao: '', regional: E.filtro.regional || regionais()[0] || '', filial: E.filtro.filial || '', cc_cod: E.filtro.cc || '', cc_nome: '', cc_contabil: '', rubrica: 'outras', conta: '', pacote: '', meses: Array(12).fill(0), dividir: 'hc' };
   const ccsBase = [...new Map(E.dados.colaboradores.map(c => [String(c.cc_cod || ''), rotuloCc(c)])).values()].sort((x, y) => x.localeCompare(y, 'pt-BR', { numeric: true }));
   const ccAtual = a.cc_contabil || (a.cc_cod ? [a.cc_cod, a.cc_nome].filter(Boolean).join(' · ') : '');
   const d = abrirModal({
     titulo: l ? 'Editar lançamento' : 'Novo lançamento', sup: 'OUTROS LANÇAMENTOS', largo: true,
     corpo: `<form class="form-grade" id="form-lanc">
       <label class="rotulo inteiro">Descrição<input class="campo" name="descricao" value="${esc(a.descricao)}" placeholder="ex.: Consultoria de cargos e salários · Gupy · Rescisão prevista" required></label>
-      <label class="rotulo">Regional<select class="campo" name="regional">${regionais().map(r => `<option ${r === a.regional ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></label>
+      <label class="rotulo">Regional<select class="campo" name="regional"><option value="*" ${a.regional === '*' ? 'selected' : ''}>★ Todas as regionais (Brasil)</option>${regionais().map(r => `<option ${r === a.regional ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></label>
       <label class="rotulo">Filial<select class="campo" name="filial"></select></label>
+      <label class="rotulo inteiro" id="box-dividir">Sem filial: como entra<select class="campo" name="dividir">
+        <option value="hc" ${a.dividir === 'hc' ? 'selected' : ''}>Dividir entre as filiais pelo headcount (cada unidade fica com a sua parte)</option>
+        <option value="" ${a.dividir !== 'hc' ? 'selected' : ''}>Valor único, sem filial (fica no nível da regional / empresa)</option></select>
+        <small>Ex.: Gupy para o Brasil todo → "Todas as regionais" + "Dividir pelo headcount": cada filial recebe a parte proporcional às pessoas em cada mês.</small></label>
       <label class="rotulo">Centro de custo<input class="campo" name="cc" list="lanc-ccs" value="${esc(ccAtual)}" placeholder="digite o código ou escolha na lista">
         <datalist id="lanc-ccs">${[...ccsBase, ...cfg.ccs].map(c => `<option value="${esc(c)}">`).join('')}</datalist><small>Lista com os CCs da base e os da contabilidade (ex.: 25506).</small></label>
       <label class="rotulo">Item<select class="campo" name="rubrica"><option value="outras" ${a.rubrica === 'outras' ? 'selected' : ''}>Outra conta (escolha a conta contábil)</option>
@@ -3094,10 +3102,13 @@ function editarLancamento(l) {
   });
   const f = $('#form-lanc', d);
   const montarFiliais = () => {
-    f.filial.innerHTML = `<option value="">— só a regional (sem filial) —</option>${filiaisDa(f.regional.value).map(x => `<option ${x === a.filial ? 'selected' : ''}>${esc(x)}</option>`).join('')}`;
+    const todas = f.regional.value === '*';
+    f.filial.innerHTML = `<option value="">${todas ? '— todas as filiais —' : '— sem filial (regional) —'}</option>${todas ? '' : filiaisDa(f.regional.value).map(x => `<option ${x === a.filial ? 'selected' : ''}>${esc(x)}</option>`).join('')}`;
+    $('#box-dividir', d).hidden = Boolean(f.filial.value);
   };
   montarFiliais();
   f.regional.addEventListener('change', () => { a.filial = ''; montarFiliais(); });
+  f.filial.addEventListener('change', () => { $('#box-dividir', d).hidden = Boolean(f.filial.value); });
   const dicaConta = () => { $('#lanc-conta-dica', d).textContent = f.rubrica.value === 'outras' ? 'Obrigatória em "Outra conta".' : `Vazia = conta do item (${contaDoItem2(cfg, f.rubrica.value) || 'sem conta'}).`; };
   dicaConta();
   f.rubrica.addEventListener('change', dicaConta);
@@ -3121,6 +3132,7 @@ function editarLancamento(l) {
     const body = {
       descricao: f.descricao.value.trim(), regional: f.regional.value, filial: f.filial.value, ...lerCcLanc(f.cc.value, cfg),
       rubrica: f.rubrica.value, conta: f.conta.value.trim(), pacote: f.pacote.value, meses: campos.map(i => Number(i.value) || 0),
+      dividir: f.filial.value ? '' : f.dividir.value,
     };
     if (!body.descricao) return toast('Informe a descrição.', 'erro');
     if (body.rubrica === 'outras' && !body.conta) return toast('Em "Outra conta", informe a conta contábil.', 'erro');
@@ -3132,21 +3144,22 @@ function editarLancamento(l) {
   });
 }
 
-const COL_LANC = ['Descrição', 'Regional', 'Filial', 'Cód. C. Custo', 'Centro de custo', 'CC contábil', 'Item', 'Conta contábil', 'Pacote', ...MESES, 'Total ano'];
+const COL_LANC = ['Descrição', 'Regional', 'Filial', 'Distribuição', 'Cód. C. Custo', 'Centro de custo', 'CC contábil', 'Item', 'Conta contábil', 'Pacote', ...MESES, 'Total ano'];
 
 function baixarLancamentos(cfg, lista) {
   if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
-  const linhas = lista.length ? lista.map(l => [l.descricao, l.regional, l.filial, l.cc_cod, l.cc_nome, l.cc_contabil, nomeItemLanc(l.rubrica), l.conta, l.pacote, ...MESES.map((_, m) => Number(l.meses?.[m]) || 0), somaMeses(l)])
-    : [['Consultoria de cargos e salários', regionais()[0] || 'SUDESTE', '', '17093', 'RECURSOS HUMANOS', '', 'Outra conta', cfg.contas[0] || '', '', 0, 0, 15000, 0, 0, 0, 0, 0, 15000, 0, 0, 0, 30000],
-       ['Gupy (licença)', regionais()[0] || 'SUDESTE', '', '17093', 'RECURSOS HUMANOS', '', 'Outra conta', cfg.contas[0] || '', '', ...Array(12).fill(2500), 30000],
-       ['Rescisão prevista', regionais()[0] || 'SUDESTE', filiaisDa(regionais()[0])[0] || '', '17150', 'OPERAÇÃO', '', 'Rescisão', '', '', 0, 0, 0, 0, 0, 0, 25000, 0, 0, 0, 0, 0, 25000]];
+  const linhas = lista.length ? lista.map(l => [l.descricao, l.regional === '*' ? 'TODAS' : l.regional, l.filial, l.dividir === 'hc' ? 'HC' : '', l.cc_cod, l.cc_nome, l.cc_contabil, nomeItemLanc(l.rubrica), l.conta, l.pacote, ...MESES.map((_, m) => Number(l.meses?.[m]) || 0), somaMeses(l)])
+    : [['Consultoria de cargos e salários', regionais()[0] || 'SUDESTE', '', '', '17093', 'RECURSOS HUMANOS', '', 'Outra conta', cfg.contas[0] || '', '', 0, 0, 15000, 0, 0, 0, 0, 0, 15000, 0, 0, 0, 30000],
+       ['Gupy (licença)', 'TODAS', '', 'HC', '17093', 'RECURSOS HUMANOS', '', 'Outra conta', cfg.contas[0] || '', '', ...Array(12).fill(2500), 30000],
+       ['Rescisão prevista', regionais()[0] || 'SUDESTE', filiaisDa(regionais()[0])[0] || '', '', '17150', 'OPERAÇÃO', '', 'Rescisão', '', '', 0, 0, 0, 0, 0, 0, 25000, 0, 0, 0, 0, 0, 25000]];
   const ws = XLSX.utils.aoa_to_sheet([COL_LANC, ...linhas]);
-  ws['!cols'] = [34, 16, 22, 12, 24, 30, 20, 40, 16, ...MESES.map(() => 11), 12].map(wch => ({ wch }));
+  ws['!cols'] = [34, 16, 22, 13, 12, 24, 30, 20, 40, 16, ...MESES.map(() => 11), 12].map(wch => ({ wch }));
   const ajuda = XLSX.utils.aoa_to_sheet([
     ['Coluna', 'O que colocar'],
     ['Descrição', 'Obrigatória. Ex.: Consultoria X, Gupy, Rescisão prevista'],
-    ['Regional', 'Obrigatória, igual à da base (ex.: NORTE)'],
-    ['Filial', 'Opcional. Vazio = custo da regional, sem filial'],
+    ['Regional', 'Obrigatória, igual à da base (ex.: NORTE). TODAS = todas as regionais (nível Brasil)'],
+    ['Filial', 'Opcional. Vazio = sem filial (veja Distribuição)'],
+    ['Distribuição', 'Só quando a Filial está vazia. HC = dividir entre as filiais (da regional, ou de todas se a Regional for TODAS) pelo headcount de cada mês. Vazio = valor único, sem filial'],
     ['Cód. C. Custo / Centro de custo', 'Código e nome do centro de custo da base (ex.: 17093 · RECURSOS HUMANOS)'],
     ['CC contábil', 'Opcional. Centro de custo da contabilidade, como está na lista (ex.: 25506 - TRANSPORTE CONTRATADO/MOBILIDADE). Se preenchido, vale no relatório contábil'],
     ['Item', `Um item da ferramenta (ex.: Rescisão, Treinamento, Viagens) ou "Outra conta". Itens: ${RUBS_LANC.filter(r => !r.soLancamento).map(r => r.nome).join(', ')}`],
@@ -3174,7 +3187,7 @@ async function importarLancamentos(arquivo) {
     const num = v => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[R$\s]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')) || 0);
     const txt = v => String(v ?? '').trim();
     const linhas = l.slice(h + 1).filter(r => r && txt(r[col('Descrição')])).map(r => ({
-      descricao: txt(r[col('Descrição')]), regional: txt(r[col('Regional')]), filial: txt(r[col('Filial')]),
+      descricao: txt(r[col('Descrição')]), regional: txt(r[col('Regional')]), filial: txt(r[col('Filial')]), dividir: col('Distribuição') >= 0 ? txt(r[col('Distribuição')]) : '',
       cc_cod: txt(r[col('Cód. C. Custo')]), cc_nome: txt(r[col('Centro de custo')]), cc_contabil: txt(r[col('CC contábil')]),
       rubrica: porNome.get(chaveNome(r[col('Item')])) || 'outras', conta: txt(r[col('Conta contábil')]), pacote: txt(r[col('Pacote')]),
       meses: MESES.map(m => num(r[col(m)])),

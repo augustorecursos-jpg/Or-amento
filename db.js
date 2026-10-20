@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   conta       TEXT NOT NULL DEFAULT '',
   pacote      TEXT NOT NULL DEFAULT '',
   meses       TEXT NOT NULL DEFAULT '[]',
+  dividir     TEXT NOT NULL DEFAULT '',
   atualizado_em TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -128,6 +129,8 @@ const colunas = db.prepare('PRAGMA table_info(colaboradores)').all().map(c => c.
 if (!colunas.includes('excecoes')) db.exec("ALTER TABLE colaboradores ADD COLUMN excecoes TEXT NOT NULL DEFAULT '{}'");
 if (!colunas.includes('sexo')) db.exec("ALTER TABLE colaboradores ADD COLUMN sexo TEXT NOT NULL DEFAULT ''");
 if (!colunas.includes('gestor')) db.exec("ALTER TABLE colaboradores ADD COLUMN gestor TEXT NOT NULL DEFAULT ''");
+const colLanc = db.prepare('PRAGMA table_info(lancamentos)').all().map(c => c.name);
+if (!colLanc.includes('dividir')) db.exec("ALTER TABLE lancamentos ADD COLUMN dividir TEXT NOT NULL DEFAULT ''");
 const colFiliais = db.prepare('PRAGMA table_info(filiais)').all().map(c => c.name);
 if (!colFiliais.includes('uf')) db.exec('ALTER TABLE filiais ADD COLUMN uf TEXT');
 
