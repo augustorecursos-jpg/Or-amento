@@ -138,9 +138,9 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   (salário, férias, 13º, FGTS, PPR, plano de saúde, creche…) é ligado a uma conta contábil (sugestão inicial pelo nome,
   editável) e cada CÓD. C. CUSTO da base ao centro de custo contábil de mesmo código (automático, com ajuste manual e
   “N/A Centro de Custo” para o que não bater). Respeita os filtros de regional e filial.
-  Três pacotes: **PESSOAL** (salário, adicionais, horas extras, rescisão, FGTS, INSS, PPR), **BENEFÍCIOS** (VA/VR, VT,
-  saúde, creche, seguro, cesta, fretado, treinamento, endomarketing…) e **PROVISÕES TRABALHISTAS** (férias, 13º e FGTS/INSS
-  sobre eles) — o pacote de cada item pode ser trocado na tela. Cada item pode ter um **centro de custo fixo**: Fretado e
+  Quatro pacotes: **PESSOAL** (salário, adicionais, horas extras, rescisão, FGTS, INSS, PPR), **BENEFÍCIOS** (VA/VR, VT,
+  saúde, creche, seguro, cesta, fretado, treinamento, endomarketing…), **PROVISÕES TRABALHISTAS** (férias, 13º e FGTS/INSS
+  sobre eles) e **TERCEIROS** (Serviços / Terceiros) — o pacote de cada item pode ser trocado na tela. Cada item pode ter um **centro de custo fixo**: Fretado e
   Fretado (overall) vão para **25506 - Transporte Contratado/Mobilidade** (conta 67975 - Transporte contratado/próprio); o VT
   (236 - Vale Transporte) e os demais usam o centro de custo de cada colaborador.
 - **Pedidos de ajuste** – caixa de entrada com status (aberta, em análise, ajustada, recusada), resposta ao coordenador

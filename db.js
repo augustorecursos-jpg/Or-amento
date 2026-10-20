@@ -225,6 +225,19 @@ for (const marca of ['he_sem_base', 'he_sem_base_2']) if (!db.prepare('SELECT 1 
   if (n) db.prepare('INSERT INTO historico (quem, acao, detalhe) VALUES (?, ?, ?)').run('Sistema', 'Removeu a HE vinda da base', `${n} colaborador(es): HE passa a ser o total do ano de cada filial`);
 }
 
+// Pacote TERCEIROS (Serviços / Terceiros) no relatório contábil: inclui, uma vez, na lista de pacotes já salva.
+if (!db.prepare("SELECT 1 FROM config WHERE chave = 'pacote_terceiros'").get()) {
+  const r = db.prepare("SELECT valor FROM config WHERE chave = 'contabil'").get();
+  if (r) {
+    const c = JSON.parse(r.valor || '{}');
+    if (Array.isArray(c.pacotes) && !c.pacotes.some(p => /TERCEIR/i.test(p))) {
+      c.pacotes.push('TERCEIROS');
+      db.prepare("UPDATE config SET valor = ? WHERE chave = 'contabil'").run(JSON.stringify(c));
+    }
+  }
+  db.prepare("INSERT INTO config (chave, valor) VALUES ('pacote_terceiros', 'ok')").run();
+}
+
 function registrar(quem, acao, detalhe = '') {
   db.prepare('INSERT INTO historico (quem, acao, detalhe) VALUES (?, ?, ?)').run(quem, acao, String(detalhe).slice(0, 500));
 }

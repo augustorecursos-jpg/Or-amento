@@ -2792,6 +2792,8 @@ function pacoteDoItem(cfg, rub) {
   if (cfg.mapa_pacotes?.[rub]) return cfg.mapa_pacotes[rub];
   const [pessoal, beneficios, provisoes] = cfg.pacotes;
   if (PROVISOES_TRAB.has(rub)) return provisoes;
+  const terceiros = cfg.pacotes.find(p => /TERCEIR/i.test(p));
+  if (rub === 'servicos' && terceiros) return terceiros;
   const grupo = RUBRICAS[IDX[rub]].grupo;
   if (grupo === 'beneficios' && rub !== 'ppr') return beneficios;
   if (grupo === 'demais') return beneficios;
@@ -2927,7 +2929,7 @@ async function renderContabil() {
   };
   $('#ct-pacotes', el).addEventListener('change', e => {
     const pacotes = e.target.value.split(',').map(x => x.trim()).filter(Boolean);
-    if (pacotes.length < 3) return toast('Informe os três pacotes: pessoal, benefícios e provisões trabalhistas.', 'erro');
+    if (pacotes.length < 3) return toast('Informe pelo menos os pacotes de pessoal, benefícios e provisões trabalhistas (nessa ordem).', 'erro');
     salvar({ pacotes });
   });
   $$('[data-pacote]', el).forEach(s => s.addEventListener('change', () => salvar({ mapa_pacotes: { ...cfg.mapa_pacotes, [s.dataset.pacote]: s.value } })));

@@ -609,7 +609,7 @@ function lerContabil() {
   try { c = JSON.parse(linha?.valor || '{}'); } catch { c = {}; }
   return {
     terceiro: 'N/A Custom1', cc_padrao: 'N/A Centro de Custo', contas: [], ccs: [], mapa_rubricas: {}, mapa_cc: {}, cc_rubricas: {},
-    pacotes: ['PESSOAL', 'BENEFÍCIOS', 'PROVISÕES TRABALHISTAS'], mapa_pacotes: {}, ...c,
+    pacotes: ['PESSOAL', 'BENEFÍCIOS', 'PROVISÕES TRABALHISTAS', 'TERCEIROS'], mapa_pacotes: {}, ...c,
   };
 }
 
