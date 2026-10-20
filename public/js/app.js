@@ -27,7 +27,7 @@ const E = {
   hc: { dim: 'filial', busca: '', aberto: '', sub: 'funcao' },
   solic: [],
   solicFiltro: 'pendentes',
-  contabil: { cfg: null, zeradas: false, porFilial: true },
+  contabil: { cfg: null, zeradas: false, porFilial: true, formato: 'contabil' },
 };
 
 const $ = (sel, raiz = document) => raiz.querySelector(sel);
@@ -1167,6 +1167,11 @@ function desenharTabelaPrem() {
     tr.querySelector('[data-campo="metodo"]').addEventListener('change', e => {
       const v = e.target.value;
       E.prem.edits[rub] = v === 'nivel' ? { ...atual(), metodo: 'multiplo', por_nivel: true } : { ...atual(), metodo: v, por_nivel: false };
+      // Total da filial costuma ser o valor do ano: passa de "todo mês" para "total do ano ÷ 12" (dá para trocar no ⚙)
+      if (v === 'rateio' && E.prem.edits[rub].periodo === 'mensal') {
+        E.prem.edits[rub].periodo = 'anual_diluido';
+        toast('Total da filial: valor do ano dividido em 12 meses. Para outro período, use o ⚙.');
+      }
       desenharTabelaPrem();
       if (v === 'nivel' && !Object.keys(E.prem.edits[rub].niveis || {}).length) editarNiveis(rub);
     });
@@ -2813,6 +2818,31 @@ function contaDoItem2(cfg, rub) {
   return cfg.contas.find(c => codigoDe(c) === codigoDe(sug)) || sug;
 }
 
+// ----- Formato EPM -----
+const semAcento = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+const PALAVRAS_GENERICAS = new Set(['UTE', 'PCH', 'LTDA', 'SA', 'S', 'A', 'DE', 'DO', 'DA', 'E', 'GOM', 'UEG']);
+const palavras = t => semAcento(t).replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).filter(p => p && !PALAVRAS_GENERICAS.has(p));
+/** Empresa EPM sugerida para a filial pelo nome (ex.: CANDIOTA → EMP_2236 "UTE Candiota"). */
+function empresaSugerida(cfg, filial) {
+  const alvo = palavras(filial);
+  if (!alvo.length) return '';
+  let melhor = '', nota = 0;
+  for (const linha of cfg.epm_empresas || []) {
+    const [cod, nome = ''] = linha.split('|');
+    const nomeEmp = palavras(nome.replace(/^\d+\s*-\s*/, '').split(' - ')[0]);
+    const acertos = alvo.filter(p => nomeEmp.includes(p)).length;
+    // pelo menos metade das palavras da filial no nome da empresa; vence quem acerta mais e tem menos palavras sobrando
+    if (!acertos || acertos * 2 < alvo.length) continue;
+    const n = (acertos === alvo.length ? 1000 : 0) + acertos * 10 - (nomeEmp.length - acertos);
+    if (n > nota) { nota = n; melhor = cod; }
+  }
+  return melhor;
+}
+function empresaEpm(cfg, filial) {
+  if (cfg.epm_unico) return cfg.epm_padrao || 'EMP_ANT_Input';
+  return cfg.mapa_empresa?.[filial] || empresaSugerida(cfg, filial) || cfg.epm_padrao || 'EMP_ANT_Input';
+}
+
 /** Centro de custo fixo do item (ex.: fretado no 25506) ou '' para usar o do colaborador. */
 function ccDoItem(cfg, rub) {
   const v = cfg.cc_rubricas?.[rub];
@@ -2831,11 +2861,12 @@ function ccContabil(cfg, cod) {
 }
 
 /** Linhas do relatório: Pacote · Centro de custo contábil · Conta contábil · Terceiro · 12 meses. */
-function linhasContabeis(cfg) {
+function linhasContabeis(cfg, epm = false) {
   const porChave = new Map();
   E.res.colaboradores.forEach((c, i) => {
     if (!noFiltro(c)) return;
     const ccColab = ccContabil(cfg, c.cc_cod).cc;
+    const empresa = epm ? empresaEpm(cfg, c.filial) : '';
     // Com "regional e filial", cada filial tem as suas linhas (para conferência); sem, soma como a contabilidade recebe.
     const regional = E.contabil.porFilial ? c.regional : '';
     const filial = E.contabil.porFilial ? c.filial : '';
@@ -2847,13 +2878,21 @@ function linhasContabeis(cfg) {
       if (!conta) return;
       const pacote = (av && av.pacote) || pacoteDoItem(cfg, r.id);
       const cc = (av && av.cc_contabil) || ccDoItem(cfg, r.id) || ccColab;
-      const chave = `${regional}\u0000${filial}\u0000${pacote}\u0000${cc}\u0000${conta}`;
-      if (!porChave.has(chave)) porChave.set(chave, { regional, filial, pacote, cc, conta, meses: new Float64Array(12) });
+      // EPM: Código Empresa · CC_<número do centro de custo> · DRE_<número da conta>
+      const numCc = /^\d+$/.test(codigoDe(cc)) ? codigoDe(cc) : /^\d+$/.test(String(c.cc_cod || '').trim()) ? String(c.cc_cod).trim() : 'NA';
+      const ccEpm = epm ? `CC_${numCc}` : '';
+      const contaEpm = epm ? `DRE_${codigoDe(conta)}` : '';
+      const chave = epm ? `${empresa}\u0000${ccEpm}\u0000${contaEpm}` : `${regional}\u0000${filial}\u0000${pacote}\u0000${cc}\u0000${conta}`;
+      if (!porChave.has(chave)) porChave.set(chave, { regional, filial, pacote, cc, conta, empresa, ccEpm, contaEpm, meses: new Float64Array(12) });
       const l = porChave.get(chave);
       for (let m = 0; m < 12; m++) l.meses[m] += E.res.valor(i, k, m);
     });
   });
   const ordemConta = new Map(cfg.contas.map((c, i) => [c, i]));
+  if (epm) {
+    return [...porChave.values()].filter(l => E.contabil.zeradas || l.meses.some(v => Math.abs(v) >= 0.005))
+      .sort((a, b) => a.empresa.localeCompare(b.empresa) || a.ccEpm.localeCompare(b.ccEpm, 'pt-BR', { numeric: true }) || a.contaEpm.localeCompare(b.contaEpm, 'pt-BR', { numeric: true }));
+  }
   return [...porChave.values()]
     .filter(l => E.contabil.zeradas || l.meses.some(v => Math.abs(v) >= 0.005))
     .sort((a, b) => a.regional.localeCompare(b.regional, 'pt-BR') || a.filial.localeCompare(b.filial, 'pt-BR') || cfg.pacotes.indexOf(a.pacote) - cfg.pacotes.indexOf(b.pacote) || a.cc.localeCompare(b.cc, 'pt-BR', { numeric: true }) || (ordemConta.get(a.conta) ?? 999) - (ordemConta.get(b.conta) ?? 999) || a.conta.localeCompare(b.conta));
@@ -2876,7 +2915,7 @@ async function renderContabil() {
   el.innerHTML = `
     <div class="cab-pagina"><div><h1 class="titulo-pagina">Relatório <em>contábil</em></h1>
       <p class="subtitulo">Gera o arquivo no formato da contabilidade (Pacote · Centro de Custo · Conta Contábil · Terceiro · meses). Cada item do orçamento vai para uma conta contábil e cada CÓD. C. CUSTO da base vai para o centro de custo contábil.</p></div>
-      <button class="btn btn-laranja" id="ct-baixar">⬇ Baixar relatório (Excel)</button></div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn btn-laranja" id="ct-baixar">⬇ Baixar relatório (Excel)</button><button class="btn btn-marinho" id="ct-baixar-epm">⬇ Baixar EPM (Excel)</button></div></div>
 
     <div class="contabil-passos">
       <section class="cartao">
@@ -2918,12 +2957,49 @@ async function renderContabil() {
     </section>
 
     <section class="cartao" style="margin-top:1.2rem">
+      <details ${E.contabil.formato === 'epm' ? 'open' : ''}><summary><h3 style="display:inline">4 · Formato EPM</h3> <small class="sub" style="display:inline">· Código Empresa · CC_… · DRE_… · meses</small></summary>
+        <div class="form-grade" style="margin-top:.8rem">
+          <div><label class="btn btn-marinho btn-sm" style="cursor:pointer">⬆ Importar códigos EPM (Excel)<input type="file" id="ct-epm" accept=".xlsx,.xls" hidden></label>
+            <div class="chips" style="margin-top:.6rem"><span class="chip ${cfg.epm_empresas.length ? 'ok' : 'falta'}">${cfg.epm_empresas.length} empresas</span><span class="chip ${cfg.epm_ccs.length ? 'ok' : 'falta'}">${cfg.epm_ccs.length} centros de custo</span></div>
+            <small class="sub">Planilha com as abas <b>Empresa</b> (EMP_2197 · 2197 - UTE Cuiaba) e <b>Centro de Custo</b> (CC_17093 · 17093 - RECURSOS HUMANOS).</small></div>
+          <div><label class="rotulo">Código empresa padrão<input class="campo" id="ct-epm-padrao" value="${esc(cfg.epm_padrao)}"></label>
+            <label class="check"><input type="checkbox" id="ct-epm-unico" ${cfg.epm_unico ? 'checked' : ''}> usar o código padrão para todas as filiais</label></div>
+        </div>
+        ${cfg.epm_unico ? '' : `<div class="tabela-wrap" style="max-height:300px;margin-top:.8rem"><table class="tabela"><thead><tr><th>Filial</th><th>Código empresa (EPM)</th></tr></thead><tbody>
+          ${[...new Set(E.res.colaboradores.filter(noFiltro).map(c => c.filial))].sort().map(f => {
+            const sug = empresaSugerida(cfg, f);
+            return `<tr><td>${esc(f)}</td><td><select class="campo" data-emp="${esc(f)}"><option value="">${sug ? `Automático: ${esc((cfg.epm_empresas.find(x => x.startsWith(sug + '|')) || sug).replace('|', ' · '))}` : `— padrão: ${esc(cfg.epm_padrao)} —`}</option>
+              ${cfg.epm_empresas.map(x => { const [cod, nome] = x.split('|'); return `<option value="${esc(cod)}" ${cfg.mapa_empresa[f] === cod ? 'selected' : ''}>${esc(cod)} · ${esc(nome || '')}</option>`; }).join('')}</select></td></tr>`;
+          }).join('')}</tbody></table></div>`}
+        ${(() => {
+          if (!cfg.epm_ccs.length) return '';
+          const conhecidos = new Set(cfg.epm_ccs);
+          const fora = [...new Set(linhasContabeis(cfg, true).map(l => l.ccEpm))].filter(x => !conhecidos.has(x));
+          return fora.length ? `<p class="aviso-ajuste" style="margin:.8rem 0 0">⚠️ ${fora.length} centro(s) de custo do relatório não estão na lista do EPM: ${fora.slice(0, 20).map(esc).join(', ')}${fora.length > 20 ? '…' : ''}</p>` : '';
+        })()}
+      </details>
+    </section>
+
+    <section class="cartao" style="margin-top:1.2rem">
       <div class="ferramentas" style="margin-bottom:.8rem"><h3 style="margin:0">Prévia · ${esc(escopo)} <small>· ${linhas.length} linha(s) · ${colabs.length} colaborador(es)</small></h3>
+        <div class="segmentos" id="ct-formato"><button data-f="contabil" class="${E.contabil.formato !== 'epm' ? 'ativo' : ''}">Contabilidade</button><button data-f="epm" class="${E.contabil.formato === 'epm' ? 'ativo' : ''}">EPM</button></div>
         <span class="direita" style="display:flex;gap:1rem;flex-wrap:wrap"><label class="check" title="Desmarque para gerar no formato original da contabilidade (somado por centro de custo e conta)"><input type="checkbox" id="ct-filial" ${E.contabil.porFilial ? 'checked' : ''}> colunas de regional e filial</label><label class="check"><input type="checkbox" id="ct-zeradas" ${E.contabil.zeradas ? 'checked' : ''}> incluir linhas zeradas</label></span></div>
+      ${E.contabil.formato === 'epm' ? (() => {
+        const epm = linhasContabeis(cfg, true);
+        const fy = `FY${ano.slice(-2)}`;
+        return `<div class="tabela-wrap alta"><table class="tabela tabela-contabil"><thead>
+          <tr><th>Código Empresa</th><th>Centro_Custo</th><th>Conta Contábil</th>${MESES.map(() => `<th class="n">${fy}</th>`).join('')}</tr>
+          <tr><th></th><th></th><th></th>${MESES.map(m => `<th class="n">${m}</th>`).join('')}</tr>
+          <tr><th></th><th></th><th></th>${MESES.map(() => `<th class="n">Budget_${ano}</th>`).join('')}</tr>
+          <tr><th></th><th></th><th></th>${MESES.map(() => '<th class="n">Trabalho</th>').join('')}</tr></thead>
+          <tbody>${epm.slice(0, 400).map(l => `<tr><td>${esc(l.empresa)}</td><td>${esc(l.ccEpm)}</td><td>${esc(l.contaEpm)}</td>${[...l.meses].map(v => `<td class="n">${Math.abs(v) >= 0.005 ? num2.format(v) : '-'}</td>`).join('')}</tr>`).join('')
+            || '<tr><td colspan="15" class="vazio">Nada para mostrar com esses filtros.</td></tr>'}</tbody></table></div>
+          ${epm.length > 400 ? `<p class="subtitulo" style="margin:.6rem 0 0">Mostrando 400 de ${epm.length} linhas — o Excel traz todas.</p>` : ''}`;
+      })() : `
       <div class="tabela-wrap alta"><table class="tabela tabela-contabil"><thead><tr>${E.contabil.porFilial ? '<th>Regional</th><th>Filial</th>' : ''}<th>Pacote</th><th>Centro de Custo</th><th>Conta Contábil</th><th>Terceiro</th>${meses.map(m => `<th class="n">${m}</th>`).join('')}</tr></thead>
       <tbody>${linhas.slice(0, 400).map(l => `<tr>${E.contabil.porFilial ? `<td>${esc(l.regional)}</td><td>${esc(l.filial)}</td>` : ''}<td>${esc(l.pacote)}</td><td>${esc(l.cc)}</td><td>${esc(l.conta)}</td><td>${esc(cfg.terceiro)}</td>${[...l.meses].map(v => `<td class="n">${Math.round(v) ? num0.format(Math.round(v)) : '-'}</td>`).join('')}</tr>`).join('')
         || '<tr><td colspan="18" class="vazio">Nada para mostrar com esses filtros.</td></tr>'}</tbody></table></div>
-      ${linhas.length > 400 ? `<p class="subtitulo" style="margin:.6rem 0 0">Mostrando 400 de ${linhas.length} linhas — o Excel traz todas.</p>` : ''}
+      ${linhas.length > 400 ? `<p class="subtitulo" style="margin:.6rem 0 0">Mostrando 400 de ${linhas.length} linhas — o Excel traz todas.</p>` : ''}`}
     </section>`;
 
   const salvar = async parcial => {
@@ -2952,6 +3028,63 @@ async function renderContabil() {
   }));
   $('#ct-listas', el).addEventListener('change', e => e.target.files[0] && importarListasContabeis(e.target.files[0]));
   $('#ct-baixar', el).addEventListener('click', () => baixarContabil(cfg));
+  $('#ct-baixar-epm', el).addEventListener('click', () => baixarEpm(cfg));
+  $$('#ct-formato button', el).forEach(b => b.addEventListener('click', () => { E.contabil.formato = b.dataset.f; renderContabil(); }));
+  $('#ct-epm', el).addEventListener('change', e => e.target.files[0] && importarCodigosEpm(e.target.files[0]));
+  $('#ct-epm-padrao', el).addEventListener('change', e => salvar({ epm_padrao: e.target.value.trim() }));
+  $('#ct-epm-unico', el).addEventListener('change', e => salvar({ epm_unico: e.target.checked }));
+  $$('[data-emp]', el).forEach(s => s.addEventListener('change', () => {
+    const mapa = { ...cfg.mapa_empresa };
+    if (s.value) mapa[s.dataset.emp] = s.value; else delete mapa[s.dataset.emp];
+    salvar({ mapa_empresa: mapa });
+  }));
+}
+
+/** Planilha do EPM: abas "Empresa" (EMP_2197 | 2197 - UTE Cuiaba) e "Centro de Custo" (CC_17093 | 17093 - RH). */
+async function importarCodigosEpm(arquivo) {
+  if (!window.XLSX) return toast('Carregando o leitor de Excel… tente de novo.', 'erro');
+  const wb = XLSX.read(await arquivo.arrayBuffer(), { type: 'array' });
+  const ler = (teste, prefixo) => {
+    const aba = wb.SheetNames.find(n => teste(normCab(n)));
+    if (!aba) return null;
+    return XLSX.utils.sheet_to_json(wb.Sheets[aba], { header: 1, raw: false, defval: null })
+      .map(l => [String(l?.[0] ?? '').trim(), String(l?.[1] ?? '').trim()]).filter(([cod]) => cod.toUpperCase().startsWith(prefixo));
+  };
+  const emp = ler(n => n.startsWith('EMPRESA'), 'EMP_');
+  const ccs = ler(n => n.startsWith('CENTRO'), 'CC_');
+  if (!emp && !ccs) return toast('Não encontrei as abas "Empresa" e "Centro de Custo" com códigos EMP_ e CC_.', 'erro');
+  const body = {};
+  if (emp) body.epm_empresas = emp.map(([c, n]) => `${c}|${n}`);
+  if (ccs) body.epm_ccs = ccs.map(([c]) => c.toUpperCase());
+  E.contabil.cfg = await api('/api/contabil', { method: 'PUT', body });
+  E.contabil.formato = 'epm';
+  toast(`Códigos EPM importados: ${emp?.length ?? 0} empresas e ${ccs?.length ?? 0} centros de custo.`);
+  renderContabil();
+}
+
+/** Arquivo no formato EPM: Código Empresa · Centro_Custo (CC_…) · Conta Contábil (DRE_…) · Jan…Dez, com 4 linhas de cabeçalho. */
+function baixarEpm(cfg) {
+  if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
+  const ano = String(E.dados.config.ano);
+  const fy = `FY${ano.slice(-2)}`;
+  const linhas = linhasContabeis(cfg, true);
+  const aoa = [
+    ['Código Empresa', 'Centro_Custo', 'Conta Contábil', ...MESES.map(() => fy)],
+    ['', '', '', ...MESES],
+    ['', '', '', ...MESES.map(() => `Budget_${ano}`)],
+    ['', '', '', ...MESES.map(() => 'Trabalho')],
+    ...linhas.map(l => [l.empresa, l.ccEpm, l.contaEpm, ...[...l.meses].map(v => Math.round(v * 100) / 100)]),
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  for (let r = 4; r < aoa.length; r++) for (let c = 3; c < 15; c++) {
+    const ref = XLSX.utils.encode_cell({ r, c });
+    if (ws[ref]) ws[ref].z = '#,##0.00';
+  }
+  ws['!cols'] = [{ wch: 16 }, { wch: 14 }, { wch: 16 }, ...MESES.map(() => ({ wch: 13 }))];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'EPM');
+  const nome = [ano, E.filtro.regional, E.filtro.uf, E.filtro.filial].filter(Boolean).join('-').replace(/[^\w-]+/g, '_');
+  XLSX.writeFile(wb, `Orcamento-EPM-${nome}.xlsx`);
 }
 
 async function importarListasContabeis(arquivo) {

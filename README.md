@@ -82,6 +82,9 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   - **Aplicar a forma de pagamento às regras próprias**: na Regra geral (ou numa regional), o ⚙ permite levar a
     periodicidade/mês para as regionais e filiais que têm regra própria, mantendo os valores de cada uma — ex.: PPR inteiro
     em fevereiro em todas as unidades, cada uma com o seu target.
+  - **Total da filial vale para todos**: quando um item está como *Total da filial*, os valores daquele item que vieram da
+    planilha da base ficam de fora (ex.: rescisão anual da filial); ajustes feitos à mão no cadastro continuam valendo. Ao
+    escolher *Total da filial*, o período passa a *total do ano ÷ 12* (dá para trocar no ⚙).
   - **Horas extras, treinamento e viagens**: lance o **custo total do ano** da filial; a ferramenta divide por 12 e faz a
     média por colaborador (só entre quem recebe). Dá para trocar para total por mês no ⚙. Numa regra da regional (ou
     geral), o ⚙ tem **“De quem é este total”**: *de cada filial* (cada filial tem o valor) ou *da regional toda* (um total
@@ -145,6 +148,11 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   sobre eles) e **TERCEIROS** (Serviços / Terceiros) — o pacote de cada item pode ser trocado na tela. Cada item pode ter um **centro de custo fixo**: Fretado e
   Fretado (overall) vão para **25506 - Transporte Contratado/Mobilidade** (conta 67975 - Transporte contratado/próprio); o VT
   (236 - Vale Transporte) e os demais usam o centro de custo de cada colaborador.
+- **Formato EPM** (no Relatório contábil) – prévia e download no layout do EPM: *Código Empresa · Centro_Custo (CC_número) ·
+  Conta Contábil (DRE_número)* e Jan…Dez, com o cabeçalho FY27 / mês / Budget_2027 / Trabalho. Importe a planilha do EPM
+  (abas *Empresa* e *Centro de Custo*): cada filial é ligada à empresa pelo nome (ajustável), com um código padrão
+  (EMP_ANT_Input) para as que não baterem ou, se preferir, para todas. CC sem número na base sai como CC_NA; avisa os CCs
+  que não estão na lista do EPM.
 - **Pedidos de ajuste** – caixa de entrada com status (aberta, em análise, ajustada, recusada), resposta ao coordenador
   e botão **Abrir item**, que leva direto ao colaborador ou à premissa da filial.
 - **Acessos dos coordenadores** – login, senha e regionais de cada coordenador.

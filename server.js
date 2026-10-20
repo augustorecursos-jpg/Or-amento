@@ -643,6 +643,7 @@ function lerContabil() {
   try { c = JSON.parse(linha?.valor || '{}'); } catch { c = {}; }
   return {
     terceiro: 'N/A Custom1', cc_padrao: 'N/A Centro de Custo', contas: [], ccs: [], mapa_rubricas: {}, mapa_cc: {}, cc_rubricas: {},
+    epm_empresas: [], epm_ccs: [], mapa_empresa: {}, epm_padrao: 'EMP_ANT_Input', epm_unico: false,
     pacotes: ['PESSOAL', 'BENEFÍCIOS', 'PROVISÕES TRABALHISTAS', 'TERCEIROS'], mapa_pacotes: {}, ...c,
   };
 }
@@ -667,6 +668,12 @@ app.put('/api/contabil', exigirAdmin, (req, res) => {
     mapa_cc: mapa(b.mapa_cc, k => texto(k) !== '') ?? atual.mapa_cc,
     // Centro de custo fixo de um item (ex.: fretado no 25506); '-' = o centro de custo de cada colaborador.
     cc_rubricas: mapa(b.cc_rubricas, k => RUBRICAS_VALIDAS.has(k)) ?? atual.cc_rubricas,
+    // Formato EPM: códigos de empresa ("EMP_2197|2197 - UTE Cuiaba") e de centro de custo (CC_17093), filial → empresa
+    epm_empresas: lista(b.epm_empresas) ?? atual.epm_empresas,
+    epm_ccs: lista(b.epm_ccs) ?? atual.epm_ccs,
+    mapa_empresa: mapa(b.mapa_empresa, k => texto(k) !== '') ?? atual.mapa_empresa,
+    epm_padrao: b.epm_padrao != null ? texto(b.epm_padrao, 60) : atual.epm_padrao,
+    epm_unico: b.epm_unico != null ? Boolean(b.epm_unico) : atual.epm_unico,
   };
   db.prepare("INSERT INTO config (chave, valor) VALUES ('contabil', ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor").run(JSON.stringify(novo));
   registrar('Administrador', 'Alterou a configuração do relatório contábil', `${novo.contas.length} contas · ${novo.ccs.length} centros de custo`);

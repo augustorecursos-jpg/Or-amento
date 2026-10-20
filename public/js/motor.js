@@ -204,12 +204,18 @@
     const cfg = colaboradores.map(c => filiais[c.filial] || {});
     const premsFilial = colaboradores.map(c => premFilial(c.filial, c.regional));
     // Regra de cada colaborador (com as exceções dele) e quem tem exceção em cada rubrica (fica fora do rateio).
+    // Quando a regra do item é "Total da filial", o total lançado vale para todos: valores que vieram da planilha da base
+    // ficam de fora (ex.: rescisão anual da filial). Ajustes feitos à mão no cadastro continuam valendo.
+    const excecaoVale = (i, r) => {
+      const e = colaboradores[i].excecoes?.[RUBRICAS[r].id];
+      return Boolean(e) && !(e.origem === 'base' && premsFilial[i][r]?.metodo === 'rateio');
+    };
     const prems = colaboradores.map((c, i) => {
       const exc = c.excecoes;
       if (!exc || !Object.keys(exc).length) return premsFilial[i];
-      return premsFilial[i].map((p, r) => (p && exc[RUBRICAS[r].id] ? aplicarExcecao(p, exc[RUBRICAS[r].id]) : p));
+      return premsFilial[i].map((p, r) => (p && excecaoVale(i, r) ? aplicarExcecao(p, exc[RUBRICAS[r].id]) : p));
     });
-    const temExcecao = (i, r) => Boolean(colaboradores[i].excecoes && colaboradores[i].excecoes[RUBRICAS[r].id]);
+    const temExcecao = excecaoVale;
     const ativo = (i, m) => {
       const c = colaboradores[i];
       if (c.avulso) return false; // lançamento avulso: não é uma pessoa

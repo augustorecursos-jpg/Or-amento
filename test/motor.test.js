@@ -10,7 +10,8 @@ const total = (res, rub, i = 0) => { let s = 0; for (let m = 0; m < 12; m++) s +
 test('opção de 11 meses (Rafael de Melo): 11 salários + férias e 1/3 + 13º; encargos sobre salário + grupo OUTROS', () => {
   // Salário 4.858,04 · dissídio 4,22% · periculosidade 30% · insalubridade 0 · HE 193,81 (sem dissídio)
   const c = colab({ salario: 4858.04, excecoes: { horas_extras: { metodo: 'fixo', valor: 193.81, origem: 'base' } } });
-  const res = Motor.calcular({ colaboradores: [c], filiais: { CUIABA: { dissidio_pct: 4.22, dissidio_mes: 1 } }, premissas: {}, mesesSalario: 11 });
+  // HE da pessoa (regra da filial que não é "Total da filial")
+  const res = Motor.calcular({ colaboradores: [c], filiais: { CUIABA: { dissidio_pct: 4.22, dissidio_mes: 1 } }, premissas: { '*': { horas_extras: { metodo: 'nao', periodo: 'mensal' } } }, mesesSalario: 11 });
   const v = rub => res.valor(0, Motor.IDX[rub], 0);
   const cheio = 5063.049288 + 1518.9147864 + 193.81 * 1.0422; // 6.783,95 = K + L + M + N
   perto(v('salario'), 5063.049288 * 11 / 12);
@@ -191,8 +192,8 @@ test('valores da base: benefício com periodicidade do item e reajuste; remunera
   perto(v(0, 'cesta_natalina', 5), 0);
   perto(v(0, 'periculosidade', 0), 1500);
   perto(v(0, 'periculosidade', 5), 1650);    // sobe com o dissídio de maio
-  perto(v(0, 'horas_extras', 0), 400);
-  perto(v(1, 'horas_extras', 0), 2000);      // o total da filial fica só com quem não veio da base
+  perto(v(0, 'horas_extras', 0), 1000);      // com "Total da filial", o total vale para todos (24.000 ÷ 12 ÷ 2)
+  perto(v(1, 'horas_extras', 0), 1000);
   perto(v(0, 'vt', 0), 0);
 });
 
@@ -205,7 +206,7 @@ test('auxílio óculos da base: valor do ano dividido em 12', () => {
 
 test('12 meses de remuneração (padrão): Rafael de Melo', () => {
   const c = colab({ salario: 4858.04, excecoes: { horas_extras: { metodo: 'fixo', valor: 193.81, origem: 'base' } } });
-  const res = Motor.calcular({ colaboradores: [c], filiais: { CUIABA: { dissidio_pct: 4.22, dissidio_mes: 1 } }, premissas: {} });
+  const res = Motor.calcular({ colaboradores: [c], filiais: { CUIABA: { dissidio_pct: 4.22, dissidio_mes: 1 } }, premissas: { '*': { horas_extras: { metodo: 'nao', periodo: 'mensal' } } } });
   const v = rub => res.valor(0, Motor.IDX[rub], 0);
   const cheio = 5063.049288 + 1518.9147864 + 193.81 * 1.0422;
   perto(v('salario'), 5063.049288);
@@ -262,4 +263,21 @@ test('outros lançamentos: valor de cada mês direto no item, sem contar como pe
   perto(res.valor(1, Motor.IDX.salario, 0), 0);
   const ag = Motor.agregar(res, c => c.filial).get('CUIABA');
   perto(ag.hc[0], 1);                                       // lançamentos não contam no headcount
+});
+
+test('Total da filial vale sobre os valores da planilha da base (ex.: rescisão anual da filial)', () => {
+  const colaboradores = [
+    colab({ id: 1, excecoes: { rescisao: { metodo: 'fixo', valor: 500, origem: 'base' } } }),
+    colab({ id: 2, excecoes: { rescisao: { metodo: 'fixo', valor: 700, origem: 'base' } } }),
+    colab({ id: 3, excecoes: { rescisao: { metodo: 'fixo', valor: 100 } } }), // ajuste manual: continua
+  ];
+  const premissas = { CUIABA: { rescisao: { metodo: 'rateio', valor: 240000, periodo: 'anual_diluido' } } };
+  const res = Motor.calcular({ colaboradores, filiais: {}, premissas });
+  perto(res.valor(0, Motor.IDX.rescisao, 0), 10000);   // 240.000 ÷ 12 ÷ 2 pessoas
+  perto(res.valor(1, Motor.IDX.rescisao, 0), 10000);
+  perto(res.valor(2, Motor.IDX.rescisao, 0), 100);
+  perto(total(res, 'rescisao', 0) + total(res, 'rescisao', 1), 240000);
+  // sem regra de total, vale o valor da base
+  const semTotal = Motor.calcular({ colaboradores, filiais: {}, premissas: {} });
+  perto(semTotal.valor(0, Motor.IDX.rescisao, 0), 500);
 });
