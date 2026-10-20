@@ -95,6 +95,7 @@
     { id: 'treinamento', nome: 'Treinamento', grupo: 'demais', padrao: P('rateio', { periodo: 'anual_diluido' }) },
     { id: 'viagens', nome: 'Viagens', grupo: 'demais', padrao: P('rateio', { periodo: 'anual_diluido' }) },
     { id: 'confraternizacoes', nome: 'Confraternizações', grupo: 'demais', padrao: P('fixo', { periodo: 'anual_mes', mes: 12 }) },
+    { id: 'servicos', nome: 'Serviços / Terceiros', grupo: 'demais', dica: 'Consultorias, prestadores e serviços contratados', padrao: P('nao', { rateio: 'hc', periodo: 'anual_diluido' }) },
     // Só para "Outros lançamentos" (consultoria, Gupy…): não tem premissa, a conta contábil vem do próprio lançamento.
     { id: 'outras', nome: 'Outras despesas', grupo: 'demais', soLancamento: true, padrao: P('nao') },
   ];

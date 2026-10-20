@@ -2898,6 +2898,12 @@ async function renderContabil() {
     </div>
 
     <section class="cartao" style="margin-top:1.2rem">
+      ${(() => {
+        // Custo que depende da conta do item (lançamentos com conta própria não contam)
+        const semConta = k => { let t = 0; E.res.colaboradores.forEach((c, i) => { if (noFiltro(c) && !(c.avulso && c.avulso.conta)) for (let m = 0; m < 12; m++) t += E.res.valor(i, k, m); }); return Math.abs(t) >= 0.5; };
+        const sem = RUBRICAS.map((r, k) => ({ r, k })).filter(({ r, k }) => !contaDoItem2(cfg, r.id) && semConta(k));
+        return sem.length ? `<p class="aviso-ajuste" style="margin:0 0 .8rem">⚠️ <b>${sem.length} item(ns) com custo e sem conta contábil</b> — não entram no arquivo: ${sem.map(({ r }) => esc(r.nome)).join(', ')}. Escolha a conta na tabela abaixo.</p>` : '';
+      })()}
       <h3>3 · Item do orçamento → Conta contábil <small>· sugestão inicial pelo nome da conta; troque o que precisar. Centro de custo: o do colaborador ou um fixo para o item (fretado → 25506 Transporte Contratado/Mobilidade)</small></h3>
       <div class="tabela-wrap" style="max-height:420px"><table class="tabela contabil-itens"><thead><tr><th>Item</th><th class="n">Custo anual (${esc(escopo)})</th><th>Pacote</th><th>Conta contábil</th><th>Centro de custo</th></tr></thead>
       <tbody>${GRUPOS.map(g => `<tr class="grupo"><td colspan="5" style="cursor:default">${g.nome}</td></tr>${RUBRICAS.map((r, k) => ({ r, k })).filter(x => x.r.grupo === g.id).map(({ r, k }) => `
