@@ -97,6 +97,23 @@ CREATE TABLE IF NOT EXISTS solicitacoes (
   atualizado_em TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Outros lançamentos: custos fora dos colaboradores (consultoria, Gupy, rescisão de um CC num mês…), com filial,
+-- centro de custo, item/conta contábil e o valor de cada mês.
+CREATE TABLE IF NOT EXISTS lancamentos (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  descricao   TEXT NOT NULL,
+  regional    TEXT NOT NULL,
+  filial      TEXT NOT NULL DEFAULT '',
+  cc_cod      TEXT NOT NULL DEFAULT '',
+  cc_nome     TEXT NOT NULL DEFAULT '',
+  cc_contabil TEXT NOT NULL DEFAULT '',
+  rubrica     TEXT NOT NULL DEFAULT 'outras',
+  conta       TEXT NOT NULL DEFAULT '',
+  pacote      TEXT NOT NULL DEFAULT '',
+  meses       TEXT NOT NULL DEFAULT '[]',
+  atualizado_em TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS historico (
   id      INTEGER PRIMARY KEY AUTOINCREMENT,
   quando  TEXT NOT NULL DEFAULT (datetime('now')),

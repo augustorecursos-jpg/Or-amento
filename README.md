@@ -126,6 +126,12 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
     próprios de qualquer benefício (R$ por mês, %, nº de salários ou “não recebe”), no lugar da regra da filial. Também
     pela aba opcional *Condições próprias* do modelo (MATRÍCULA · ITEM · VALOR). Reimportar a base mantém essas condições
     pela matrícula.
+- **Outros lançamentos** – custos que não são de um colaborador (consultorias, Gupy, uma rescisão prevista num centro de
+  custo em um mês…): descrição, regional, filial (ou só a regional), centro de custo (da base ou da lista contábil, ex.:
+  25506), item da ferramenta (Rescisão, Treinamento, Viagens…) ou **Outra conta** com a conta contábil escolhida, pacote e o
+  valor de cada mês (preenchimento rápido: só num mês, todos os meses ou total do ano ÷ 12; aceita colar a linha do Excel).
+  Entram no Painel, na Simulação (📌 lançamento) e no Relatório contábil com a conta e o centro de custo escolhidos; não
+  contam no headcount. Excel de modelo/exportação e importação (adicionar ou substituir).
 - **Relatório contábil** – arquivo no formato da contabilidade: *Pacote · Centro de Custo · Conta Contábil · Terceiro ·
   Jan/AA … Dez/AA*, com as colunas **Regional** e **Filial** na frente para conferência (desmarque “colunas de regional e
   filial” para gerar somado, no formato original da contabilidade). Importe a planilha com as abas *Conta contabil* e *Centro de Custo Contabil*; cada item do orçamento

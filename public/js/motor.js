@@ -2,7 +2,8 @@
 // O mesmo arquivo roda no navegador (simulação instantânea) e no servidor (Node).
 //
 // Entrada:
-//   colaboradores: [{ id, matricula, nome, regional, filial, cargo, cc_cod, cc_nome, salario, mes_inicio, mes_fim, vaga, excecoes }]
+//   colaboradores: [{ id, matricula, nome, regional, filial, cargo, cc_cod, cc_nome, salario, mes_inicio, mes_fim, vaga, excecoes, avulso? }]
+//                  avulso: { rubrica, meses[12] } — outro lançamento (não é pessoa): o valor de cada mês vai direto para o item
 //                  excecoes: { [rubrica]: { metodo: 'nao' | 'fixo' | 'pct' | 'multiplo', valor, origem? } } — condições próprias do
 //                  colaborador (ex.: sucedidos de outra empresa com benefício diferente). Valem no lugar da regra da filial.
 //   filiais:       { [filial]: { regional, dissidio_pct, dissidio_mes, reaj_benef_pct, reaj_benef_mes } }
@@ -93,6 +94,8 @@
     { id: 'treinamento', nome: 'Treinamento', grupo: 'demais', padrao: P('rateio', { periodo: 'anual_diluido' }) },
     { id: 'viagens', nome: 'Viagens', grupo: 'demais', padrao: P('rateio', { periodo: 'anual_diluido' }) },
     { id: 'confraternizacoes', nome: 'Confraternizações', grupo: 'demais', padrao: P('fixo', { periodo: 'anual_mes', mes: 12 }) },
+    // Só para "Outros lançamentos" (consultoria, Gupy…): não tem premissa, a conta contábil vem do próprio lançamento.
+    { id: 'outras', nome: 'Outras despesas', grupo: 'demais', soLancamento: true, padrao: P('nao') },
   ];
 
   const METODOS = {
@@ -207,6 +210,7 @@
     const temExcecao = (i, r) => Boolean(colaboradores[i].excecoes && colaboradores[i].excecoes[RUBRICAS[r].id]);
     const ativo = (i, m) => {
       const c = colaboradores[i];
+      if (c.avulso) return false; // lançamento avulso: não é uma pessoa
       const ini = num(c.mes_inicio) || 1;
       const fim = num(c.mes_fim) || 12;
       return m + 1 >= ini && m + 1 <= fim;
@@ -331,6 +335,13 @@
       }
     }
 
+    // Outros lançamentos (custos fora dos colaboradores): o valor de cada mês vai direto para o item escolhido.
+    colaboradores.forEach((c, i) => {
+      if (!c.avulso) return;
+      const r = IDX[c.avulso.rubrica] ?? IDX.outras;
+      for (let m = 0; m < 12; m++) valores[at(i, r, m)] = num(c.avulso.meses?.[m]);
+    });
+
     return {
       n,
       colaboradores,
@@ -351,10 +362,12 @@
       const k = chaveDe(c);
       if (!out.has(k)) out.set(k, { porRubrica: new Float64Array(R * 12), meses: new Float64Array(12), hc: new Float64Array(12), total: 0, n: 0 });
       const ag = out.get(k);
-      ag.n++;
-      const ini = num(c.mes_inicio) || 1;
-      const fim = num(c.mes_fim) || 12;
-      for (let m = 0; m < 12; m++) if (m + 1 >= ini && m + 1 <= fim) ag.hc[m]++;
+      if (!c.avulso) { // lançamentos avulsos somam custo, mas não contam como pessoas
+        ag.n++;
+        const ini = num(c.mes_inicio) || 1;
+        const fim = num(c.mes_fim) || 12;
+        for (let m = 0; m < 12; m++) if (m + 1 >= ini && m + 1 <= fim) ag.hc[m]++;
+      }
       const off = i * R * 12;
       for (let j = 0; j < R * 12; j++) {
         const v = res.valores[off + j];

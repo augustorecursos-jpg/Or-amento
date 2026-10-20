@@ -596,3 +596,7 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .hc-pessoas { margin-top: .7rem; }
 .hc-pessoas summary { cursor: pointer; font-weight: 700; color: var(--marinho); margin-bottom: .5rem; }
 .tabela-hc tr.vaga td { background: #fff8f2; }
+/* Outros lançamentos */
+.tabela-lanc td .sub { display: block; font-size: .72rem; color: var(--texto-suave); }
+.lanc-preencher { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin: .5rem 0 .7rem; font-size: .85rem; }
+.lanc-preencher .campo { width: auto; }

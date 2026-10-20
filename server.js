@@ -246,7 +246,73 @@ app.get('/api/dados', exigirLogin, (req, res) => {
   }
   const niveis = Object.fromEntries(db.prepare('SELECT * FROM niveis ORDER BY nivel').all().map(n => [n.nivel, n.multiplo]));
   const config = Object.fromEntries(db.prepare('SELECT * FROM config').all().map(c => [c.chave, c.valor]));
-  res.json({ config, colaboradores, filiais, premissas, niveis });
+  const lancamentos = db.prepare(`SELECT * FROM lancamentos ${filtro} ORDER BY regional, filial, descricao`).all(...params).map(lerLancamentoDb);
+  res.json({ config, colaboradores, filiais, premissas, niveis, lancamentos });
+});
+
+// ----- outros lançamentos (custos fora dos colaboradores) -----
+
+const lerLancamentoDb = l => ({ ...l, meses: (() => { try { return JSON.parse(l.meses); } catch { return []; } })() });
+const CAMPOS_LANC = ['descricao', 'regional', 'filial', 'cc_cod', 'cc_nome', 'cc_contabil', 'rubrica', 'conta', 'pacote', 'meses'];
+
+function lerLancamento(b) {
+  return {
+    descricao: texto(b.descricao, 200),
+    regional: texto(b.regional, 80).toUpperCase(),
+    filial: texto(b.filial, 120).toUpperCase(),
+    cc_cod: texto(b.cc_cod, 40),
+    cc_nome: texto(b.cc_nome, 160),
+    cc_contabil: texto(b.cc_contabil, 160),
+    rubrica: RUBRICAS_VALIDAS.has(b.rubrica) ? b.rubrica : 'outras',
+    conta: texto(b.conta, 160),
+    pacote: texto(b.pacote, 80),
+    meses: JSON.stringify(Array.from({ length: 12 }, (_, i) => numero(Array.isArray(b.meses) ? b.meses[i] : 0))),
+  };
+}
+const lancValido = l => (!l.descricao || !l.regional ? 'Informe a descrição e a regional.' : '');
+
+app.post('/api/lancamentos', exigirAdmin, (req, res) => {
+  const l = lerLancamento(req.body || {});
+  const erro = lancValido(l);
+  if (erro) return res.status(400).json({ erro });
+  const r = db.prepare(`INSERT INTO lancamentos (${CAMPOS_LANC.join(',')}) VALUES (${CAMPOS_LANC.map(() => '?').join(',')})`).run(...CAMPOS_LANC.map(k => l[k]));
+  registrar('Administrador', 'Incluiu lançamento', `${l.descricao} · ${l.filial || l.regional} · ${l.cc_cod}`);
+  res.json({ ok: true, id: Number(r.lastInsertRowid) });
+});
+
+app.put('/api/lancamentos/:id', exigirAdmin, (req, res) => {
+  const l = lerLancamento(req.body || {});
+  const erro = lancValido(l);
+  if (erro) return res.status(400).json({ erro });
+  const r = db.prepare(`UPDATE lancamentos SET ${CAMPOS_LANC.map(k => `${k} = ?`).join(', ')}, atualizado_em = datetime('now') WHERE id = ?`).run(...CAMPOS_LANC.map(k => l[k]), req.params.id);
+  if (!r.changes) return res.status(404).json({ erro: 'Lançamento não encontrado.' });
+  registrar('Administrador', 'Alterou lançamento', `${l.descricao} · ${l.filial || l.regional} · ${l.cc_cod}`);
+  res.json({ ok: true });
+});
+
+app.delete('/api/lancamentos/:id', exigirAdmin, (req, res) => {
+  const l = db.prepare('SELECT descricao, filial, regional FROM lancamentos WHERE id = ?').get(req.params.id);
+  if (!l) return res.status(404).json({ erro: 'Lançamento não encontrado.' });
+  db.prepare('DELETE FROM lancamentos WHERE id = ?').run(req.params.id);
+  registrar('Administrador', 'Removeu lançamento', `${l.descricao} · ${l.filial || l.regional}`);
+  res.json({ ok: true });
+});
+
+/** Importa várias linhas (Excel). substituir = apaga os lançamentos atuais antes. */
+app.post('/api/lancamentos/importar', exigirAdmin, (req, res) => {
+  const linhas = (Array.isArray(req.body?.linhas) ? req.body.linhas : []).map(lerLancamento);
+  const erros = linhas.map((l, i) => (lancValido(l) ? `Linha ${i + 2}: ${lancValido(l)}` : '')).filter(Boolean);
+  const validas = linhas.filter(l => !lancValido(l));
+  if (!validas.length) return res.status(400).json({ erro: 'Nenhuma linha válida.', erros });
+  const ins = db.prepare(`INSERT INTO lancamentos (${CAMPOS_LANC.join(',')}) VALUES (${CAMPOS_LANC.map(() => '?').join(',')})`);
+  db.exec('BEGIN');
+  try {
+    if (req.body?.substituir) db.exec('DELETE FROM lancamentos');
+    validas.forEach(l => ins.run(...CAMPOS_LANC.map(k => l[k])));
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  registrar('Administrador', `Importou lançamentos${req.body?.substituir ? ' (substituindo)' : ''}`, `${validas.length} linha(s)`);
+  res.json({ ok: true, importados: validas.length, erros: erros.slice(0, 20) });
 });
 
 app.put('/api/config', exigirAdmin, (req, res) => {

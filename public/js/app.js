@@ -43,8 +43,18 @@ function filiaisComRascunho() {
   return out;
 }
 
+/** Outros lançamentos como linhas "avulsas" do cálculo: somam custo na filial/CC, mas não são pessoas. */
+function lancamentosComoLinhas() {
+  return (E.dados.lancamentos || []).map(l => ({
+    id: -l.id, matricula: '', nome: l.descricao, regional: l.regional, filial: l.filial || `(regional ${l.regional})`, situacao: 'Outro lançamento', funcao: 'Outro lançamento',
+    cargo: '', cc_cod: l.cc_cod, cc_nome: l.cc_nome, salario: 0, mes_inicio: 1, mes_fim: 12, vaga: false, excecoes: {}, sexo: '', gestor: '',
+    avulso: { rubrica: l.rubrica, meses: l.meses, conta: l.conta, pacote: l.pacote, cc_contabil: l.cc_contabil, id: l.id },
+  }));
+}
+
 function recalcular() {
-  const { colaboradores, premissas, niveis } = E.dados;
+  const { premissas, niveis } = E.dados;
+  const colaboradores = [...E.dados.colaboradores, ...lancamentosComoLinhas()];
   E.res = Motor.calcular({ colaboradores, filiais: filiaisComRascunho(), premissas, niveis });
   E.resSalvo = Object.keys(E.rascunho).length ? Motor.calcular({ colaboradores, filiais: E.dados.filiais, premissas, niveis }) : E.res;
   const semDiss = {};
@@ -109,7 +119,7 @@ const ccFiltrado = () => { const c = E.filtro.cc && E.dados.colaboradores.find(x
 
 const TITULOS = {
   painel: 'Painel', simulacao: 'Simulação mês a mês', premissas: 'Premissas e regras', base: 'Base de colaboradores',
-  conferencia: 'Conferência', contabil: 'Relatório contábil', solicitacoes: 'Pedidos de ajuste', coordenadores: 'Acessos dos coordenadores', historico: 'Histórico',
+  conferencia: 'Conferência', contabil: 'Relatório contábil', lancamentos: 'Outros lançamentos', solicitacoes: 'Pedidos de ajuste', coordenadores: 'Acessos dos coordenadores', historico: 'Histórico',
 };
 
 function irPara(aba) {
@@ -117,7 +127,7 @@ function irPara(aba) {
   $$('.lateral-item[data-aba]').forEach(b => b.classList.toggle('ativo', b.dataset.aba === aba));
   $$('[data-painel]').forEach(s => { s.hidden = s.dataset.painel !== aba; });
   $('#barra-pagina').textContent = TITULOS[aba];
-  $('#barra-filtros').style.visibility = ['painel', 'simulacao', 'base', 'conferencia', 'contabil'].includes(aba) ? '' : 'hidden';
+  $('#barra-filtros').style.visibility = ['painel', 'simulacao', 'base', 'conferencia', 'contabil', 'lancamentos'].includes(aba) ? '' : 'hidden';
   $('#lateral').classList.remove('aberta');
   history.replaceState(null, '', `#${aba}`);
   renderAba();
@@ -127,7 +137,7 @@ function irPara(aba) {
 function renderAba() {
   ({
     painel: renderPainel, simulacao: renderSimulacao, premissas: renderPremissas, base: renderBase,
-    conferencia: renderConferencia, contabil: renderContabil, solicitacoes: renderSolicitacoes, coordenadores: renderCoordenadores, historico: renderHistorico,
+    conferencia: renderConferencia, contabil: renderContabil, lancamentos: renderLancamentos, solicitacoes: renderSolicitacoes, coordenadores: renderCoordenadores, historico: renderHistorico,
   })[E.aba]();
 }
 
@@ -567,17 +577,18 @@ function linhasSimulacao() {
   const busca = E.sim.busca.toLowerCase();
   const filtro = c => noFiltro(c) && (!busca || `${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome}`.toLowerCase().includes(busca));
   const mapa = Motor.agregar(E.res, chave, filtro);
-  const porId = new Map(E.dados.colaboradores.map(c => [c.id, c]));
+  const porId = new Map(E.res.colaboradores.map(c => [c.id, c]));
   const linhas = [...mapa].map(([k, a]) => {
     const c = v === 'colaboradores' ? porId.get(k) : null;
     return {
       rotulo: c ? c.nome : k,
-      sub: c ? `${c.funcao || ''} · ${c.filial}${c.cc_nome ? ` · ${c.cc_nome}` : ''}` : `${a.n} colaborador(es)`,
+      sub: c ? (c.avulso ? `Outro lançamento · ${c.filial || c.regional} · ${rotuloCc(c)}` : `${c.funcao || ''} · ${c.filial}${c.cc_nome ? ` · ${c.cc_nome}` : ''}`) : `${a.n} colaborador(es)`,
       hc: v === 'colaboradores' ? null : Math.max(...a.hc),
       meses: [...a.meses],
       vaga: c?.vaga,
       colab: c ? c.id : null,
       proprias: c ? temManuais(c) : false,
+      avulso: Boolean(c?.avulso),
       ag: c ? null : k,
       porRubrica: c ? null : a.porRubrica,
     };
@@ -638,6 +649,7 @@ function detalheColaborador(id) {
 
 /** Explica a conta do item no detalhe do colaborador: PPR (salário × target) e benefício em R$ com reajuste. */
 function contaDoItem(c, rub) {
+  if (c.avulso) return c.avulso.conta ? `conta ${c.avulso.conta}` : 'outro lançamento';
   // Com 11 meses de salário, a remuneração do mês entra em 11/12 (o 12º mês é pago como férias + 1/3).
   const onze = Motor.MESES_SALARIO < 12 ? `${Motor.MESES_SALARIO}/12` : '';
   const notaMeses = onze ? `mês cheio × ${onze} · 1 mês do ano é pago como férias + 1/3` : '';
@@ -696,7 +708,7 @@ function tabelaSimulacaoHtml() {
         }
         const cls = l.grupo ? `grupo${E.sim.fechados.has(l.grupo) ? ' fechado' : ''}` : l.filho ? 'filho' : l.colab != null || l.ag != null ? `colab${l.aberto ? ' aberto' : ''}${l.vaga ? ' vaga' : ''}` : l.vaga ? 'vaga' : '';
         return `<tr class="${cls}" ${l.grupo ? `data-grupo="${l.grupo}"` : ''}${l.colab != null ? ` data-colab="${l.colab}" title="Clique para ${l.aberto ? 'fechar' : 'ver'} o detalhe"` : ''}${l.ag != null ? ` data-ag="${esc(l.ag)}" title="Clique para ${l.aberto ? 'fechar' : 'ver'} as contas por grupo"` : ''}>
-          <td class="fixa" title="${esc(l.rotulo)}">${l.grupo ? `<i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.proprias ? ' <span class="etiqueta azul">condições próprias</span>' : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}</td>
+          <td class="fixa" title="${esc(l.rotulo)}">${l.grupo ? `<i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.avulso ? ' <span class="etiqueta neutra">📌 lançamento</span>' : ''}${l.proprias ? ' <span class="etiqueta azul">condições próprias</span>' : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}</td>
           ${comHc ? `<td class="n">${l.hc ?? ''}</td>` : ''}${l.meses.map(cel).join('')}<td class="n"><b>${fmtVal(t)}</b></td><td class="n">${pctFmt(t / totAno)}</td></tr>`;
       }).join('');
     })()}</tbody>
@@ -1139,7 +1151,7 @@ function desenharTabelaPrem() {
   const t = $('#tabela-prem');
   t.innerHTML = `<thead><tr><th class="fixa">Item</th><th>Tem?</th><th>Como é calculado</th><th>Valor</th><th>Detalhes</th><th>Quem recebe</th><th class="n">Custo anual</th><th></th></tr></thead>
     <tbody>${GRUPOS.map(g => `<tr class="grupo"><td class="fixa" colspan="8"><i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${g.cor};margin-right:.4rem"></i>${g.nome}</td></tr>
-      ${RUBRICAS.filter(r => r.grupo === g.id && !r.fixa).map(r => linhaPremHtml(r, previa)).join('')}`).join('')}</tbody>`;
+      ${RUBRICAS.filter(r => r.grupo === g.id && !r.fixa && !r.soLancamento).map(r => linhaPremHtml(r, previa)).join('')}`).join('')}</tbody>`;
   $$('tr[data-rub]', t).forEach(tr => {
     const rub = tr.dataset.rub;
     const atual = () => ({ ...premEfetiva(E.prem.escopo, rub).p });
@@ -1336,7 +1348,7 @@ function renderQuadro() {
   const el = $('#prem-conteudo');
   const fils = Object.values(E.dados.filiais).filter(f => (!E.prem.quadroReg || f.regional === E.prem.quadroReg) && bateUf(f.filial, E.prem.uf))
     .sort((a, b) => a.regional.localeCompare(b.regional) || a.filial.localeCompare(b.filial));
-  const rubs = RUBRICAS.filter(r => !r.fixa);
+  const rubs = RUBRICAS.filter(r => !r.fixa && !r.soLancamento);
   const efet = (f, r) => Motor.premissaDe(E.dados.premissas, f.filial, f.regional, r.id);
   const visiveis = E.prem.ocultarVazios ? rubs.filter(r => fils.some(f => efet(f, r).metodo !== 'nao')) : rubs;
   el.innerHTML = `
@@ -1375,7 +1387,7 @@ const COLS_FIXAS = ['REGIONAL', 'UF', 'FILIAL', 'DISSÍDIO %', 'MÊS DISSÍDIO',
 
 function exportarQuadro() {
   if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
-  const rubs = RUBRICAS.filter(r => !r.fixa);
+  const rubs = RUBRICAS.filter(r => !r.fixa && !r.soLancamento);
   const fils = Object.values(E.dados.filiais).sort((a, b) => a.regional.localeCompare(b.regional) || a.filial.localeCompare(b.filial));
   const linhas = [[...COLS_FIXAS, ...rubs.map(r => r.nome)]];
   for (const f of fils) {
@@ -1660,7 +1672,7 @@ function decidirRegra(filial, regional, rub, lido) {
   if (propriaAtual && mesmaRegra(novo, { ...padrao, ...propriaAtual })) return undefined;
   return novo;
 }
-const RUBRICAS_IDS = new Set(RUBRICAS.filter(r => !r.fixa).map(r => r.id));
+const RUBRICAS_IDS = new Set(RUBRICAS.filter(r => !r.fixa && !r.soLancamento).map(r => r.id));
 
 async function importarQuadro(arquivo) {
   if (!window.XLSX) return toast('Carregando o leitor de Excel… tente de novo.', 'erro');
@@ -1676,7 +1688,7 @@ async function importarQuadro(arquivo) {
   const cab = linhas[h].map(c => chaveNome(c));
   const col = nome => cab.indexOf(chaveNome(nome));
   const rubCol = {};
-  for (const r of RUBRICAS.filter(x => !x.fixa)) {
+  for (const r of RUBRICAS.filter(x => !x.fixa && !x.soLancamento)) {
     const i = [r.nome, ...(APELIDOS[r.id] || [])].map(col).find(x => x >= 0);
     if (i != null) rubCol[r.id] = i;
   }
@@ -1719,7 +1731,7 @@ async function importarQuadro(arquivo) {
     mudancas += Object.keys(filialCfg).length;
     itens.push({ escopo: filial, rubricas, filial: cfg && Object.keys(filialCfg).length ? filialCfg : null });
   }
-  const faltando = RUBRICAS.filter(r => !r.fixa && !(r.id in rubCol)).map(r => r.nome);
+  const faltando = RUBRICAS.filter(r => !r.fixa && !r.soLancamento && !(r.id in rubCol)).map(r => r.nome);
   const avisos = faltando.length ? [`Colunas não encontradas (continuam como estão): ${faltando.join(', ')}.`] : [];
   confirmarImportacaoPremissas(arquivo.name, itens, mudancas, novas, avisos, `quadro · ${Object.keys(rubCol).length} itens reconhecidos`);
 }
@@ -2390,7 +2402,7 @@ function montarProprias(d, c) {
     div.dataset.origem = e.origem || '';
     div.addEventListener('change', () => { div.dataset.origem = ''; });
     div.innerHTML = `
-      <select class="campo" data-p="rub"><option value="">Escolha o item…</option>${GRUPOS.filter(g => g.id !== 'provisoes' && g.id !== 'encargos').map(g => `<optgroup label="${g.nome}">${RUBRICAS.filter(r => r.grupo === g.id && !r.fixa).map(r => `<option value="${r.id}" ${r.id === rub ? 'selected' : ''}>${esc(r.nome)}</option>`).join('')}</optgroup>`).join('')}</select>
+      <select class="campo" data-p="rub"><option value="">Escolha o item…</option>${GRUPOS.filter(g => g.id !== 'provisoes' && g.id !== 'encargos').map(g => `<optgroup label="${g.nome}">${RUBRICAS.filter(r => r.grupo === g.id && !r.fixa && !r.soLancamento).map(r => `<option value="${r.id}" ${r.id === rub ? 'selected' : ''}>${esc(r.nome)}</option>`).join('')}</optgroup>`).join('')}</select>
       <select class="campo" data-p="metodo">${Object.entries(TIPOS_PROPRIA).map(([k, v]) => `<option value="${k}" ${k === e.metodo ? 'selected' : ''}>${v}</option>`).join('')}</select>
       <input class="campo" type="number" step="any" data-p="valor" value="${e.valor ?? ''}" placeholder="valor" ${e.metodo === 'nao' ? 'disabled' : ''}>
       <button type="button" class="btn-ic" data-p="rem" title="Remover">✕</button>
@@ -2824,10 +2836,13 @@ function linhasContabeis(cfg) {
     const regional = E.contabil.porFilial ? c.regional : '';
     const filial = E.contabil.porFilial ? c.filial : '';
     RUBRICAS.forEach((r, k) => {
-      const conta = contaDoItem2(cfg, r.id);
+      const av = c.avulso;
+      if (av && r.id !== (av.rubrica || 'outras')) return;
+      // Outro lançamento: conta, pacote e centro de custo escolhidos no próprio lançamento (senão, os do item)
+      const conta = (av && av.conta) || contaDoItem2(cfg, r.id);
       if (!conta) return;
-      const pacote = pacoteDoItem(cfg, r.id);
-      const cc = ccDoItem(cfg, r.id) || ccColab;
+      const pacote = (av && av.pacote) || pacoteDoItem(cfg, r.id);
+      const cc = (av && av.cc_contabil) || ccDoItem(cfg, r.id) || ccColab;
       const chave = `${regional}\u0000${filial}\u0000${pacote}\u0000${cc}\u0000${conta}`;
       if (!porChave.has(chave)) porChave.set(chave, { regional, filial, pacote, cc, conta, meses: new Float64Array(12) });
       const l = porChave.get(chave);
@@ -2974,6 +2989,194 @@ function baixarContabil(cfg) {
   XLSX.utils.book_append_sheet(wb, ws, 'Pessoal');
   const nome = [ano, E.filtro.regional, E.filtro.uf, E.filtro.filial].filter(Boolean).join('-').replace(/[^\w-]+/g, '_');
   XLSX.writeFile(wb, `Orcamento-Contabil-${nome}.xlsx`);
+}
+
+// ---------- Outros lançamentos (custos fora dos colaboradores) ----------
+
+const RUBS_LANC = RUBRICAS.filter(r => !r.fixa && r.grupo !== 'encargos');
+const nomeItemLanc = id => (id === 'outras' ? 'Outra conta' : RUBRICAS[IDX[id]]?.nome || id);
+const noFiltroLanc = l => (!E.filtro.regional || l.regional === E.filtro.regional) && (!E.filtro.filial || l.filial === E.filtro.filial)
+  && (!l.filial || bateUf(l.filial)) && (!E.filtro.cc || String(l.cc_cod || '') === E.filtro.cc);
+const somaMeses = l => (l.meses || []).reduce((a, b) => a + (Number(b) || 0), 0);
+const ccDoLanc = l => l.cc_contabil || [l.cc_cod, l.cc_nome].filter(Boolean).join(' · ') || '—';
+
+async function renderLancamentos() {
+  const el = painel('lancamentos');
+  if (!E.contabil.cfg) E.contabil.cfg = await api('/api/contabil');
+  const cfg = E.contabil.cfg;
+  const lista = (E.dados.lancamentos || []).filter(noFiltroLanc);
+  const totMes = MESES.map((_, m) => lista.reduce((a, l) => a + (Number(l.meses?.[m]) || 0), 0));
+  el.innerHTML = `
+    <div class="cab-pagina"><div><h1 class="titulo-pagina">Outros <em>lançamentos</em></h1>
+      <p class="subtitulo">Custos que não são de um colaborador: consultorias, Gupy, uma rescisão prevista num centro de custo em um mês, etc. Escolha a regional, a filial, o centro de custo, o item ou a conta contábil e o valor de cada mês. Os valores entram no Painel, na Simulação e no Relatório contábil.</p></div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+        <button class="btn btn-claro" id="lanc-excel">⬇ Excel / modelo</button>
+        <label class="btn btn-claro" style="cursor:pointer">⬆ Importar Excel<input type="file" id="lanc-importar" accept=".xlsx,.xls" hidden></label>
+        <button class="btn btn-laranja" id="lanc-novo">+ Novo lançamento</button></div></div>
+    <section class="cartao">
+      ${lista.length ? `<div class="tabela-wrap alta"><table class="tabela tabela-lanc"><thead><tr><th class="fixa">Descrição</th><th>Filial</th><th>Centro de custo</th><th>Item / conta contábil</th><th>Pacote</th>
+        ${MESES.map(m => `<th class="n">${m}</th>`).join('')}<th class="n">Total ano</th><th></th></tr></thead>
+        <tbody>${lista.map(l => `<tr data-lanc="${l.id}">
+          <td class="fixa" title="${esc(l.descricao)}">${esc(l.descricao)}<span class="sub">${esc(l.regional)}</span></td>
+          <td>${esc(l.filial || '— regional —')}</td><td>${esc(ccDoLanc(l))}</td>
+          <td>${esc(nomeItemLanc(l.rubrica))}<span class="sub">${esc(l.conta || contaDoItem2(cfg, l.rubrica) || '— sem conta —')}</span></td>
+          <td>${esc(l.pacote || pacoteDoItem(cfg, l.rubrica))}</td>
+          ${MESES.map((_, m) => { const v = Number(l.meses?.[m]) || 0; return `<td class="n${v ? '' : ' zero'}">${v ? num2.format(v) : '–'}</td>`; }).join('')}
+          <td class="n"><b>${num2.format(somaMeses(l))}</b></td>
+          <td><span class="acoes"><button class="btn-ic" data-editar title="Editar">✏️</button><button class="btn-ic" data-apagar title="Remover">🗑</button></span></td></tr>`).join('')}</tbody>
+        <tfoot><tr class="total"><td class="fixa">Total · ${lista.length} lançamento(s)</td><td></td><td></td><td></td><td></td>${totMes.map(v => `<td class="n">${num2.format(v)}</td>`).join('')}<td class="n">${num2.format(totMes.reduce((a, b) => a + b, 0))}</td><td></td></tr></tfoot></table></div>`
+      : `<div class="vazio"><span>📌</span><h3>Nenhum lançamento${E.filtro.regional || E.filtro.filial || E.filtro.cc ? ' com esses filtros' : ''}</h3><p>Use <b>+ Novo lançamento</b> ou importe vários de uma vez pelo Excel (o botão <b>⬇ Excel / modelo</b> baixa o modelo).</p></div>`}
+    </section>`;
+  $('#lanc-novo', el).addEventListener('click', () => editarLancamento(null));
+  $('#lanc-excel', el).addEventListener('click', () => baixarLancamentos(cfg, lista));
+  $('#lanc-importar', el).addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importarLancamentos(f); });
+  $$('[data-lanc]', el).forEach(tr => {
+    const l = E.dados.lancamentos.find(x => x.id === Number(tr.dataset.lanc));
+    tr.querySelector('[data-editar]').addEventListener('click', () => editarLancamento(l));
+    tr.querySelector('[data-apagar]').addEventListener('click', async () => {
+      if (!confirm(`Remover o lançamento "${l.descricao}"?`)) return;
+      try { await api(`/api/lancamentos/${l.id}`, { method: 'DELETE' }); toast('Lançamento removido.'); await recarregarTudo(); } catch (e) { toast(e.message, 'erro'); }
+    });
+  });
+}
+
+async function recarregarTudo() {
+  await carregar();
+  renderAba();
+}
+
+/** Centro de custo digitado/escolhido → { cc_cod, cc_nome, cc_contabil }. Aceita "17093 · NOME", "25506 - NOME" (lista contábil) ou só o código. */
+function lerCcLanc(txt, cfg) {
+  const t = String(txt || '').trim();
+  if (!t) return { cc_cod: '', cc_nome: '', cc_contabil: '' };
+  const contabil = cfg.ccs.find(c => c === t) || (/ - /.test(t) ? t : '');
+  if (contabil) { const [cod, ...nome] = contabil.split(' - '); return { cc_cod: cod.trim(), cc_nome: nome.join(' - ').trim(), cc_contabil: contabil }; }
+  const [cod, ...nome] = t.split(' · ');
+  const daBase = E.dados.colaboradores.find(c => String(c.cc_cod || '') === cod.trim());
+  return { cc_cod: cod.trim(), cc_nome: nome.join(' · ').trim() || daBase?.cc_nome || '', cc_contabil: '' };
+}
+
+function editarLancamento(l) {
+  const cfg = E.contabil.cfg;
+  const a = l || { descricao: '', regional: E.filtro.regional || regionais()[0] || '', filial: E.filtro.filial || '', cc_cod: E.filtro.cc || '', cc_nome: '', cc_contabil: '', rubrica: 'outras', conta: '', pacote: '', meses: Array(12).fill(0) };
+  const ccsBase = [...new Map(E.dados.colaboradores.map(c => [String(c.cc_cod || ''), rotuloCc(c)])).values()].sort((x, y) => x.localeCompare(y, 'pt-BR', { numeric: true }));
+  const ccAtual = a.cc_contabil || (a.cc_cod ? [a.cc_cod, a.cc_nome].filter(Boolean).join(' · ') : '');
+  const d = abrirModal({
+    titulo: l ? 'Editar lançamento' : 'Novo lançamento', sup: 'OUTROS LANÇAMENTOS', largo: true,
+    corpo: `<form class="form-grade" id="form-lanc">
+      <label class="rotulo inteiro">Descrição<input class="campo" name="descricao" value="${esc(a.descricao)}" placeholder="ex.: Consultoria de cargos e salários · Gupy · Rescisão prevista" required></label>
+      <label class="rotulo">Regional<select class="campo" name="regional">${regionais().map(r => `<option ${r === a.regional ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></label>
+      <label class="rotulo">Filial<select class="campo" name="filial"></select></label>
+      <label class="rotulo">Centro de custo<input class="campo" name="cc" list="lanc-ccs" value="${esc(ccAtual)}" placeholder="digite o código ou escolha na lista">
+        <datalist id="lanc-ccs">${[...ccsBase, ...cfg.ccs].map(c => `<option value="${esc(c)}">`).join('')}</datalist><small>Lista com os CCs da base e os da contabilidade (ex.: 25506).</small></label>
+      <label class="rotulo">Item<select class="campo" name="rubrica"><option value="outras" ${a.rubrica === 'outras' ? 'selected' : ''}>Outra conta (escolha a conta contábil)</option>
+        ${GRUPOS.filter(g => g.id !== 'encargos').map(g => `<optgroup label="${g.nome}">${RUBS_LANC.filter(r => r.grupo === g.id && !r.soLancamento).map(r => `<option value="${r.id}" ${r.id === a.rubrica ? 'selected' : ''}>${esc(r.nome)}</option>`).join('')}</optgroup>`).join('')}</select></label>
+      <label class="rotulo">Conta contábil<input class="campo" name="conta" list="lanc-contas" value="${esc(a.conta)}">
+        <datalist id="lanc-contas">${(cfg.contas.length ? cfg.contas : Object.values(CONTA_SUGERIDA)).map(c => `<option value="${esc(c)}">`).join('')}</datalist><small id="lanc-conta-dica"></small></label>
+      <label class="rotulo">Pacote<select class="campo" name="pacote"><option value="">— o do item —</option>${cfg.pacotes.map(p => `<option ${p === a.pacote ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></label>
+      <div class="inteiro meses-box">
+        <b>Valor de cada mês (R$)</b>
+        <div class="lanc-preencher">Preencher: <input class="campo" id="lanc-v" type="number" step="any" placeholder="valor" style="width:130px">
+          <select class="campo" id="lanc-modo" style="width:auto"><option value="mes">só no mês</option><option value="todos">em todos os meses</option><option value="ano">total do ano ÷ 12</option></select>
+          <select class="campo" id="lanc-mes" style="width:90px">${opcoesMes(1)}</select><button type="button" class="btn btn-claro btn-sm" id="lanc-aplicar">Aplicar</button></div>
+        <div class="meses-grade">${MESES.map((nm, i) => `<label>${nm}<input class="campo" type="number" step="any" data-mesl="${i}" value="${Number(a.meses?.[i]) || ''}" placeholder="0"></label>`).join('')}</div>
+        <div class="meses-colar"><input class="campo" id="lanc-colar" placeholder="Ou cole aqui a linha do Excel com os 12 valores (Jan a Dez)"><small id="lanc-total"></small></div>
+      </div></form>`,
+    rodape: `<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="lanc-salvar">Salvar</button>`,
+  });
+  const f = $('#form-lanc', d);
+  const montarFiliais = () => {
+    f.filial.innerHTML = `<option value="">— só a regional (sem filial) —</option>${filiaisDa(f.regional.value).map(x => `<option ${x === a.filial ? 'selected' : ''}>${esc(x)}</option>`).join('')}`;
+  };
+  montarFiliais();
+  f.regional.addEventListener('change', () => { a.filial = ''; montarFiliais(); });
+  const dicaConta = () => { $('#lanc-conta-dica', d).textContent = f.rubrica.value === 'outras' ? 'Obrigatória em "Outra conta".' : `Vazia = conta do item (${contaDoItem2(cfg, f.rubrica.value) || 'sem conta'}).`; };
+  dicaConta();
+  f.rubrica.addEventListener('change', dicaConta);
+  const campos = $$('[data-mesl]', d);
+  const total = () => { $('#lanc-total', d).textContent = `Total no ano: ${brl.format(campos.reduce((s2, i) => s2 + (Number(i.value) || 0), 0))}`; };
+  campos.forEach(i => i.addEventListener('input', total));
+  total();
+  const modo = $('#lanc-modo', d);
+  modo.addEventListener('change', () => { $('#lanc-mes', d).hidden = modo.value !== 'mes'; });
+  $('#lanc-aplicar', d).addEventListener('click', () => {
+    const v = Number($('#lanc-v', d).value) || 0;
+    if (modo.value === 'mes') campos[Number($('#lanc-mes', d).value) - 1].value = v || '';
+    else campos.forEach(i => { i.value = (modo.value === 'ano' ? Math.round((v / 12) * 100) / 100 : v) || ''; });
+    total();
+  });
+  $('#lanc-colar', d).addEventListener('input', e => {
+    const vals = e.target.value.trim().split(/\t|;|\s{2,}/).map(x => Number(String(x).replace(/[R$\s]/g, '').replace(/\./g, '').replace(',', '.')) || 0);
+    if (vals.length >= 12) { campos.forEach((i, k) => { i.value = vals[k] || ''; }); e.target.value = ''; total(); }
+  });
+  $('#lanc-salvar', d).addEventListener('click', async () => {
+    const body = {
+      descricao: f.descricao.value.trim(), regional: f.regional.value, filial: f.filial.value, ...lerCcLanc(f.cc.value, cfg),
+      rubrica: f.rubrica.value, conta: f.conta.value.trim(), pacote: f.pacote.value, meses: campos.map(i => Number(i.value) || 0),
+    };
+    if (!body.descricao) return toast('Informe a descrição.', 'erro');
+    if (body.rubrica === 'outras' && !body.conta) return toast('Em "Outra conta", informe a conta contábil.', 'erro');
+    if (!body.meses.some(Boolean)) return toast('Informe o valor de pelo menos um mês.', 'erro');
+    try {
+      await api(l ? `/api/lancamentos/${l.id}` : '/api/lancamentos', { method: l ? 'PUT' : 'POST', body });
+      d.close(); toast('Lançamento salvo.'); await recarregarTudo();
+    } catch (e) { toast(e.message, 'erro'); }
+  });
+}
+
+const COL_LANC = ['Descrição', 'Regional', 'Filial', 'Cód. C. Custo', 'Centro de custo', 'CC contábil', 'Item', 'Conta contábil', 'Pacote', ...MESES, 'Total ano'];
+
+function baixarLancamentos(cfg, lista) {
+  if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
+  const linhas = lista.length ? lista.map(l => [l.descricao, l.regional, l.filial, l.cc_cod, l.cc_nome, l.cc_contabil, nomeItemLanc(l.rubrica), l.conta, l.pacote, ...MESES.map((_, m) => Number(l.meses?.[m]) || 0), somaMeses(l)])
+    : [['Consultoria de cargos e salários', regionais()[0] || 'SUDESTE', '', '17093', 'RECURSOS HUMANOS', '', 'Outra conta', cfg.contas[0] || '', '', 0, 0, 15000, 0, 0, 0, 0, 0, 15000, 0, 0, 0, 30000],
+       ['Gupy (licença)', regionais()[0] || 'SUDESTE', '', '17093', 'RECURSOS HUMANOS', '', 'Outra conta', cfg.contas[0] || '', '', ...Array(12).fill(2500), 30000],
+       ['Rescisão prevista', regionais()[0] || 'SUDESTE', filiaisDa(regionais()[0])[0] || '', '17150', 'OPERAÇÃO', '', 'Rescisão', '', '', 0, 0, 0, 0, 0, 0, 25000, 0, 0, 0, 0, 0, 25000]];
+  const ws = XLSX.utils.aoa_to_sheet([COL_LANC, ...linhas]);
+  ws['!cols'] = [34, 16, 22, 12, 24, 30, 20, 40, 16, ...MESES.map(() => 11), 12].map(wch => ({ wch }));
+  const ajuda = XLSX.utils.aoa_to_sheet([
+    ['Coluna', 'O que colocar'],
+    ['Descrição', 'Obrigatória. Ex.: Consultoria X, Gupy, Rescisão prevista'],
+    ['Regional', 'Obrigatória, igual à da base (ex.: NORTE)'],
+    ['Filial', 'Opcional. Vazio = custo da regional, sem filial'],
+    ['Cód. C. Custo / Centro de custo', 'Código e nome do centro de custo da base (ex.: 17093 · RECURSOS HUMANOS)'],
+    ['CC contábil', 'Opcional. Centro de custo da contabilidade, como está na lista (ex.: 25506 - TRANSPORTE CONTRATADO/MOBILIDADE). Se preenchido, vale no relatório contábil'],
+    ['Item', `Um item da ferramenta (ex.: Rescisão, Treinamento, Viagens) ou "Outra conta". Itens: ${RUBS_LANC.filter(r => !r.soLancamento).map(r => r.nome).join(', ')}`],
+    ['Conta contábil', 'Obrigatória em "Outra conta" (ex.: a conta de consultorias). Vazia nos demais = conta do item'],
+    ['Pacote', `Opcional: ${cfg.pacotes.join(', ')}. Vazio = o do item`],
+    ['Jan … Dez', 'Valor de cada mês em R$'],
+  ]);
+  ajuda['!cols'] = [{ wch: 30 }, { wch: 110 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos');
+  XLSX.utils.book_append_sheet(wb, ajuda, 'Como preencher');
+  XLSX.writeFile(wb, `Outros-lancamentos-${E.dados.config.ano}.xlsx`);
+}
+
+async function importarLancamentos(arquivo) {
+  try {
+    const wb = XLSX.read(await arquivo.arrayBuffer(), { type: 'array' });
+    const l = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: null });
+    const h = l.findIndex(r => (r || []).some(c => normCab(c) === 'DESCRICAO'));
+    if (h < 0) return toast('Não encontrei a coluna "Descrição". Use o modelo do botão ⬇ Excel / modelo.', 'erro');
+    const cab = l[h].map(normCab);
+    const col = nome => cab.indexOf(normCab(nome));
+    const porNome = new Map(RUBRICAS.filter(r => !r.fixa).map(r => [chaveNome(r.nome), r.id]));
+    porNome.set(chaveNome('Outra conta'), 'outras');
+    const num = v => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[R$\s]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')) || 0);
+    const txt = v => String(v ?? '').trim();
+    const linhas = l.slice(h + 1).filter(r => r && txt(r[col('Descrição')])).map(r => ({
+      descricao: txt(r[col('Descrição')]), regional: txt(r[col('Regional')]), filial: txt(r[col('Filial')]),
+      cc_cod: txt(r[col('Cód. C. Custo')]), cc_nome: txt(r[col('Centro de custo')]), cc_contabil: txt(r[col('CC contábil')]),
+      rubrica: porNome.get(chaveNome(r[col('Item')])) || 'outras', conta: txt(r[col('Conta contábil')]), pacote: txt(r[col('Pacote')]),
+      meses: MESES.map(m => num(r[col(m)])),
+    }));
+    if (!linhas.length) return toast('Nenhuma linha preenchida no arquivo.', 'erro');
+    const substituir = confirm(`${linhas.length} lançamento(s) no arquivo.\n\nOK = substituir TODOS os lançamentos atuais por estes\nCancelar = adicionar aos que já existem`);
+    const r = await api('/api/lancamentos/importar', { method: 'POST', body: { linhas, substituir } });
+    toast(`${r.importados} lançamento(s) importado(s).${r.erros.length ? ` ${r.erros.length} linha(s) com erro.` : ''}`, r.erros.length ? 'erro' : undefined);
+    await recarregarTudo();
+  } catch (e) { toast(e.message || 'Não consegui ler o arquivo.', 'erro'); }
 }
 
 // ---------- Coordenadores ----------

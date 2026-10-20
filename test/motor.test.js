@@ -246,3 +246,20 @@ test('promoções e méritos: 2% do salário a partir de abril, entrando na base
   perto(v('fgts', 3), 5100 * 0.08);
   perto(v('decimo', 3), 5100 / 12);
 });
+
+test('outros lançamentos: valor de cada mês direto no item, sem contar como pessoa nem entrar em rateios', () => {
+  const colaboradores = [
+    colab({ id: 1, salario: 5000 }),
+    { id: -1, nome: 'Gupy', regional: 'CENTRO OESTE', filial: 'CUIABA', cc_cod: '17093', salario: 0, mes_inicio: 1, mes_fim: 12, avulso: { rubrica: 'outras', meses: [0, 0, 15000, 0, 0, 0, 0, 0, 15000, 0, 0, 0] } },
+    { id: -2, nome: 'Rescisão', regional: 'CENTRO OESTE', filial: 'CUIABA', cc_cod: '17150', salario: 0, mes_inicio: 1, mes_fim: 12, avulso: { rubrica: 'rescisao', meses: [0, 0, 0, 0, 0, 0, 25000, 0, 0, 0, 0, 0] } },
+  ];
+  const premissas = { '*': { treinamento: { metodo: 'rateio', valor: 1200, periodo: 'mensal' } } };
+  const res = Motor.calcular({ colaboradores, filiais: {}, premissas });
+  perto(res.valor(1, Motor.IDX.outras, 2), 15000);
+  perto(total(res, 'outras', 1), 30000);
+  perto(res.valor(2, Motor.IDX.rescisao, 6), 25000);
+  perto(res.valor(0, Motor.IDX.treinamento, 0), 1200);   // o total da filial fica todo com a pessoa
+  perto(res.valor(1, Motor.IDX.salario, 0), 0);
+  const ag = Motor.agregar(res, c => c.filial).get('CUIABA');
+  perto(ag.hc[0], 1);                                       // lançamentos não contam no headcount
+});
