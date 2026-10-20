@@ -114,7 +114,7 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   Painel com o total por regional, aviso de **colaboradores duplicados** (mesma matrícula + nome + filial; a mesma
   matrícula pode existir em empresas diferentes) com **Remover duplicados**, e **Apagar toda a base**. **Vagas** (situação “Nova Vaga” + mês de admissão) e **desligamentos previstos**.
   - **Valores por colaborador vindos da base**: colunas opcionais com o valor de cada pessoa — periculosidade,
-    insalubridade, penosidade, adicional de turno/noturno, rescisão e benefícios (VA, 13º VR, VT, creche,
+    insalubridade, penosidade, adicionais de turno, adicional noturno, rescisão e benefícios (VA, 13º VR, VT, creche,
     educacional, material escolar, óculos (valor do ano ÷ 12), oftalmo, assistência médica, coparticipação, odonto, farmácia, seguro, previdência privada,
     auxílio dependente portadores, refeitório, fretado). **0 = não recebe**, **vazio = segue a regra da filial**. Na importação, a prévia mostra os itens encontrados e
     dá para desmarcar algum. Remuneração e rescisão entram sem dissídio e sobem com o dissídio da filial (quando a planilha
@@ -163,7 +163,7 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
 
 | Grupo | Rubricas |
 |---|---|
-| Remuneração | Salário, Periculosidade, Insalubridade, Penosidade, Adicionais de turno, Horas extras, Promoções e méritos |
+| Remuneração | Salário, Periculosidade, Insalubridade, Penosidade, Adicionais de turno, Adicional noturno, Horas extras, Promoções e méritos |
 | Provisões | Férias (1/3), 13º salário, Rescisão |
 | Encargos | FGTS, FGTS férias, FGTS 13º, INSS, INSS férias, INSS 13º |
 | Benefícios | PPR, VA/VR, VA natal / 13º VR, Vale-transporte, Auxílio-creche, Auxílio educacional (ou educação), Material escolar, Auxílio óculos, Oftalmo, Assistência médica, Coparticipação convênio médico, Assistência odontológica, Farmácia, Seguro de vida, Previdência privada, Auxílio dependente portadores, Refeitório, Fretado, Fretado (overall), Cesta natalina |

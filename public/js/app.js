@@ -1428,7 +1428,7 @@ const chaveNome = s => normCab(s).replace(/[^A-Z0-9%]/g, '');
 // Nomes das colunas nas planilhas antigas (BZO), para aceitar também esses cabeçalhos.
 const APELIDOS = {
   va: ['VA/VR', 'VA', 'VR'], va_natal: ['VA NATAL (DEZEMBRO)', '13° VR', '13º VR'], vt: ['VT'], assist_medica: ['ASSIST. MÉDICA', 'ASSIST. MÉDICA (EMPRESA)'],
-  assist_odonto: ['ASSIST. ODONTO', 'ASSIST. ODONTO (EMPRESA)'], aux_creche: ['AUXÍLIO CRECHÊ', 'AUXÍLIO CRECHE'], adic_turno: ['ADICIONAIS DE TURNO (INCLUSOS ADIC. INTRAJORNADA E PASSAGEM DE TURNO)'],
+  assist_odonto: ['ASSIST. ODONTO', 'ASSIST. ODONTO (EMPRESA)'], aux_creche: ['AUXÍLIO CRECHÊ', 'AUXÍLIO CRECHE'], adic_turno: ['ADICIONAIS DE TURNO (INCLUSOS ADIC. INTRAJORNADA E PASSAGEM DE TURNO)'], adic_noturno: ['ADIC. NOTURNO'],
   decimo: ['13° SALÁRIO'], coparticipacao: ['COPARTICIPAÇÃO CONVÊNIO MÉDICO'], educacional: ['EDUCACIONAL', 'AUXÍLIO EDUCAÇÃO'], farmacia: ['FARMACIA'],
   previdencia: ['PREVIDÊNCIA', 'PREVIDÊNCIA PRIVADA (EMPRESA)'], aux_dependente: ['AUXÍLIO DEPENDENTE PORTADOR', 'AUXÍLIO FILHO EXCEPCIONAL'],
 };
@@ -1984,7 +1984,7 @@ function lerPlanilha(wb) {
 // Ficam de fora o PPR (salário × target), a cesta natalina e o grupo Demais, que seguem as premissas; férias, 13º e
 // encargos seguem calculados sobre esses valores.
 const RUBS_BASE = RUBRICAS.filter(r => !r.fixa && r.id !== 'ppr' && r.id !== 'cesta_natalina' && r.id !== 'horas_extras' && r.id !== 'promocoes' && (r.grupo === 'remuneracao' || r.grupo === 'beneficios' || r.id === 'rescisao'));
-const APELIDOS_BASE = { adic_turno: ['ADIC. NOTURNO', 'ADICIONAL NOTURNO', 'ADICIONAIS DE TURNO'] };
+const APELIDOS_BASE = { adic_turno: ['ADICIONAIS DE TURNO'], adic_noturno: ['ADIC. NOTURNO', 'ADICIONAL NOTURNO', 'ADIC NOTURNO'] };
 
 /** Colunas da planilha com o valor de cada item por colaborador: [{ rub, col }]. */
 function colunasValores(cab) {
@@ -2770,7 +2770,7 @@ function abrirItem(s) {
 // Vínculo sugerido item → conta contábil (pelo código da conta); pode ser trocado na tela.
 const CONTA_SUGERIDA = {
   salario: '218 - SALÁRIOS E ORDENADOS', periculosidade: '1833725 - INSALUBRIDADE / PERICULOSIDADE', insalubridade: '1833725 - INSALUBRIDADE / PERICULOSIDADE',
-  penosidade: '1833725 - INSALUBRIDADE / PERICULOSIDADE', adic_turno: '1833726 - ADICIONAL NOTURNO', horas_extras: '219 - HORAS EXTRAS', promocoes: '218 - SALÁRIOS E ORDENADOS',
+  penosidade: '1833725 - INSALUBRIDADE / PERICULOSIDADE', adic_turno: '1833726 - ADICIONAL NOTURNO', adic_noturno: '1833726 - ADICIONAL NOTURNO', horas_extras: '219 - HORAS EXTRAS', promocoes: '218 - SALÁRIOS E ORDENADOS',
   ferias: '223 - PROV.TRABALHISTAS-FÉRIAS', decimo: '118516 - PROV.TRABALHISTAS-13º SALÁRIO', rescisao: '220 - DESPESAS COM RESCISÃO DE FUNCIONÁRIOS',
   fgts: '221 - F.G.T.S.', fgts_ferias: '118519 - PROV.TRABALHISTAS-FGTS S/FÉRIAS', fgts_13: '118520 - PROV.TRABALHISTAS-FGTS S/13º SALÁRIO',
   inss: '222 - I.N.S.S.', inss_ferias: '118517 - PROV.TRABALHISTAS-INSS S/FÉRIAS', inss_13: '118518 - PROV.TRABALHISTAS-INSS S/13º SALÁRIO',

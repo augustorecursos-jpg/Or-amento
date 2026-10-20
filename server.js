@@ -376,6 +376,8 @@ function lerExcecoes(v) {
  */
 function juntarExcecoes(velhas, novas, colunasBase) {
   const cols = new Set(colunasBase || []);
+  // Adicional noturno e adicionais de turno já foram a mesma coluna: a planilha que traz um deles substitui os dois.
+  if (cols.has('adic_noturno') || cols.has('adic_turno')) { cols.add('adic_noturno'); cols.add('adic_turno'); }
   const out = {};
   for (const [rub, e] of Object.entries(velhas)) if (e.origem !== 'base' || !cols.has(rub)) out[rub] = e;
   for (const [rub, e] of Object.entries(novas)) if (e.origem !== 'base' || !out[rub] || out[rub].origem === 'base') out[rub] = e;
