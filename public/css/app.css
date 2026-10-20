@@ -642,3 +642,4 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .tabela-legenda td:first-child { white-space: nowrap; }
 .kpis-comp .kpi2 strong { font-size: clamp(1rem, 1.35vw, 1.3rem); white-space: nowrap; }
 .tabela tfoot .sub-ant { color: #f6b27a; }
+.hero2 .comp-escopo { margin: .35rem 0 0; font-size: .78rem; color: #9fb6c9; }

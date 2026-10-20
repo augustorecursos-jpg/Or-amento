@@ -68,12 +68,23 @@ function recalcular() {
   if (ant.length) {
     const semReaj = {};
     for (const [f, cfg] of Object.entries(E.dados.filiais)) semReaj[f] = { ...cfg, dissidio_pct: 0, reaj_benef_pct: 0 };
-    E.resAnt = Motor.calcular({ colaboradores: ant, filiais: semReaj, premissas, niveis });
-  } else E.resAnt = null;
+    E.resAnt = soGruposComparados(Motor.calcular({ colaboradores: ant, filiais: semReaj, premissas, niveis }));
+    E.resCmp = soGruposComparados(E.res);
+  } else E.resAnt = E.resCmp = null;
   if (!E.resAnt) E.comparar = false;
   _regras = new Map();
 }
 
+// O comparativo com o ano anterior vai até os encargos: remuneração, provisões, encargos e benefícios (sem "Demais").
+const GRUPOS_CMP = new Set(['remuneracao', 'provisoes', 'encargos', 'beneficios']);
+const GRUPOS_CMP_TXT = 'remuneração, provisões, encargos e benefícios';
+/** Cópia do cálculo só com as contas dos grupos comparados. */
+function soGruposComparados(res) {
+  const fora = RUBRICAS.map((r, k) => (GRUPOS_CMP.has(r.grupo) ? -1 : k)).filter(k => k >= 0);
+  const valores = Float64Array.from(res.valores);
+  for (let i = 0; i < res.n; i++) for (const k of fora) valores.fill(0, (i * RN + k) * 12, (i * RN + k) * 12 + 12);
+  return { ...res, valores, valor: (i, r, m) => valores[(i * RN + r) * 12 + m] };
+}
 const anoAnt = () => Number(E.dados.config.ano) - 1;
 /** Histórico do ano anterior como colaboradores do cálculo. Quem ainda está na base herda dela as condições próprias
  * (benefícios da planilha, sucedidos), o sexo e o gestor — casando pela matrícula e nome. */
@@ -392,7 +403,7 @@ const clsDelta = v => (v > 0.5 ? 'delta-sobe' : v < -0.5 ? 'delta-desce' : '');
 function desenharComparativo(box) {
   const ano = E.dados.config.ano;
   const ant = anoAnt();
-  const a1 = totalDe(E.res);
+  const a1 = totalDe(E.resCmp);
   const a0 = totalDe(E.resAnt);
   const d = a1.total - a0.total;
   const hcSoma = ag => ag.hc.reduce((x, y) => x + y, 0);
@@ -405,9 +416,9 @@ function desenharComparativo(box) {
   const maior = porDelta[0];
   const aumentoBruto = contas.filter(x => x.d > 0).reduce((s, x) => s + x.d, 0);
   // Outros lançamentos só existem no orçamento
-  const avulso = E.res.colaboradores.reduce((s, c, i) => {
+  const avulso = E.resCmp.colaboradores.reduce((s, c, i) => {
     if (!c.avulso || !noFiltro(c)) return s;
-    for (let r = 0; r < RN; r++) for (let m = 0; m < 12; m++) s += E.res.valor(i, r, m);
+    for (let r = 0; r < RN; r++) for (let m = 0; m < 12; m++) s += E.resCmp.valor(i, r, m);
     return s;
   }, 0);
   const kpi = (ic, cor, rotulo, valor, nota) => `<div class="kpi2"><span class="kpi2-ic" style="--c:${cor}">${ic}</span><div><span>${rotulo}</span><strong>${valor}</strong><small>${nota}</small></div></div>`;
@@ -420,6 +431,7 @@ function desenharComparativo(box) {
       <div class="pontilhado"></div>
       <div class="hero2-num">
         <small>CUSTO ANUAL DE PESSOAL · ${ant} × ${esc(ano)}</small>
+        <p class="comp-escopo">Remuneração, provisões, encargos e benefícios · o grupo Demais (treinamento, viagens, serviços…) fica fora do comparativo</p>
         <div class="comp-totais">
           <div><span style="--c:${COR_ANT}">${ant} · realizado</span><b>${brl0.format(a0.total)}</b></div>
           <div class="comp-seta">→</div>
@@ -434,7 +446,7 @@ function desenharComparativo(box) {
       <div class="hero2-graf"><small>CUSTO POR MÊS</small><div id="gc-mini"></div></div>
     </section>
     <div class="kpis2 kpis-comp" style="margin-bottom:1.2rem">
-      ${kpi('💰', '#164d74', `Custo anual ${esc(ano)}`, brl0.format(a1.total), `${deltaPct(d, a0.total)} sobre ${ant} (${brl0.format(a0.total)})`)}
+      ${kpi('💰', '#164d74', `Custo comparado ${esc(ano)}`, brl0.format(a1.total), `${deltaPct(d, a0.total)} sobre ${ant} (${brl0.format(a0.total)})`)}
       ${kpi('📈', '#ec6b24', 'Aumento no ano', deltaFmt(d), aumentoBruto ? `contas que sobem somam ${deltaFmt(aumentoBruto)}` : 'nenhuma conta sobe')}
       ${kpi('👥', COR_ATUAL, 'Headcount médio', `${num0.format(hc0 / 12)} → ${num0.format(hc1 / 12)}`, `${sinal(hc1 - hc0)}${num0.format(Math.abs(hc1 - hc0) / 12)} pessoa(s) em média`)}
       ${kpi('💼', '#8b5fbf', 'Custo médio por colaborador', brl0.format(medio1), `por mês · ${ant}: ${brl0.format(medio0)} (${deltaPct(medio1 - medio0, medio0)})`)}
@@ -466,7 +478,7 @@ function desenharComparativo(box) {
   const resto = porImpacto.slice(7).reduce((s, x) => s + x.d, 0);
   Graficos.ponteVariacao($('#gc-ponte', box), {
     inicio: a0.total, fim: a1.total, nomeInicio: String(ant), nomeFim: String(ano),
-    passos: [...top.map(x => ({ nome: x.r.nome, valor: x.d })), ...(Math.abs(resto) >= 0.5 ? [{ nome: 'Demais contas', valor: resto }] : [])],
+    passos: [...top.map(x => ({ nome: x.r.nome, valor: x.d })), ...(Math.abs(resto) >= 0.5 ? [{ nome: 'Outras contas', valor: resto }] : [])],
   });
   const grupos = GRUPOS.map(g => {
     const cs = contas.filter(x => x.r.grupo === g.id);
@@ -482,7 +494,7 @@ function desenharComparativo(box) {
 
   // Ranking por conta, com abertura por filial
   const fil0 = Motor.agregar(E.resAnt, c => c.filial, noFiltro);
-  const fil1 = Motor.agregar(E.res, c => c.filial, noFiltro);
+  const fil1 = Motor.agregar(E.resCmp, c => c.filial, noFiltro);
   let aberta = null;
   const maxD = Math.max(...contas.map(x => Math.abs(x.d)), 1);
   const desenharRanking = () => {
@@ -506,7 +518,7 @@ function desenharComparativo(box) {
 
   // Regional / filial / centro de custo
   const n0 = Motor.agregar(E.resAnt, chaveNivel, noFiltro);
-  const n1 = Motor.agregar(E.res, chaveNivel, noFiltro);
+  const n1 = Motor.agregar(E.resCmp, chaveNivel, noFiltro);
   const itens = [...new Set([...n0.keys(), ...n1.keys()])].map(k => {
     const x0 = n0.get(k), x1 = n1.get(k);
     return { k, v0: x0?.total || 0, v1: x1?.total || 0, h0: x0 ? x0.hc[11] : 0, h1: x1 ? x1.hc[11] : 0 };
@@ -568,7 +580,7 @@ function legendaPremissasHtml() {
   return `<details class="cartao legenda-premissas" id="legenda-premissas"${E.legendaAberta ? ' open' : ''}>
     <summary><h3 style="display:inline">📖 Legenda das premissas <small>· como cada conta é calculada${E.comparar && E.resAnt ? ` em ${esc(E.dados.config.ano)} e em ${anoAnt()}` : ''}</small></h3></summary>
     <p class="subtitulo" style="margin:.4rem 0 .8rem">Dissídio ${lista(diss)} · reajuste de benefícios ${lista(reaj)}.
-      ${E.resAnt ? `<br>${anoAnt()}: salário realmente pago em cada mês (histórico carregado) com as mesmas regras abaixo, <b>sem</b> dissídio e <b>sem</b> o reajuste de benefícios do orçamento. Outros lançamentos só entram em ${esc(E.dados.config.ano)}.` : ''}</p>
+      ${E.resAnt ? `<br>${anoAnt()}: salário realmente pago em cada mês (histórico carregado) com as mesmas regras abaixo, <b>sem</b> dissídio e <b>sem</b> o reajuste de benefícios do orçamento. Outros lançamentos só entram em ${esc(E.dados.config.ano)}. O comparativo considera ${GRUPOS_CMP_TXT}; o grupo Demais fica fora.` : ''}</p>
     <table class="tabela tabela-legenda"><thead><tr><th>Conta</th><th>Grupo</th><th>Premissa</th></tr></thead><tbody>
       ${linhas.map(({ r }) => `<tr><td><b>${esc(r.nome)}</b></td><td><i class="bola" style="background:${COR_GRUPO[r.grupo]}"></i>${esc(NOME_GRUPO[r.grupo])}</td>
         <td>${esc(regraDaRubrica(r.id, fils))}${NOTAS_LEGENDA[r.id] ? `<span class="sub">${esc(NOTAS_LEGENDA[r.id])}</span>` : ''}${r.dica ? `<span class="sub">${esc(r.dica)}</span>` : ''}</td></tr>`).join('')}
@@ -834,7 +846,7 @@ const chaveCmp = c => (c.matricula ? `${c.matricula}|${String(c.nome).trim().toU
 
 function linhasSimulacao(res = E.res) {
   const v = E.sim.visao;
-  const ant = res !== E.res;
+  const ant = res === E.resAnt;
   if (v === 'rubricas') {
     const ag = totalDe(res);
     const linhas = [];
@@ -969,7 +981,7 @@ function contaDoItem(c, rub) {
 
 /** Linhas do orçamento com as do ano anterior ao lado (casadas pela chave da linha e a dos pais). */
 function linhasComparadas() {
-  const atual = linhasSimulacao();
+  const atual = linhasSimulacao(E.resCmp);
   const anterior = linhasSimulacao(E.resAnt);
   const S = '\u0001';
   const chaves = ls => {
@@ -1002,7 +1014,7 @@ function linhasComparadas() {
     b.forEach((x, i) => { if (x.k === prefixo || x.k.startsWith(prefixo + S)) pos = i; });
     b.splice(pos >= 0 ? pos + 1 : b.length, 0, linha);
   }
-  const linhas = [...blocos.values()].flat().map(x => x.l);
+  const linhas = [...blocos.values()].flat().map(x => x.l).filter(l => !(l.grupo && !GRUPOS_CMP.has(l.grupo)));
   return { linhas, total: atual.total, totalAnt: anterior.total, comHc: atual.comHc };
 }
 
@@ -1020,7 +1032,7 @@ function tabelaComparadaHtml() {
   const rotulo = l => `${l.grupo || l.det === 'grupo' ? `<i class="bola" style="background:${l.cor}"></i>` : ''}${esc(l.rotulo)}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.avulso ? ' <span class="etiqueta neutra">📌 lançamento</span>' : ''}${l.soAnt ? ` <span class="etiqueta neutra">só em ${ant}</span>` : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}`;
   const regra = l => { const r = (l.filho || l.det === 'rubrica') && RUBRICAS.find(x => x.nome === l.rotulo); return r ? ` title="${esc(regraDaRubrica(r.id))}"` : ` title="${esc(l.rotulo)}"`; };
   return `<table class="tabela tabela-sim-comp">
-    <thead><tr><th class="fixa">${{ rubricas: 'Rubrica', filiais: 'Filial', cc: 'Centro de custo', colaboradores: 'Colaborador' }[E.sim.visao]}<span class="sub">${so ? `Δ ${ant} → ${esc(ano)} por mês` : `${esc(ano)} <span class="sub-ant" style="display:inline">· ${ant} abaixo</span>`}</span></th>
+    <thead><tr><th class="fixa">${{ rubricas: 'Rubrica', filiais: 'Filial', cc: 'Centro de custo', colaboradores: 'Colaborador' }[E.sim.visao]}<span class="sub">${so ? `Δ ${ant} → ${esc(ano)} por mês` : `${esc(ano)} <span class="sub-ant" style="display:inline">· ${ant} abaixo</span>`} · ${GRUPOS_CMP_TXT}</span></th>
       ${MESES.map(m => `<th class="n">${m}</th>`).join('')}<th class="n">Total ${ant}</th><th class="n">Total ${esc(ano)}</th><th class="n">Δ R$</th><th class="n">Δ %</th></tr></thead>
     <tbody>${linhas.map(l => {
       const cls = l.det ? `det-${l.det}` : l.grupo ? `grupo${E.sim.fechados.has(l.grupo) ? ' fechado' : ''}` : l.filho ? 'filho' : l.colab != null || l.ag != null ? `colab${l.aberto ? ' aberto' : ''}${l.vaga ? ' vaga' : ''}` : '';
@@ -1257,6 +1269,7 @@ function exportarExcel() {
   if (E.resAnt) {
     const ano = E.dados.config.ano, ant = anoAnt();
     const ag0 = totalDe(E.resAnt);
+    const ag = totalDe(E.resCmp);
     const cmp = [['Grupo', 'Conta', ...MESES.map(m => `${m}/${ant}`), `Total ${ant}`, ...MESES.map(m => `${m}/${ano}`), `Total ${ano}`, 'Δ R$', 'Δ %', 'Premissa']];
     RUBRICAS.forEach((r, i) => {
       const m0 = [...ag0.porRubrica.slice(i * 12, i * 12 + 12)].map(r2), m1 = [...ag.porRubrica.slice(i * 12, i * 12 + 12)].map(r2);
@@ -1265,7 +1278,7 @@ function exportarExcel() {
     });
     cmp.push(['', 'TOTAL', ...[...ag0.meses].map(r2), r2(ag0.total), ...[...ag.meses].map(r2), r2(ag.total), r2(ag.total - ag0.total), ag0.total ? r2(((ag.total - ag0.total) / ag0.total) * 100) : '', '']);
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cmp), `Comparativo ${ant}x${ano}`.slice(0, 31));
-    const f0 = Motor.agregar(E.resAnt, c => `${c.regional}${sep}${c.filial}`, noFiltro), f1 = Motor.agregar(E.res, c => `${c.regional}${sep}${c.filial}`, noFiltro);
+    const f0 = Motor.agregar(E.resAnt, c => `${c.regional}${sep}${c.filial}`, noFiltro), f1 = Motor.agregar(E.resCmp, c => `${c.regional}${sep}${c.filial}`, noFiltro);
     const pf = [['Regional', 'Filial', 'Grupo', 'Conta', `Total ${ant}`, `Total ${ano}`, 'Δ R$', 'Δ %']];
     for (const k of new Set([...f0.keys(), ...f1.keys()])) {
       const [regional, filial] = k.split(sep);

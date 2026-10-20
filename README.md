@@ -166,7 +166,8 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   função, cargo, CC e o salário pago em JAN…DEZ). A importação substitui o histórico; a regional é completada pela filial.
 - O ano anterior é calculado com o salário de cada mês + as **mesmas premissas** do orçamento, **sem dissídio** e **sem
   reajuste de benefícios**. Quem ainda está na base (mesma matrícula) herda os valores próprios da planilha.
-  Outros lançamentos só entram no ano do orçamento.
+  Outros lançamentos só entram no ano do orçamento. O comparativo vai até os encargos: **remuneração, provisões,
+  encargos e benefícios**; o grupo Demais (treinamento, viagens, serviços…) fica fora.
 - **Painel**: botão “Só 2027 | 2026 × 2027” (a visão atual continua sendo a padrão). No comparativo: KPIs, custo mês a
   mês nos dois anos com Δ R$ e Δ %, ponte de variação por conta, variação por grupo, ranking de aumento por conta
   (clique abre as filiais) e tabela por regional/filial/CC.
