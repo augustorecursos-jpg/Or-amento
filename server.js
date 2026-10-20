@@ -252,7 +252,36 @@ app.get('/api/dados', exigirLogin, (req, res) => {
   const lancamentos = todosLanc.filter(l => l.regional === '*' || visivel(l.regional));
   // (o valor único da empresa, sem regional, só entra na visão do administrador)
   const linhasLanc = expandirLancamentos(todosLanc).filter(l => visivel(l.regional) || (u.admin && l.regional === '*'));
-  res.json({ config, colaboradores, filiais, premissas, niveis, lancamentos, linhasLanc });
+  const anterior = db.prepare(`SELECT * FROM ano_anterior ${filtro} ORDER BY regional, filial, nome`).all(...params)
+    .map(a => ({ ...a, salarios: (() => { try { return JSON.parse(a.salarios); } catch { return []; } })() }));
+  res.json({ config, colaboradores, filiais, premissas, niveis, lancamentos, linhasLanc, anterior });
+});
+
+// ----- ano anterior (histórico de salários por mês, para o comparativo) -----
+
+app.post('/api/ano-anterior/importar', exigirAdmin, (req, res) => {
+  const linhas = (Array.isArray(req.body?.linhas) ? req.body.linhas : []).map(b => ({
+    matricula: texto(b.matricula, 40), nome: texto(b.nome, 160), regional: texto(b.regional, 80).toUpperCase(), filial: texto(b.filial, 120).toUpperCase(),
+    funcao: texto(b.funcao, 160), cargo: texto(b.cargo, 120), cc_cod: texto(b.cc_cod, 40), cc_nome: texto(b.cc_nome, 160),
+    salarios: Array.from({ length: 12 }, (_, i) => numero(Array.isArray(b.salarios) ? b.salarios[i] : 0)),
+  })).filter(l => l.nome && l.regional && l.filial && l.salarios.some(v => v > 0));
+  if (!linhas.length) return res.status(400).json({ erro: 'Nenhuma linha válida (nome, regional, filial e ao menos um mês com salário).' });
+  const campos = ['matricula', 'nome', 'regional', 'filial', 'funcao', 'cargo', 'cc_cod', 'cc_nome', 'salarios'];
+  const ins = db.prepare(`INSERT INTO ano_anterior (${campos.join(',')}) VALUES (${campos.map(() => '?').join(',')})`);
+  db.exec('BEGIN');
+  try {
+    db.exec('DELETE FROM ano_anterior');
+    linhas.forEach(l => ins.run(...campos.map(k => (k === 'salarios' ? JSON.stringify(l.salarios) : l[k]))));
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  registrar('Administrador', 'Importou o histórico do ano anterior', `${linhas.length} colaborador(es)`);
+  res.json({ ok: true, importados: linhas.length });
+});
+
+app.delete('/api/ano-anterior', exigirAdmin, (req, res) => {
+  db.exec('DELETE FROM ano_anterior');
+  registrar('Administrador', 'Apagou o histórico do ano anterior');
+  res.json({ ok: true });
 });
 
 // ----- outros lançamentos (custos fora dos colaboradores) -----

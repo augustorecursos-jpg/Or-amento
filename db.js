@@ -115,6 +115,20 @@ CREATE TABLE IF NOT EXISTS lancamentos (
   atualizado_em TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Ano anterior (ex.: 2026): salário pago em cada mês por colaborador, para o comparativo com o orçamento.
+CREATE TABLE IF NOT EXISTS ano_anterior (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  matricula TEXT NOT NULL DEFAULT '',
+  nome      TEXT NOT NULL,
+  regional  TEXT NOT NULL,
+  filial    TEXT NOT NULL,
+  funcao    TEXT NOT NULL DEFAULT '',
+  cargo     TEXT NOT NULL DEFAULT '',
+  cc_cod    TEXT NOT NULL DEFAULT '',
+  cc_nome   TEXT NOT NULL DEFAULT '',
+  salarios  TEXT NOT NULL DEFAULT '[]'
+);
+
 CREATE TABLE IF NOT EXISTS historico (
   id      INTEGER PRIMARY KEY AUTOINCREMENT,
   quando  TEXT NOT NULL DEFAULT (datetime('now')),

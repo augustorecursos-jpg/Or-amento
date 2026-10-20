@@ -214,5 +214,96 @@ const Graficos = (() => {
     requestAnimationFrame(passo);
   }
 
-  return { colunasEmpilhadas, barras, composicao, rosca, areaAno, ponte, minilinha, contar, curto, brl };
+  /**
+   * Colunas agrupadas por mês (ex.: 2026 × 2027). series: [{ nome, cor, valores[12] }].
+   */
+  function colunasAgrupadas(el, { series, rotulos, destaque, formato = brl.format, curtoFmt = curto, titulo = 'Comparativo por mês' }) {
+    const L = 760, A = 280, me = 54, md = 8, mt = 22, mb = 26;
+    const max = Math.max(...series.flatMap(s => s.valores), 0);
+    const { topo, passo } = escala(max);
+    const larg = (L - me - md) / rotulos.length;
+    const bw = Math.min(20, (larg * 0.8) / series.length - 2);
+    const y = v => mt + (A - mt - mb) * (1 - v / topo);
+    let svg = `<svg class="grafico-svg" viewBox="0 0 ${L} ${A}" role="img" aria-label="${esc(titulo)}">`;
+    for (let v = 0; v <= topo + 1e-9; v += passo) svg += `<line class="grade" x1="${me}" x2="${L - md}" y1="${y(v)}" y2="${y(v)}"/><text x="${me - 8}" y="${y(v) + 4}" text-anchor="end">${curtoFmt(v)}</text>`;
+    rotulos.forEach((r, m) => {
+      const cx = me + larg * m + larg / 2;
+      const x0 = cx - (series.length * (bw + 2)) / 2;
+      series.forEach((s, k) => {
+        const v = s.valores[m];
+        if (v > 0) {
+          const x = x0 + k * (bw + 2), y1 = y(v), h = y(0) - y1, rr = Math.min(4, h);
+          svg += `<path d="M${x},${y(0)} V${y1 + rr} Q${x},${y1} ${x + rr},${y1} H${x + bw - rr} Q${x + bw},${y1} ${x + bw},${y1 + rr} V${y(0)} Z" fill="${s.cor}"/>`;
+        }
+      });
+      svg += `<text x="${cx}" y="${A - 8}" text-anchor="middle"${destaque && destaque.includes(m) ? ' style="fill:#ec6b24;font-weight:700"' : ''}>${r}</text>`;
+      svg += `<rect class="alvo" data-dica="${m}" x="${me + larg * m}" y="${mt}" width="${larg}" height="${A - mt - mb}"/>`;
+    });
+    svg += `<line class="eixo" x1="${me}" x2="${L - md}" y1="${y(0)}" y2="${y(0)}"/></svg>`;
+    el.innerHTML = `<div class="legenda">${series.map(s => `<span><i style="background:${s.cor}"></i>${esc(s.nome)}</span>`).join('')}</div>${svg}`;
+    ligarDicas(el, m => {
+      m = Number(m);
+      const [a, b] = series;
+      const d = b && a ? b.valores[m] - a.valores[m] : 0;
+      return `<b>${rotulos[m]}</b>` + series.map(s => `<div class="linha"><span><i style="background:${s.cor}"></i>${esc(s.nome)}</span><span>${formato(s.valores[m])}</span></div>`).join('') +
+        (b && a ? `<div class="linha" style="border-top:1px solid rgba(255,255,255,.2);margin-top:.3rem;padding-top:.3rem"><b>Variação</b><b>${d >= 0 ? '+' : ''}${formato(d)}${a.valores[m] ? ` (${d >= 0 ? '+' : ''}${((d / a.valores[m]) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%)` : ''}</b></div>` : '');
+    });
+  }
+
+  /** Linhas mês a mês de várias séries (ex.: HC 2026 × 2027), com o último valor de cada linha escrito no fim. */
+  function linhas(el, { series, rotulos, formato = v => v.toLocaleString('pt-BR'), titulo = 'Evolução mês a mês' }) {
+    const L = 760, A = 240, me = 54, md = 56, mt = 16, mb = 26;
+    const todos = series.flatMap(s => s.valores);
+    let min = Math.min(...todos), max = Math.max(...todos);
+    const folga = Math.max(1, (max - min) * 0.15);
+    min = Math.max(0, min - folga); max += folga;
+    const y = v => mt + (A - mt - mb) * (1 - (v - min) / ((max - min) || 1));
+    const x = m => me + ((L - me - md) / (rotulos.length - 1)) * m;
+    let svg = `<svg class="grafico-svg" viewBox="0 0 ${L} ${A}" role="img" aria-label="${esc(titulo)}">`;
+    for (let k = 0; k <= 4; k++) { const v = min + ((max - min) * k) / 4; svg += `<line class="grade" x1="${me}" x2="${L - md}" y1="${y(v)}" y2="${y(v)}"/><text x="${me - 8}" y="${y(v) + 4}" text-anchor="end">${formato(Math.round(v))}</text>`; }
+    series.forEach(s => {
+      svg += `<polyline points="${s.valores.map((v, m) => `${x(m)},${y(v)}`).join(' ')}" fill="none" stroke="${s.cor}" stroke-width="2" stroke-linejoin="round"/>`;
+      s.valores.forEach((v, m) => { svg += `<circle cx="${x(m)}" cy="${y(v)}" r="4" fill="${s.cor}" stroke="#fff" stroke-width="2"/>`; });
+      const u = s.valores.length - 1;
+      svg += `<text x="${x(u) + 9}" y="${y(s.valores[u]) + 4}" style="font-weight:800;fill:${s.cor}">${formato(s.valores[u])}</text>`;
+    });
+    rotulos.forEach((r, m) => {
+      svg += `<text x="${x(m)}" y="${A - 8}" text-anchor="middle">${r}</text>`;
+      svg += `<rect class="alvo" data-dica="${m}" x="${x(m) - (L - me - md) / (rotulos.length - 1) / 2}" y="${mt}" width="${(L - me - md) / (rotulos.length - 1)}" height="${A - mt - mb}"/>`;
+    });
+    svg += '</svg>';
+    el.innerHTML = `<div class="legenda">${series.map(s => `<span><i style="background:${s.cor}"></i>${esc(s.nome)}</span>`).join('')}</div>${svg}`;
+    ligarDicas(el, m => `<b>${rotulos[m]}</b>` + series.map(s => `<div class="linha"><span><i style="background:${s.cor}"></i>${esc(s.nome)}</span><span>${formato(s.valores[m])}</span></div>`).join(''));
+  }
+
+  /** Ponte de variação: total inicial → +/− de cada item → total final. passos: [{ nome, valor }] */
+  function ponteVariacao(el, { inicio, fim, passos, nomeInicio, nomeFim }) {
+    const L = 760, A = 280, me = 10, md = 10, mt = 30, mb = 48;
+    const cols = [{ nome: nomeInicio, valor: inicio, total: true }, ...passos, { nome: nomeFim, valor: fim, total: true }];
+    let acum = inicio, lo = Math.min(inicio, fim), hi = Math.max(inicio, fim);
+    passos.forEach(p => { acum += p.valor; lo = Math.min(lo, acum); hi = Math.max(hi, acum); });
+    const piso = Math.max(0, lo - (hi - lo) * 1.2);
+    const larg = (L - me - md) / cols.length;
+    const bw = Math.min(54, larg * 0.66);
+    const y = v => mt + (A - mt - mb) * (1 - (v - piso) / ((hi - piso) || 1));
+    let svg = `<svg class="grafico-svg" viewBox="0 0 ${L} ${A}" role="img" aria-label="Variação de ${esc(nomeInicio)} para ${esc(nomeFim)} por conta">`;
+    acum = inicio;
+    cols.forEach((c, k) => {
+      const cx = me + larg * k + larg / 2;
+      let y0, y1, cor;
+      if (c.total) { y0 = y(piso); y1 = y(c.valor); cor = '#164d74'; }
+      else { const a = acum, b = acum + c.valor; y1 = y(Math.max(a, b)); y0 = y(Math.min(a, b)); cor = c.valor >= 0 ? '#ec6b24' : '#2a9d8f'; acum = b; }
+      svg += `<rect x="${cx - bw / 2}" y="${y1}" width="${bw}" height="${Math.max(2, y0 - y1)}" rx="3" fill="${cor}"/>`;
+      if (k < cols.length - 1) { const yl = c.total ? y1 : y(acum); svg += `<line x1="${cx + bw / 2}" x2="${cx + larg - bw / 2}" y1="${yl}" y2="${yl}" class="ponte-liga"/>`; }
+      svg += `<text x="${cx}" y="${y1 - 7}" text-anchor="middle" class="rot-total">${c.total ? curto(c.valor) : `${c.valor >= 0 ? '+' : ''}${curto(c.valor)}`}</text>`;
+      const nome = c.nome.length > 13 ? `${c.nome.slice(0, 12)}…` : c.nome;
+      svg += `<text x="${cx}" y="${A - mb + 18}" text-anchor="middle" class="ponte-nome" style="font-size:11px">${esc(nome)}</text>`;
+      svg += `<rect class="alvo" data-dica="${k}" x="${me + larg * k}" y="${mt}" width="${larg}" height="${A - mt - mb}"/>`;
+    });
+    svg += '</svg>';
+    el.innerHTML = `<div class="legenda"><span><i style="background:#164d74"></i>Total do ano</span><span><i style="background:#ec6b24"></i>Aumento</span><span><i style="background:#2a9d8f"></i>Redução</span></div>${svg}`;
+    ligarDicas(el, k => `<b>${esc(cols[k].nome)}</b><br>${cols[k].total ? '' : cols[k].valor >= 0 ? '+' : ''}${brl.format(cols[k].valor)}${cols[k].total ? ' no ano' : ''}`);
+  }
+
+  return { colunasEmpilhadas, colunasAgrupadas, linhas, ponteVariacao, barras, composicao, rosca, areaAno, ponte, minilinha, contar, curto, brl };
 })();

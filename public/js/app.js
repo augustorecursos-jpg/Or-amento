@@ -24,6 +24,7 @@ const E = {
   base: { busca: '', soVagas: false, soProprias: false, fila: [] },
   conf: { filial: '', modo: 'mes', sel: new Set() },
   painelVisao: 'custo', // 'custo' ou 'hc' (headcount)
+  comparar: false, // comparativo com o ano anterior (painel e simulação)
   hc: { dim: 'filial', busca: '', aberto: '', sub: 'funcao' },
   solic: [],
   solicFiltro: 'pendentes',
@@ -62,6 +63,35 @@ function recalcular() {
   const semDiss = {};
   for (const [f, cfg] of Object.entries(filiaisComRascunho())) semDiss[f] = { ...cfg, dissidio_pct: 0 };
   E.resSemDissidio = Motor.calcular({ colaboradores, filiais: semDiss, premissas, niveis });
+  // Ano anterior: salários pagos de cada mês + as regras atuais, sem o dissídio e sem o reajuste de benefícios do orçamento
+  const ant = anteriorComoColaboradores();
+  if (ant.length) {
+    const semReaj = {};
+    for (const [f, cfg] of Object.entries(E.dados.filiais)) semReaj[f] = { ...cfg, dissidio_pct: 0, reaj_benef_pct: 0 };
+    E.resAnt = Motor.calcular({ colaboradores: ant, filiais: semReaj, premissas, niveis });
+  } else E.resAnt = null;
+  if (!E.resAnt) E.comparar = false;
+  _regras = new Map();
+}
+
+const anoAnt = () => Number(E.dados.config.ano) - 1;
+/** Histórico do ano anterior como colaboradores do cálculo. Quem ainda está na base herda dela as condições próprias
+ * (benefícios da planilha, sucedidos), o sexo e o gestor — casando pela matrícula e nome. */
+function anteriorComoColaboradores() {
+  const atuais = new Map(E.dados.colaboradores.filter(c => c.matricula).map(c => [`${c.matricula}|${String(c.nome).trim().toUpperCase()}`, c]));
+  const porMat = new Map(E.dados.colaboradores.filter(c => c.matricula).map(c => [String(c.matricula), c]));
+  return (E.dados.anterior || []).map((a, k) => {
+    const atual = atuais.get(`${a.matricula}|${String(a.nome).trim().toUpperCase()}`) || (a.matricula ? porMat.get(String(a.matricula)) : null);
+    const meses = a.salarios.map(Number);
+    const ini = meses.findIndex(v => v > 0) + 1;
+    const fim = 12 - [...meses].reverse().findIndex(v => v > 0);
+    return {
+      id: -1000000 - k, matricula: a.matricula, nome: a.nome, regional: a.regional, filial: a.filial, situacao: 'Histórico',
+      funcao: a.funcao || atual?.funcao || '', cargo: a.cargo || atual?.cargo || '', cc_cod: a.cc_cod, cc_nome: a.cc_nome || atual?.cc_nome || '',
+      salario: meses[fim - 1] || 0, salarios: meses, mes_inicio: ini || 1, mes_fim: fim || 12, vaga: false,
+      excecoes: atual?.excecoes || {}, sexo: atual?.sexo || '', gestor: atual?.gestor || '',
+    };
+  });
 }
 
 async function carregar() {
@@ -237,6 +267,7 @@ function renderPainel() {
       <div><small>ORÇAMENTO DE PESSOAL · ${esc(ano)}</small><h1>${esc(escopo)}</h1></div>
       <div class="painel-acoes">
         <div class="segmentos" id="painel-visao"><button data-v="custo" class="${E.painelVisao === 'custo' ? 'ativo' : ''}">💰 Custo</button><button data-v="hc" class="${E.painelVisao === 'hc' ? 'ativo' : ''}">👥 Headcount</button></div>
+        ${E.resAnt ? `<div class="segmentos" id="painel-comp" title="Compare o orçamento com o realizado de ${anoAnt()}"><button data-c="0" class="${E.comparar ? '' : 'ativo'}">Só ${esc(ano)}</button><button data-c="1" class="${E.comparar ? 'ativo' : ''}">${anoAnt()} × ${esc(ano)}</button></div>` : ''}
         <button class="btn btn-marinho" id="btn-apresentar">▶ Modo apresentação</button>
       </div>
     </div>`;
@@ -244,11 +275,19 @@ function renderPainel() {
     ligarFaixa(el);
     $('#btn-apresentar', el).addEventListener('click', alternarApresentacao);
     $$('#painel-visao button', el).forEach(b => b.addEventListener('click', () => { E.painelVisao = b.dataset.v; renderPainel(); }));
+    $$('#painel-comp button', el).forEach(b => b.addEventListener('click', () => { E.comparar = b.dataset.c === '1'; renderPainel(); }));
+    ligarLegenda(el);
   };
   if (E.painelVisao === 'hc') {
     el.innerHTML = topo + '<div id="painel-hc"></div>';
     ligarTopo();
     desenharHeadcount($('#painel-hc', el), col);
+    return;
+  }
+  if (E.comparar && E.resAnt) {
+    el.innerHTML = `${topo}<div id="painel-comparativo"></div>${legendaPremissasHtml()}`;
+    ligarTopo();
+    desenharComparativo($('#painel-comparativo', el));
     return;
   }
 
@@ -283,7 +322,8 @@ function renderPainel() {
       <h2 class="titulo-bloco">${esc(tituloCards)}</h2>
       <div class="cards-escopo" id="g-cards"></div>
     </section>
-    <section class="cartao" style="margin-top:1.2rem" id="g-conf"></section>`;
+    <section class="cartao" style="margin-top:1.2rem" id="g-conf"></section>
+    ${legendaPremissasHtml()}`;
   ligarTopo();
   Graficos.contar($('#hero-total', el), ag.total, v => brl0.format(v));
 
@@ -339,6 +379,205 @@ function renderPainel() {
     }).join('')}</div>`;
 }
 
+// ----- Comparativo com o ano anterior (realizado × orçado) -----
+
+const COR_ANT = '#f08a3c';
+const COR_ATUAL = '#2f6fa3';
+const somaRub = (ag, k) => { let s = 0; for (let m = 0; m < 12; m++) s += ag.porRubrica[k * 12 + m]; return s; };
+const sinal = v => (v > 0 ? '+' : v < 0 ? '−' : '');
+const deltaFmt = v => `${sinal(v)}${brl0.format(Math.abs(v))}`;
+const deltaPct = (d, base) => (base ? `${sinal(d)}${(Math.abs(d / base) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : '–');
+const clsDelta = v => (v > 0.5 ? 'delta-sobe' : v < -0.5 ? 'delta-desce' : '');
+
+function desenharComparativo(box) {
+  const ano = E.dados.config.ano;
+  const ant = anoAnt();
+  const a1 = totalDe(E.res);
+  const a0 = totalDe(E.resAnt);
+  const d = a1.total - a0.total;
+  const hcSoma = ag => ag.hc.reduce((x, y) => x + y, 0);
+  const hc1 = hcSoma(a1), hc0 = hcSoma(a0);
+  const medio1 = hc1 ? a1.total / hc1 : 0, medio0 = hc0 ? a0.total / hc0 : 0;
+  // Variação de cada conta
+  const contas = RUBRICAS.map((r, k) => ({ r, k, v0: somaRub(a0, k), v1: somaRub(a1, k) }))
+    .map(x => ({ ...x, d: x.v1 - x.v0 })).filter(x => Math.abs(x.v0) + Math.abs(x.v1) >= 0.5);
+  const porDelta = [...contas].sort((x, y) => y.d - x.d);
+  const maior = porDelta[0];
+  const aumentoBruto = contas.filter(x => x.d > 0).reduce((s, x) => s + x.d, 0);
+  // Outros lançamentos só existem no orçamento
+  const avulso = E.res.colaboradores.reduce((s, c, i) => {
+    if (!c.avulso || !noFiltro(c)) return s;
+    for (let r = 0; r < RN; r++) for (let m = 0; m < 12; m++) s += E.res.valor(i, r, m);
+    return s;
+  }, 0);
+  const kpi = (ic, cor, rotulo, valor, nota) => `<div class="kpi2"><span class="kpi2-ic" style="--c:${cor}">${ic}</span><div><span>${rotulo}</span><strong>${valor}</strong><small>${nota}</small></div></div>`;
+  const nivel = E.filtro.filial ? 'cc' : E.filtro.regional ? 'filial' : 'regional';
+  const chaveNivel = { regional: c => c.regional, filial: c => c.filial, cc: c => rotuloCc(c) }[nivel];
+  const nomeNivel = { regional: 'Regional', filial: 'Filial', cc: 'Centro de custo' }[nivel];
+
+  box.innerHTML = `
+    <section class="hero2 hero-comp">
+      <div class="pontilhado"></div>
+      <div class="hero2-num">
+        <small>CUSTO ANUAL DE PESSOAL · ${ant} × ${esc(ano)}</small>
+        <div class="comp-totais">
+          <div><span style="--c:${COR_ANT}">${ant} · realizado</span><b>${brl0.format(a0.total)}</b></div>
+          <div class="comp-seta">→</div>
+          <div><span style="--c:#9cc3e4">${esc(ano)} · orçado</span><b>${brl0.format(a1.total)}</b></div>
+        </div>
+        <p>variação de <b>${deltaFmt(d)}</b> (<b>${deltaPct(d, a0.total)}</b>) no ano</p>
+        <div class="hero2-chips">
+          ${maior && maior.d > 0 ? `<span class="chip-claro">🔺 maior aumento: <b>${esc(maior.r.nome)}</b> ${deltaFmt(maior.d)}</span>` : ''}
+          ${avulso ? `<span class="chip-claro" title="Outros lançamentos não têm correspondente no realizado de ${ant}">📌 outros lançamentos <b>${Graficos.curto(avulso)}</b> só em ${esc(ano)}</span>` : ''}
+        </div>
+      </div>
+      <div class="hero2-graf"><small>CUSTO POR MÊS</small><div id="gc-mini"></div></div>
+    </section>
+    <div class="kpis2 kpis-comp" style="margin-bottom:1.2rem">
+      ${kpi('💰', '#164d74', `Custo anual ${esc(ano)}`, brl0.format(a1.total), `${deltaPct(d, a0.total)} sobre ${ant} (${brl0.format(a0.total)})`)}
+      ${kpi('📈', '#ec6b24', 'Aumento no ano', deltaFmt(d), aumentoBruto ? `contas que sobem somam ${deltaFmt(aumentoBruto)}` : 'nenhuma conta sobe')}
+      ${kpi('👥', COR_ATUAL, 'Headcount médio', `${num0.format(hc0 / 12)} → ${num0.format(hc1 / 12)}`, `${sinal(hc1 - hc0)}${num0.format(Math.abs(hc1 - hc0) / 12)} pessoa(s) em média`)}
+      ${kpi('💼', '#8b5fbf', 'Custo médio por colaborador', brl0.format(medio1), `por mês · ${ant}: ${brl0.format(medio0)} (${deltaPct(medio1 - medio0, medio0)})`)}
+      ${kpi('🔺', '#c2410c', 'Maior aumento', maior && maior.d > 0 ? esc(maior.r.nome) : '–', maior && maior.d > 0 ? `${deltaFmt(maior.d)} · ${pctFmt(d > 0 ? maior.d / d : 0)} da variação` : 'nenhuma conta sobe')}
+    </div>
+    <section class="cartao"><h3>Custo mês a mês <small>· ${ant} realizado × ${esc(ano)} orçado</small></h3><div id="gc-meses"></div>
+      <div class="tabela-wrap" style="margin-top:.6rem"><table class="tabela tabela-comp-mes"><thead><tr><th></th>${MESES.map(m => `<th class="n">${m}</th>`).join('')}<th class="n">Ano</th></tr></thead><tbody>
+        <tr><td><i class="bola" style="background:${COR_ANT}"></i>${ant}</td>${[...a0.meses].map(v => `<td class="n">${Graficos.curto(v)}</td>`).join('')}<td class="n"><b>${Graficos.curto(a0.total)}</b></td></tr>
+        <tr><td><i class="bola" style="background:${COR_ATUAL}"></i>${esc(ano)}</td>${[...a1.meses].map(v => `<td class="n">${Graficos.curto(v)}</td>`).join('')}<td class="n"><b>${Graficos.curto(a1.total)}</b></td></tr>
+        <tr class="linha-delta"><td>Δ R$</td>${MESES.map((_, m) => { const x = a1.meses[m] - a0.meses[m]; return `<td class="n ${clsDelta(x)}">${sinal(x)}${Graficos.curto(Math.abs(x))}</td>`; }).join('')}<td class="n ${clsDelta(d)}"><b>${sinal(d)}${Graficos.curto(Math.abs(d))}</b></td></tr>
+        <tr class="linha-delta"><td>Δ %</td>${MESES.map((_, m) => { const x = a1.meses[m] - a0.meses[m]; return `<td class="n ${clsDelta(x)}">${deltaPct(x, a0.meses[m])}</td>`; }).join('')}<td class="n ${clsDelta(d)}"><b>${deltaPct(d, a0.total)}</b></td></tr>
+      </tbody></table></div></section>
+    <div class="grade-2" style="margin-top:1.2rem">
+      <section class="cartao"><h3>De ${ant} para ${esc(ano)} <small>· o que mais explica a variação, por conta</small></h3><div id="gc-ponte"></div></section>
+      <section class="cartao"><h3>Variação por grupo</h3><div id="gc-grupos"></div></section>
+    </div>
+    <section class="cartao" style="margin-top:1.2rem">
+      <h3>Ranking de aumento por conta <small>· clique numa conta para ver as filiais</small></h3>
+      <div class="tabela-wrap"><table class="tabela tabela-ranking" id="gc-ranking"></table></div>
+    </section>
+    <section class="cartao" style="margin-top:1.2rem"><h3>${nomeNivel} <small>· ${ant} × ${esc(ano)}</small></h3>
+      <div class="tabela-wrap"><table class="tabela tabela-ranking" id="gc-escopo"></table></div></section>`;
+
+  Graficos.linhas($('#gc-mini', box), { rotulos: MESES, series: [{ nome: String(ant), cor: COR_ANT, valores: [...a0.meses] }, { nome: String(ano), cor: '#9cc3e4', valores: [...a1.meses] }], formato: v => Graficos.curto(v), titulo: 'Custo por mês' });
+  Graficos.colunasAgrupadas($('#gc-meses', box), { rotulos: MESES, series: [{ nome: `${ant} realizado`, cor: COR_ANT, valores: [...a0.meses] }, { nome: `${ano} orçado`, cor: COR_ATUAL, valores: [...a1.meses] }], titulo: `Custo por mês ${ant} × ${ano}` });
+  // Ponte: as 7 contas que mais mexem no total; o resto junto
+  const porImpacto = [...contas].sort((x, y) => Math.abs(y.d) - Math.abs(x.d));
+  const top = porImpacto.slice(0, 7).sort((x, y) => y.d - x.d);
+  const resto = porImpacto.slice(7).reduce((s, x) => s + x.d, 0);
+  Graficos.ponteVariacao($('#gc-ponte', box), {
+    inicio: a0.total, fim: a1.total, nomeInicio: String(ant), nomeFim: String(ano),
+    passos: [...top.map(x => ({ nome: x.r.nome, valor: x.d })), ...(Math.abs(resto) >= 0.5 ? [{ nome: 'Demais contas', valor: resto }] : [])],
+  });
+  const grupos = GRUPOS.map(g => {
+    const cs = contas.filter(x => x.r.grupo === g.id);
+    return { g, v0: cs.reduce((s, x) => s + x.v0, 0), v1: cs.reduce((s, x) => s + x.v1, 0) };
+  }).filter(x => x.v0 || x.v1);
+  const maxG = Math.max(...grupos.map(x => Math.abs(x.v1 - x.v0)), 1);
+  $('#gc-grupos', box).innerHTML = `<div class="comp-grupos">${grupos.map(x => {
+    const dg = x.v1 - x.v0;
+    return `<div class="comp-grupo"><span><i class="bola" style="background:${x.g.cor}"></i>${esc(x.g.nome)}</span>
+      <div class="comp-barra"><i class="${dg >= 0 ? 'sobe' : 'desce'}" style="width:${(Math.abs(dg) / maxG) * 100}%"></i></div>
+      <b class="${clsDelta(dg)}">${deltaFmt(dg)}</b><small>${brl0.format(x.v0)} → ${brl0.format(x.v1)} · ${deltaPct(dg, x.v0)}</small></div>`;
+  }).join('')}</div>`;
+
+  // Ranking por conta, com abertura por filial
+  const fil0 = Motor.agregar(E.resAnt, c => c.filial, noFiltro);
+  const fil1 = Motor.agregar(E.res, c => c.filial, noFiltro);
+  let aberta = null;
+  const maxD = Math.max(...contas.map(x => Math.abs(x.d)), 1);
+  const desenharRanking = () => {
+    $('#gc-ranking', box).innerHTML = `<thead><tr><th>#</th><th>Conta</th><th>Grupo</th><th class="n">${ant}</th><th class="n">${esc(ano)}</th><th class="n">Δ R$</th><th class="n">Δ %</th><th style="min-width:140px">Peso na variação</th></tr></thead>
+      <tbody>${porDelta.map((x, i) => {
+        const linha = `<tr class="rk-linha${aberta === x.k ? ' aberto' : ''}" data-k="${x.k}" title="${esc(regraDaRubrica(x.r.id))}"><td>${i + 1}</td><td><span class="hc-seta">${aberta === x.k ? '▾' : '▸'}</span>${esc(x.r.nome)}</td><td><i class="bola" style="background:${COR_GRUPO[x.r.grupo]}"></i>${esc(NOME_GRUPO[x.r.grupo])}</td>
+          <td class="n">${brl0.format(x.v0)}</td><td class="n">${brl0.format(x.v1)}</td><td class="n ${clsDelta(x.d)}"><b>${deltaFmt(x.d)}</b></td><td class="n ${clsDelta(x.d)}">${x.v0 ? deltaPct(x.d, x.v0) : 'novo'}</td>
+          <td><div class="comp-barra"><i class="${x.d >= 0 ? 'sobe' : 'desce'}" style="width:${(Math.abs(x.d) / maxD) * 100}%"></i></div></td></tr>`;
+        if (aberta !== x.k) return linha;
+        const fs = [...new Set([...fil0.keys(), ...fil1.keys()])].map(f => {
+          const v0 = fil0.has(f) ? somaRub(fil0.get(f), x.k) : 0;
+          const v1 = fil1.has(f) ? somaRub(fil1.get(f), x.k) : 0;
+          return { f, v0, v1, d: v1 - v0 };
+        }).filter(y => Math.abs(y.v0) + Math.abs(y.v1) >= 0.5).sort((p, q) => q.d - p.d);
+        return linha + fs.map(y => `<tr class="rk-filial"><td></td><td colspan="2">${esc(y.f)}</td><td class="n">${brl0.format(y.v0)}</td><td class="n">${brl0.format(y.v1)}</td><td class="n ${clsDelta(y.d)}">${deltaFmt(y.d)}</td><td class="n ${clsDelta(y.d)}">${y.v0 ? deltaPct(y.d, y.v0) : 'novo'}</td><td></td></tr>`).join('');
+      }).join('') || '<tr><td colspan="8" class="vazio">Nada para comparar.</td></tr>'}</tbody>
+      <tfoot><tr><td></td><td colspan="2">Total</td><td class="n">${brl0.format(a0.total)}</td><td class="n">${brl0.format(a1.total)}</td><td class="n">${deltaFmt(d)}</td><td class="n">${deltaPct(d, a0.total)}</td><td></td></tr></tfoot>`;
+    $$('#gc-ranking tr.rk-linha', box).forEach(tr => tr.addEventListener('click', () => { const k = Number(tr.dataset.k); aberta = aberta === k ? null : k; desenharRanking(); }));
+  };
+  desenharRanking();
+
+  // Regional / filial / centro de custo
+  const n0 = Motor.agregar(E.resAnt, chaveNivel, noFiltro);
+  const n1 = Motor.agregar(E.res, chaveNivel, noFiltro);
+  const itens = [...new Set([...n0.keys(), ...n1.keys()])].map(k => {
+    const x0 = n0.get(k), x1 = n1.get(k);
+    return { k, v0: x0?.total || 0, v1: x1?.total || 0, h0: x0 ? x0.hc[11] : 0, h1: x1 ? x1.hc[11] : 0 };
+  }).sort((p, q) => (q.v1 - q.v0) - (p.v1 - p.v0));
+  $('#gc-escopo', box).innerHTML = `<thead><tr><th>${nomeNivel}</th><th class="n">HC dez/${String(ant).slice(-2)}</th><th class="n">HC dez/${String(ano).slice(-2)}</th><th class="n">${ant}</th><th class="n">${esc(ano)}</th><th class="n">Δ R$</th><th class="n">Δ %</th></tr></thead>
+    <tbody>${itens.map(x => `<tr><td>${esc(x.k)}</td><td class="n">${num0.format(x.h0)}</td><td class="n">${num0.format(x.h1)}</td><td class="n">${brl0.format(x.v0)}</td><td class="n">${brl0.format(x.v1)}</td><td class="n ${clsDelta(x.v1 - x.v0)}"><b>${deltaFmt(x.v1 - x.v0)}</b></td><td class="n ${clsDelta(x.v1 - x.v0)}">${x.v0 ? deltaPct(x.v1 - x.v0, x.v0) : 'novo'}</td></tr>`).join('')}</tbody>`;
+}
+
+/** Regra efetiva de uma conta nas filiais visíveis: o texto da premissa, ou "varia por filial". */
+let _regras = new Map(); // memória por render (zerada em recalcular)
+function regraDaRubrica(rid, fils = filiaisVisiveis()) {
+  const chave = `${rid}|${E.filtro.cc}|${fils.join(',')}`;
+  if (!_regras.has(chave)) _regras.set(chave, montarRegra(rid, fils));
+  return _regras.get(chave);
+}
+function montarRegra(rid, fils) {
+  const fixas = {
+    salario: `salário da base, com o dissídio da filial a partir do mês da data-base · ${anoAnt()}: salário pago em cada mês (histórico)`,
+  };
+  if (fixas[rid]) return fixas[rid];
+  const rub = RUBRICAS.find(r => r.id === rid);
+  if (!rub) return '';
+  if (rub?.soLancamento) return 'só pelos Outros lançamentos (valor e mês lançados)';
+  const textos = new Map();
+  for (const f of fils) {
+    const t = descreverComQuem(Motor.premissaDe(E.dados.premissas, f, E.dados.filiais[f]?.regional, rid));
+    if (!textos.has(t)) textos.set(t, []);
+    textos.get(t).push(f);
+  }
+  if (!textos.size) return '';
+  const regra = textos.size === 1 ? [...textos.keys()][0] : `varia por filial: ${[...textos].map(([t, fs]) => `${t} (${fs.length} filial${fs.length > 1 ? 'is' : ''})`).join(' · ')}`;
+  // Valores próprios de cada colaborador (planilha da base ou lançados à mão) valem sobre a regra
+  const set = new Set(fils);
+  const colabs = E.dados.colaboradores.filter(c => set.has(c.filial) && noFiltro(c));
+  const daBase = colabs.filter(c => c.excecoes?.[rid]?.origem === 'base').length;
+  const manuais = colabs.filter(c => c.excecoes?.[rid] && c.excecoes[rid].origem !== 'base').length;
+  const proprios = [daBase ? `${num0.format(daBase)} colaborador(es) com o valor da planilha da base` : '', manuais ? `${num0.format(manuais)} com valor próprio lançado` : ''].filter(Boolean).join(' · ');
+  return proprios ? `${regra} · ${proprios} (vale sobre a regra)` : regra;
+}
+
+const BASE_FOLHA = 'salário + todo o grupo Remuneração (adicionais, HE, promoções)';
+const NOTAS_LEGENDA = {
+  ferias: `remuneração ÷ 12 + 1/3 (= ÷ 9) · remuneração = ${BASE_FOLHA}`,
+  decimo: `remuneração ÷ 12 · remuneração = ${BASE_FOLHA}`,
+  fgts: `remuneração = ${BASE_FOLHA}`,
+  inss: `remuneração = ${BASE_FOLHA}`,
+};
+
+/** Legenda com a premissa de cada conta que tem custo no escopo filtrado (recolhível). */
+function legendaPremissasHtml() {
+  const ag = totalDe(E.res);
+  const ag0 = E.resAnt ? totalDe(E.resAnt) : null;
+  const fils = filiaisVisiveis();
+  const linhas = RUBRICAS.map((r, k) => ({ r, k })).filter(({ k }) => somaRub(ag, k) || (ag0 && somaRub(ag0, k)));
+  if (!linhas.length) return '';
+  const reaj = [...new Set(fils.map(f => Number(E.dados.filiais[f]?.reaj_benef_pct) || 0))];
+  const diss = [...new Set(fils.map(f => Number(E.dados.filiais[f]?.dissidio_pct) || 0))];
+  const lista = v => (v.length === 1 ? `${fmtN(v[0])}%` : `de ${fmtN(Math.min(...v))}% a ${fmtN(Math.max(...v))}% conforme a filial`);
+  return `<details class="cartao legenda-premissas" id="legenda-premissas"${E.legendaAberta ? ' open' : ''}>
+    <summary><h3 style="display:inline">📖 Legenda das premissas <small>· como cada conta é calculada${E.comparar && E.resAnt ? ` em ${esc(E.dados.config.ano)} e em ${anoAnt()}` : ''}</small></h3></summary>
+    <p class="subtitulo" style="margin:.4rem 0 .8rem">Dissídio ${lista(diss)} · reajuste de benefícios ${lista(reaj)}.
+      ${E.resAnt ? `<br>${anoAnt()}: salário realmente pago em cada mês (histórico carregado) com as mesmas regras abaixo, <b>sem</b> dissídio e <b>sem</b> o reajuste de benefícios do orçamento. Outros lançamentos só entram em ${esc(E.dados.config.ano)}.` : ''}</p>
+    <table class="tabela tabela-legenda"><thead><tr><th>Conta</th><th>Grupo</th><th>Premissa</th></tr></thead><tbody>
+      ${linhas.map(({ r }) => `<tr><td><b>${esc(r.nome)}</b></td><td><i class="bola" style="background:${COR_GRUPO[r.grupo]}"></i>${esc(NOME_GRUPO[r.grupo])}</td>
+        <td>${esc(regraDaRubrica(r.id, fils))}${NOTAS_LEGENDA[r.id] ? `<span class="sub">${esc(NOTAS_LEGENDA[r.id])}</span>` : ''}${r.dica ? `<span class="sub">${esc(r.dica)}</span>` : ''}</td></tr>`).join('')}
+    </tbody></table></details>`;
+}
+function ligarLegenda(raiz) {
+  $('#legenda-premissas', raiz)?.addEventListener('toggle', e => { E.legendaAberta = e.target.open; });
+}
+
 // ----- Headcount: cadeiras (colaboradores + vagas) por filial, centro de custo, gestor, cargo e função -----
 
 const COR_OCUPADA = '#2f6fa3';
@@ -377,6 +616,12 @@ function desenharHeadcount(el, col) {
   const semGestor = col.filter(c => !c.gestor).length;
   const kpi = (ic, cor, rotulo, valor, nota) => `<div class="kpi2"><span class="kpi2-ic" style="--c:${cor}">${ic}</span><div><span>${rotulo}</span><strong>${valor}</strong><small>${nota}</small></div></div>`;
   const varAno = n.dez - n.jan;
+  // Comparativo: headcount do ano anterior (quem teve salário pago no mês)
+  const comp = Boolean(E.comparar && E.resAnt);
+  const antCol = comp ? E.resAnt.colaboradores.filter(noFiltro) : [];
+  const hcAntMes = lista => MESES.map((_, m) => lista.filter(c => Number(c.salarios?.[m]) > 0).length);
+  const antMes = hcAntMes(antCol);
+  const a2 = String(anoAnt()).slice(-2), a1 = String(E.dados.config.ano).slice(-2);
   el.innerHTML = `
     <div class="kpis2 kpis-hc">
       ${kpi('🪑', '#164d74', 'Cadeiras no orçamento', num0.format(n.cadeiras), 'colaboradores + vagas previstas')}
@@ -385,6 +630,7 @@ function desenharHeadcount(el, col) {
       ${kpi('🚪', '#8b5fbf', 'Desligamentos previstos', num0.format(n.deslig), 'saídas antes de dezembro')}
       ${kpi('📅', '#2a9d8f', 'HC janeiro → dezembro', `${num0.format(n.jan)} → ${num0.format(n.dez)}`, varAno ? `${varAno > 0 ? '+' : ''}${num0.format(varAno)} no ano` : 'estável no ano')}
     </div>
+    ${comp ? `<section class="cartao" style="margin-bottom:1.2rem"><h3>Evolução do headcount <small>· ${anoAnt()} realizado × ${esc(E.dados.config.ano)} orçado (ocupadas + vagas) · dez/${a2} ${num0.format(antMes[11])} → dez/${a1} ${num0.format(n.dez)} (${sinal(n.dez - antMes[11])}${num0.format(Math.abs(n.dez - antMes[11]))})</small></h3><div id="g-hc-comp"></div></section>` : ''}
     <section class="cartao"><h3>Headcount mês a mês <small>· pessoas ativas em cada mês, ocupadas e vagas</small></h3><div id="g-hc-meses"></div></section>
     <section class="cartao" style="margin-top:1.2rem">
       <div class="ferramentas" style="margin-bottom:.8rem">
@@ -398,6 +644,12 @@ function desenharHeadcount(el, col) {
       <div class="tabela-wrap alta" id="hc-tabela"></div>
     </section>`;
 
+  if (comp) {
+    Graficos.linhas($('#g-hc-comp', el), {
+      rotulos: MESES, titulo: 'Headcount por mês nos dois anos', formato: v => num0.format(v),
+      series: [{ nome: `${anoAnt()} realizado`, cor: COR_ANT, valores: antMes }, { nome: `${E.dados.config.ano} orçado`, cor: COR_ATUAL, valores: MESES.map((_, m) => n.ocupadasMes[m] + n.vagasMes[m]) }],
+    });
+  }
   Graficos.colunasEmpilhadas($('#g-hc-meses', el), {
     rotulos: MESES, titulo: 'Headcount por mês',
     series: [{ nome: 'Ocupadas', cor: COR_OCUPADA, valores: n.ocupadasMes }, { nome: 'Vagas', cor: COR_VAGA, valores: n.vagasMes }],
@@ -427,7 +679,25 @@ function desenharHeadcount(el, col) {
     return [...g].map(([k, l]) => resumo(k, l)).sort((x, y) => y.cadeiras - x.cadeiras || x.k.localeCompare(y.k));
   };
   const filtrados = () => { const b = E.hc.busca.trim().toLowerCase(); return col.filter(c => !b || dim.chave(c).toLowerCase().includes(b)); };
-  const linhasHc = () => agrupar(filtrados(), dim.chave);
+  const antDe = k => antCol.filter(c => dim.chave(c) === k);
+  const linhasHc = () => {
+    const ls = agrupar(filtrados(), dim.chave);
+    if (comp) {
+      // chaves que só existem no ano anterior (ex.: função que deixou de existir)
+      const b = E.hc.busca.trim().toLowerCase();
+      const tem = new Set(ls.map(l => l.k));
+      [...new Set(antCol.map(dim.chave))].filter(k => !tem.has(k) && (!b || k.toLowerCase().includes(b))).forEach(k => ls.push(resumo(k, [])));
+      ls.forEach(l => { l.antMes = hcAntMes(antDe(l.k)); });
+    }
+    return ls;
+  };
+  const mini24 = l => {
+    const v = [...l.antMes, ...MESES.map((_, m) => l.ocupadasMes[m] + l.vagasMes[m])];
+    const L = 120, A = 30, max = Math.max(...v, 1), min = Math.min(...v);
+    const pt = (x, i) => `${(L * i) / 23},${A - 4 - ((x - min) / (max - min || 1)) * (A - 8)}`;
+    return `<svg class="minilinha" viewBox="0 0 ${L} ${A}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${v.slice(0, 12).map((x, i) => pt(x, i)).join(' ')}" fill="none" stroke="${COR_ANT}" stroke-width="2" vector-effect="non-scaling-stroke"/><polyline points="${v.slice(11).map((x, i) => pt(x, i + 11)).join(' ')}" fill="none" stroke="${COR_ATUAL}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
+  };
+  const colsComp = l => (comp ? `<td class="n">${num0.format(l.antMes[11])}</td><td class="n ${clsDelta(l.dez - l.antMes[11])}"><b>${l.dez - l.antMes[11] ? `${sinal(l.dez - l.antMes[11])}${num0.format(Math.abs(l.dez - l.antMes[11]))}` : '='}</b></td><td style="min-width:110px" title="${anoAnt()} em laranja, ${esc(E.dados.config.ano)} em azul">${mini24(l)}</td>` : '');
   const colFiliais = E.hc.dim !== 'filial' && E.hc.dim !== 'regional';
   const barraHc = (l, max) => `<div class="hc-barra" title="${l.ocupadas} ocupada(s) · ${l.vagas} vaga(s)"><i style="width:${(l.ocupadas / max) * 100}%;background:${COR_OCUPADA}"></i><i style="width:${(l.vagas / max) * 100}%;background:${COR_VAGA}"></i><b>${num0.format(l.cadeiras)}</b></div>`;
   const zero = v => (v ? num0.format(v) : '–');
@@ -460,19 +730,20 @@ function desenharHeadcount(el, col) {
     const linhas = linhasHc();
     const max = Math.max(...linhas.map(l => l.cadeiras), 1);
     const tot = resumo('Total', filtrados());
-    const nCols = 12 + (colFiliais ? 1 : 0);
+    const nCols = 12 + (colFiliais ? 1 : 0) + (comp ? 3 : 0);
+    if (comp) tot.antMes = hcAntMes(antCol);
     $('#hc-tabela', el).innerHTML = `<table class="tabela tabela-hc"><thead><tr>
         <th>${dim.nome}</th><th style="min-width:170px">Cadeiras</th><th class="n">Ocupadas</th><th class="n">Vagas</th><th class="n">Desligam.</th>
-        <th class="n">HC jan</th><th class="n">HC dez</th>${colFiliais ? '<th class="n">Filiais</th>' : ''}<th class="n">Custo ocupadas</th><th class="n">Custo vagas</th><th class="n">Custo no ano</th><th class="n">Custo médio / mês</th></tr></thead>
+        <th class="n">HC jan</th><th class="n">HC dez${comp ? `/${a1}` : ''}</th>${comp ? `<th class="n">HC dez/${a2}</th><th class="n">Δ HC</th><th>${anoAnt()} → ${esc(E.dados.config.ano)}</th>` : ''}${colFiliais ? '<th class="n">Filiais</th>' : ''}<th class="n">Custo ocupadas</th><th class="n">Custo vagas</th><th class="n">Custo no ano</th><th class="n">Custo médio / mês</th></tr></thead>
       <tbody>${linhas.map(l => `<tr class="hc-linha${E.hc.aberto === l.k ? ' aberto' : ''}" data-hc="${esc(l.k)}" title="Clique para ${E.hc.aberto === l.k ? 'fechar' : 'ver cargos, funções, custos e as cadeiras'}">
         <td title="${esc(l.k)}"><span class="hc-seta">${E.hc.aberto === l.k ? '▾' : '▸'}</span>${esc(l.k)}</td>
         <td>${barraHc(l, max)}</td>
         <td class="n">${num0.format(l.ocupadas)}</td><td class="n${l.vagas ? '' : ' zero'}">${zero(l.vagas)}</td><td class="n${l.deslig ? '' : ' zero'}">${zero(l.deslig)}</td>
-        <td class="n">${num0.format(l.jan)}</td><td class="n">${num0.format(l.dez)}</td>${colFiliais ? `<td class="n">${l.filiais}</td>` : ''}
+        <td class="n">${num0.format(l.jan)}</td><td class="n">${num0.format(l.dez)}</td>${colsComp(l)}${colFiliais ? `<td class="n">${l.filiais}</td>` : ''}
         <td class="n">${brl0.format(l.custoOcup)}</td>${custoVagaCel(l.custoVaga)}<td class="n"><b>${brl0.format(l.custo)}</b></td><td class="n">${brl0.format(l.medio)}</td></tr>
         ${E.hc.aberto === l.k ? `<tr class="hc-det"><td colspan="${nCols}">${detalheHc(l)}</td></tr>` : ''}`).join('') || `<tr><td colspan="${nCols}" class="vazio">Nada para mostrar.</td></tr>`}</tbody>
       <tfoot><tr><td>Total · ${linhas.length} ${dim.nome.toLowerCase()}(s)</td><td><b>${num0.format(tot.cadeiras)}</b></td><td class="n">${num0.format(tot.ocupadas)}</td><td class="n">${num0.format(tot.vagas)}</td><td class="n">${num0.format(tot.deslig)}</td>
-        <td class="n">${num0.format(tot.jan)}</td><td class="n">${num0.format(tot.dez)}</td>${colFiliais ? '<td></td>' : ''}<td class="n">${brl0.format(tot.custoOcup)}</td><td class="n">${brl0.format(tot.custoVaga)}</td><td class="n">${brl0.format(tot.custo)}</td><td class="n">${brl0.format(tot.medio)}</td></tr></tfoot></table>`;
+        <td class="n">${num0.format(tot.jan)}</td><td class="n">${num0.format(tot.dez)}</td>${comp ? `<td class="n">${num0.format(tot.antMes[11])}</td><td class="n ${clsDelta(tot.dez - tot.antMes[11])}">${sinal(tot.dez - tot.antMes[11])}${num0.format(Math.abs(tot.dez - tot.antMes[11]))}</td><td></td>` : ''}${colFiliais ? '<td></td>' : ''}<td class="n">${brl0.format(tot.custoOcup)}</td><td class="n">${brl0.format(tot.custoVaga)}</td><td class="n">${brl0.format(tot.custo)}</td><td class="n">${brl0.format(tot.medio)}</td></tr></tfoot></table>`;
     $$('#hc-tabela tr.hc-linha', el).forEach(tr => tr.addEventListener('click', () => { E.hc.aberto = E.hc.aberto === tr.dataset.hc ? '' : tr.dataset.hc; desenharTabela(); }));
     $$('#hc-sub button', el).forEach(b2 => b2.addEventListener('click', () => { E.hc.sub = b2.dataset.s; desenharTabela(); }));
     return linhas;
@@ -483,9 +754,11 @@ function desenharHeadcount(el, col) {
   $('#hc-excel', el).addEventListener('click', () => {
     if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
     const linhas = linhasHc();
-    const aoa = [[dim.nome, 'Cadeiras', 'Ocupadas', 'Vagas', 'Desligamentos previstos', 'HC jan', 'HC dez', ...MESES.map(m => `HC ${m}`), 'Custo ocupadas', 'Custo vagas', 'Custo no ano', 'Custo médio / mês'],
+    const aoa = [[dim.nome, 'Cadeiras', 'Ocupadas', 'Vagas', 'Desligamentos previstos', 'HC jan', 'HC dez', ...MESES.map(m => `HC ${m}`), 'Custo ocupadas', 'Custo vagas', 'Custo no ano', 'Custo médio / mês',
+      ...(comp ? [...MESES.map(m => `HC ${m}/${a2}`), `Δ HC dez/${a2} → dez/${a1}`] : [])],
       ...linhas.map(l => [l.k, l.cadeiras, l.ocupadas, l.vagas, l.deslig, l.jan, l.dez, ...MESES.map((_, m) => l.ocupadasMes[m] + l.vagasMes[m]),
-        Math.round(l.custoOcup * 100) / 100, Math.round(l.custoVaga * 100) / 100, Math.round(l.custo * 100) / 100, Math.round(l.medio * 100) / 100])];
+        Math.round(l.custoOcup * 100) / 100, Math.round(l.custoVaga * 100) / 100, Math.round(l.custo * 100) / 100, Math.round(l.medio * 100) / 100,
+        ...(comp ? [...l.antMes, l.dez - l.antMes[11]] : [])])];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{ wch: 40 }, ...aoa[0].slice(1).map(() => ({ wch: 11 }))];
     const wb = XLSX.utils.book_new();
@@ -556,10 +829,14 @@ document.addEventListener('fullscreenchange', () => {
 
 // ---------- Simulação ----------
 
-function linhasSimulacao() {
+/** Chave para casar a mesma pessoa nos dois anos (matrícula + nome; sem matrícula, o próprio id). */
+const chaveCmp = c => (c.matricula ? `${c.matricula}|${String(c.nome).trim().toUpperCase()}` : `id|${c.id}`);
+
+function linhasSimulacao(res = E.res) {
   const v = E.sim.visao;
+  const ant = res !== E.res;
   if (v === 'rubricas') {
-    const ag = totalDe(E.res);
+    const ag = totalDe(res);
     const linhas = [];
     for (const g of GRUPOS) {
       const filhos = RUBRICAS.map((r, i) => ({ r, i })).filter(x => x.r.grupo === g.id)
@@ -578,8 +855,11 @@ function linhasSimulacao() {
   }[v];
   const busca = E.sim.busca.toLowerCase();
   const filtro = c => noFiltro(c) && (!busca || `${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome}`.toLowerCase().includes(busca));
-  const mapa = Motor.agregar(E.res, chave, filtro);
-  const porId = new Map(E.res.colaboradores.map(c => [c.id, c]));
+  const mapa = Motor.agregar(res, chave, filtro);
+  const porId = new Map(res.colaboradores.map(c => [c.id, c]));
+  // No ano anterior, a pessoa aberta na tela (id do orçamento) abre também a linha dela do histórico
+  const idAtual = ant ? new Map(E.res.colaboradores.map(c => [chaveCmp(c), c.id])) : null;
+  const estaAberto = id => E.sim.abertos.has(id) || (ant && E.sim.abertos.has(idAtual.get(chaveCmp(porId.get(id)))));
   const linhas = [...mapa].map(([k, a]) => {
     const c = v === 'colaboradores' ? porId.get(k) : null;
     return {
@@ -589,6 +869,7 @@ function linhasSimulacao() {
       meses: [...a.meses],
       vaga: c?.vaga,
       colab: c ? c.id : null,
+      cmp: c ? chaveCmp(c) : `${v}|${k}`,
       proprias: c ? temManuais(c) : false,
       avulso: Boolean(c?.avulso),
       ag: c ? null : k,
@@ -598,7 +879,7 @@ function linhasSimulacao() {
   const total = MESES.map((_, m) => linhas.reduce((s, l) => s + l.meses[m], 0));
   if (v !== 'colaboradores') {
     // Filial / centro de custo: clique abre as contas lançadas, por grupo
-    if (linhas.length === 1) E.sim.abertosAg.add(`${v}|${linhas[0].ag}`);
+    if (linhas.length === 1 && !ant) E.sim.abertosAg.add(`${v}|${linhas[0].ag}`);
     const comContas = [];
     for (const l of linhas) {
       l.aberto = E.sim.abertosAg.has(`${v}|${l.ag}`);
@@ -608,12 +889,12 @@ function linhasSimulacao() {
     return { linhas: comContas, total, comHc: true };
   }
   // Uma pessoa só na busca: já abre o detalhe dela.
-  if (linhas.length === 1) E.sim.abertos.add(linhas[0].colab);
+  if (linhas.length === 1 && !ant) E.sim.abertos.add(linhas[0].colab);
   const comDetalhe = [];
   for (const l of linhas) {
-    l.aberto = E.sim.abertos.has(l.colab);
+    l.aberto = estaAberto(l.colab);
     comDetalhe.push(l);
-    if (l.aberto) comDetalhe.push(...detalheColaborador(l.colab));
+    if (l.aberto) comDetalhe.push(...detalheColaborador(l.colab, res));
   }
   return { linhas: comDetalhe, total, comHc: false };
 }
@@ -633,14 +914,14 @@ function detalheAgregado(porRubrica) {
 }
 
 /** Linhas com o que está orçado para um colaborador: subtotal por grupo e cada rubrica, mês a mês. */
-function detalheColaborador(id) {
-  const i = E.res.colaboradores.findIndex(c => c.id === id);
+function detalheColaborador(id, res = E.res) {
+  const i = res.colaboradores.findIndex(c => c.id === id);
   if (i < 0) return [];
-  const c = E.res.colaboradores[i];
+  const c = res.colaboradores[i];
   const out = [];
   for (const g of GRUPOS) {
     const filhos = RUBRICAS.map((r, k) => ({ r, k })).filter(x => x.r.grupo === g.id).map(({ r, k }) => ({
-      rotulo: r.nome, meses: MESES.map((_, m) => E.res.valor(i, k, m)), propria: c.excecoes?.[r.id] ? (c.excecoes[r.id].origem === 'base' ? 'base' : 'manual') : '', conta: contaDoItem(c, r),
+      rotulo: r.nome, meses: MESES.map((_, m) => res.valor(i, k, m)), propria: c.excecoes?.[r.id] ? (c.excecoes[r.id].origem === 'base' ? 'base' : 'manual') : '', conta: contaDoItem(c, r),
     })).filter(f => f.meses.some(x => x));
     if (!filhos.length) continue;
     out.push({ rotulo: g.nome, cor: g.cor, meses: MESES.map((_, m) => filhos.reduce((s, f) => s + f.meses[m], 0)), det: 'grupo' });
@@ -686,7 +967,72 @@ function contaDoItem(c, rub) {
   return `${base} × ${alvo} = ${brl.format(sal * mult)} no ano · ${quando}`;
 }
 
+/** Linhas do orçamento com as do ano anterior ao lado (casadas pela chave da linha e a dos pais). */
+function linhasComparadas() {
+  const atual = linhasSimulacao();
+  const anterior = linhasSimulacao(E.resAnt);
+  const S = '\u0001';
+  const chaves = ls => {
+    let pai = '', grupo = '';
+    return ls.map(l => {
+      if (l.det === 'grupo') grupo = l.rotulo;
+      else if (!l.det && !l.filho) { pai = l.cmp || `g|${l.rotulo}`; grupo = ''; }
+      const k = l.det === 'rubrica' ? [pai, grupo, l.rotulo].join(S) : l.det || l.filho ? [pai, l.rotulo].join(S) : pai;
+      return { k, pai, l };
+    });
+  };
+  const vazio = () => MESES.map(() => 0);
+  const kb = chaves(anterior.linhas);
+  const antDe = new Map(kb.map(x => [x.k, x.l]));
+  // Blocos: cada linha de topo com as linhas abertas abaixo dela
+  const blocos = new Map();
+  for (const { k, pai, l } of chaves(atual.linhas)) {
+    if (!blocos.has(pai)) blocos.set(pai, []);
+    blocos.get(pai).push({ k, l: { ...l, ant: antDe.get(k)?.meses || vazio() } });
+  }
+  const usados = new Set([...blocos.values()].flat().map(x => x.k));
+  // O que só existe no ano anterior (quem saiu, uma conta que deixou de ter custo) entra com o orçamento zerado
+  for (const { k, pai, l } of kb) {
+    if (usados.has(k)) continue;
+    const linha = { k, l: { ...l, meses: vazio(), ant: l.meses, soAnt: !l.det && !l.filho, aberto: l.aberto } };
+    if (!blocos.has(pai)) { blocos.set(pai, [linha]); continue; }
+    const b = blocos.get(pai);
+    const prefixo = k.split(S).slice(0, -1).join(S);
+    let pos = -1;
+    b.forEach((x, i) => { if (x.k === prefixo || x.k.startsWith(prefixo + S)) pos = i; });
+    b.splice(pos >= 0 ? pos + 1 : b.length, 0, linha);
+  }
+  const linhas = [...blocos.values()].flat().map(x => x.l);
+  return { linhas, total: atual.total, totalAnt: anterior.total, comHc: atual.comHc };
+}
+
+function tabelaComparadaHtml() {
+  const { linhas, total, totalAnt } = linhasComparadas();
+  if (!linhas.length) return '<div class="vazio"><span>🔍</span>Nada encontrado com esses filtros.</div>';
+  const ano = E.dados.config.ano, ant = anoAnt();
+  const soma = a => a.reduce((x, y) => x + y, 0);
+  const so = E.sim.soDelta;
+  const cel = (v1, v0) => {
+    if (so) { const d = v1 - v0; return `<td class="n ${clsDelta(d)}">${Math.abs(d) >= 0.5 ? `${sinal(d)}${fmtVal(Math.abs(d))}` : '–'}</td>`; }
+    return `<td class="n${v1 || v0 ? '' : ' zero'}">${v1 || v0 ? `${fmtVal(v1)}<span class="sub-ant">${fmtVal(v0)}</span>` : '–'}</td>`;
+  };
+  const fim = (t1, t0) => `<td class="n">${fmtVal(t0)}</td><td class="n"><b>${fmtVal(t1)}</b></td><td class="n ${clsDelta(t1 - t0)}"><b>${sinal(t1 - t0)}${fmtVal(Math.abs(t1 - t0))}</b></td><td class="n ${clsDelta(t1 - t0)}">${t0 ? deltaPct(t1 - t0, t0) : t1 ? 'novo' : '–'}</td>`;
+  const rotulo = l => `${l.grupo || l.det === 'grupo' ? `<i class="bola" style="background:${l.cor}"></i>` : ''}${esc(l.rotulo)}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.avulso ? ' <span class="etiqueta neutra">📌 lançamento</span>' : ''}${l.soAnt ? ` <span class="etiqueta neutra">só em ${ant}</span>` : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}`;
+  const regra = l => { const r = (l.filho || l.det === 'rubrica') && RUBRICAS.find(x => x.nome === l.rotulo); return r ? ` title="${esc(regraDaRubrica(r.id))}"` : ` title="${esc(l.rotulo)}"`; };
+  return `<table class="tabela tabela-sim-comp">
+    <thead><tr><th class="fixa">${{ rubricas: 'Rubrica', filiais: 'Filial', cc: 'Centro de custo', colaboradores: 'Colaborador' }[E.sim.visao]}<span class="sub">${so ? `Δ ${ant} → ${esc(ano)} por mês` : `${esc(ano)} <span class="sub-ant" style="display:inline">· ${ant} abaixo</span>`}</span></th>
+      ${MESES.map(m => `<th class="n">${m}</th>`).join('')}<th class="n">Total ${ant}</th><th class="n">Total ${esc(ano)}</th><th class="n">Δ R$</th><th class="n">Δ %</th></tr></thead>
+    <tbody>${linhas.map(l => {
+      const cls = l.det ? `det-${l.det}` : l.grupo ? `grupo${E.sim.fechados.has(l.grupo) ? ' fechado' : ''}` : l.filho ? 'filho' : l.colab != null || l.ag != null ? `colab${l.aberto ? ' aberto' : ''}${l.vaga ? ' vaga' : ''}` : '';
+      const attrs = l.det ? '' : `${l.grupo ? ` data-grupo="${l.grupo}"` : ''}${l.colab != null ? ` data-colab="${l.colab}"` : ''}${l.ag != null ? ` data-ag="${esc(l.ag)}"` : ''}`;
+      return `<tr class="${cls}"${attrs}><td class="fixa"${regra(l)}>${rotulo(l)}</td>${l.meses.map((v, m) => cel(v, l.ant[m])).join('')}${fim(soma(l.meses), soma(l.ant))}</tr>`;
+    }).join('')}</tbody>
+    <tfoot><tr class="total"><td class="fixa">Total</td>${total.map((v, m) => cel(v, totalAnt[m])).join('')}${fim(soma(total), soma(totalAnt))}</tr></tfoot>
+  </table>`;
+}
+
 function tabelaSimulacaoHtml() {
+  if (E.comparar && E.resAnt) return tabelaComparadaHtml();
   const { linhas, total, comHc } = linhasSimulacao();
   const totAno = total.reduce((a, b) => a + b, 0) || 1;
   const fil = filiaisComRascunho();
@@ -705,12 +1051,12 @@ function tabelaSimulacaoHtml() {
         if (l.det) {
           // Detalhe do colaborador: % é sobre o custo dele
           return `<tr class="det-${l.det}">
-            <td class="fixa" title="${esc(l.rotulo)}">${l.det === 'grupo' ? `<i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.propria === 'manual' ? ' <span class="etiqueta azul">valor próprio</span>' : l.propria === 'base' ? ' <span class="etiqueta neutra">da base</span>' : ''}${l.conta ? `<span class="sub conta">${esc(l.conta)}</span>` : ''}</td>
+            <td class="fixa" title="${esc(l.det === 'rubrica' ? `${l.rotulo}: ${regraDaRubrica(RUBRICAS.find(x => x.nome === l.rotulo)?.id)}` : l.rotulo)}">${l.det === 'grupo' ? `<i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.propria === 'manual' ? ' <span class="etiqueta azul">valor próprio</span>' : l.propria === 'base' ? ' <span class="etiqueta neutra">da base</span>' : ''}${l.conta ? `<span class="sub conta">${esc(l.conta)}</span>` : ''}</td>
             ${comHc ? '<td></td>' : ''}${l.meses.map(cel).join('')}<td class="n"><b>${fmtVal(t)}</b></td><td class="n">${pctFmt(t / totColab)}</td></tr>`;
         }
         const cls = l.grupo ? `grupo${E.sim.fechados.has(l.grupo) ? ' fechado' : ''}` : l.filho ? 'filho' : l.colab != null || l.ag != null ? `colab${l.aberto ? ' aberto' : ''}${l.vaga ? ' vaga' : ''}` : l.vaga ? 'vaga' : '';
         return `<tr class="${cls}" ${l.grupo ? `data-grupo="${l.grupo}"` : ''}${l.colab != null ? ` data-colab="${l.colab}" title="Clique para ${l.aberto ? 'fechar' : 'ver'} o detalhe"` : ''}${l.ag != null ? ` data-ag="${esc(l.ag)}" title="Clique para ${l.aberto ? 'fechar' : 'ver'} as contas por grupo"` : ''}>
-          <td class="fixa" title="${esc(l.rotulo)}">${l.grupo ? `<i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.avulso ? ' <span class="etiqueta neutra">📌 lançamento</span>' : ''}${l.proprias ? ' <span class="etiqueta azul">condições próprias</span>' : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}</td>
+          <td class="fixa" title="${esc(l.filho ? `${l.rotulo}: ${regraDaRubrica(RUBRICAS.find(x => x.nome === l.rotulo)?.id)}` : l.rotulo)}">${l.grupo ? `<i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.avulso ? ' <span class="etiqueta neutra">📌 lançamento</span>' : ''}${l.proprias ? ' <span class="etiqueta azul">condições próprias</span>' : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}</td>
           ${comHc ? `<td class="n">${l.hc ?? ''}</td>` : ''}${l.meses.map(cel).join('')}<td class="n"><b>${fmtVal(t)}</b></td><td class="n">${pctFmt(t / totAno)}</td></tr>`;
       }).join('');
     })()}</tbody>
@@ -753,6 +1099,8 @@ function renderSimulacao() {
           ${E.sim.visao === 'colaboradores' ? `<button class="btn btn-claro btn-sm" id="sim-abrir-todos">${E.sim.abertos.size ? 'Fechar detalhes' : 'Abrir detalhe de todos'}</button>` : ''}
           ${E.sim.visao === 'filiais' || E.sim.visao === 'cc' ? `<button class="btn btn-claro btn-sm" id="sim-abrir-ag">${[...E.sim.abertosAg].some(k => k.startsWith(E.sim.visao + '|')) ? 'Fechar contas' : 'Abrir contas de todos'}</button>` : ''}
           <div class="direita">
+            ${E.resAnt ? `<div class="segmentos" id="sim-comp" title="Compare com o realizado de ${anoAnt()}"><button data-c="0" class="${E.comparar ? '' : 'ativo'}">Só ${esc(E.dados.config.ano)}</button><button data-c="1" class="${E.comparar ? 'ativo' : ''}">${anoAnt()} × ${esc(E.dados.config.ano)}</button></div>` : ''}
+            ${E.comparar && E.resAnt ? `<label class="check" title="Mostra nos meses só a diferença"><input type="checkbox" id="sim-sodelta" ${E.sim.soDelta ? 'checked' : ''}> Só Δ</label>` : ''}
             <div class="segmentos" id="sim-unid"><button data-u="0" class="${E.sim.mil ? '' : 'ativo'}">R$</button><button data-u="1" class="${E.sim.mil ? 'ativo' : ''}">R$ mil</button></div>
             <button class="btn btn-marinho btn-sm" id="sim-excel">⬇ Exportar Excel</button>
           </div>
@@ -764,6 +1112,8 @@ function renderSimulacao() {
   ligarFaixa($('#sim-faixa', el));
   $$('#sim-visao button', el).forEach(b => b.addEventListener('click', () => { E.sim.visao = b.dataset.v; renderSimulacao(); }));
   $$('#sim-unid button', el).forEach(b => b.addEventListener('click', () => { E.sim.mil = b.dataset.u === '1'; renderSimulacao(); }));
+  $$('#sim-comp button', el).forEach(b => b.addEventListener('click', () => { E.comparar = b.dataset.c === '1'; renderSimulacao(); }));
+  $('#sim-sodelta', el)?.addEventListener('change', e => { E.sim.soDelta = e.target.checked; atualizarTabelaSim(); });
   $('#sim-excel', el).addEventListener('click', exportarExcel);
   const busca = $('#sim-busca', el);
   if (busca) busca.addEventListener('input', () => { E.sim.busca = busca.value; atualizarTabelaSim(); });
@@ -902,6 +1252,32 @@ function exportarExcel() {
       fil[c.filial]?.dissidio_pct ?? 0, fil[c.filial]?.dissidio_mes ?? '', c.mes_inicio, c.mes_fim, ...vals, r2(vals.reduce((a, b) => a + b, 0))]);
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhas), 'Por colaborador');
+
+  // Comparativo com o ano anterior: por conta (mês a mês) e por filial · conta
+  if (E.resAnt) {
+    const ano = E.dados.config.ano, ant = anoAnt();
+    const ag0 = totalDe(E.resAnt);
+    const cmp = [['Grupo', 'Conta', ...MESES.map(m => `${m}/${ant}`), `Total ${ant}`, ...MESES.map(m => `${m}/${ano}`), `Total ${ano}`, 'Δ R$', 'Δ %', 'Premissa']];
+    RUBRICAS.forEach((r, i) => {
+      const m0 = [...ag0.porRubrica.slice(i * 12, i * 12 + 12)].map(r2), m1 = [...ag.porRubrica.slice(i * 12, i * 12 + 12)].map(r2);
+      const t0 = m0.reduce((a, b) => a + b, 0), t1 = m1.reduce((a, b) => a + b, 0);
+      if (Math.abs(t0) + Math.abs(t1) >= 0.005) cmp.push([NOME_GRUPO[r.grupo], r.nome, ...m0, r2(t0), ...m1, r2(t1), r2(t1 - t0), t0 ? r2(((t1 - t0) / t0) * 100) : '', regraDaRubrica(r.id)]);
+    });
+    cmp.push(['', 'TOTAL', ...[...ag0.meses].map(r2), r2(ag0.total), ...[...ag.meses].map(r2), r2(ag.total), r2(ag.total - ag0.total), ag0.total ? r2(((ag.total - ag0.total) / ag0.total) * 100) : '', '']);
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cmp), `Comparativo ${ant}x${ano}`.slice(0, 31));
+    const f0 = Motor.agregar(E.resAnt, c => `${c.regional}${sep}${c.filial}`, noFiltro), f1 = Motor.agregar(E.res, c => `${c.regional}${sep}${c.filial}`, noFiltro);
+    const pf = [['Regional', 'Filial', 'Grupo', 'Conta', `Total ${ant}`, `Total ${ano}`, 'Δ R$', 'Δ %']];
+    for (const k of new Set([...f0.keys(), ...f1.keys()])) {
+      const [regional, filial] = k.split(sep);
+      RUBRICAS.forEach((r, i) => {
+        const t0 = f0.has(k) ? somaRub(f0.get(k), i) : 0, t1 = f1.has(k) ? somaRub(f1.get(k), i) : 0;
+        if (Math.abs(t0) + Math.abs(t1) >= 0.005) pf.push([regional, filial, NOME_GRUPO[r.grupo], r.nome, r2(t0), r2(t1), r2(t1 - t0), t0 ? r2(((t1 - t0) / t0) * 100) : '']);
+      });
+    }
+    const wsPf = XLSX.utils.aoa_to_sheet(pf);
+    wsPf['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: pf.length - 1, c: pf[0].length - 1 } }) };
+    XLSX.utils.book_append_sheet(wb, wsPf, `Comparativo por filial`);
+  }
 
   const nome = [E.dados.config.ano, E.filtro.regional, E.filtro.uf, E.filtro.filial].filter(Boolean).join('-').replace(/[^\w-]+/g, '_');
   XLSX.writeFile(wb, `Orcamento-Pessoal-${nome}.xlsx`);
@@ -2066,6 +2442,7 @@ function renderBase() {
       <div id="previa" class="previa"></div>
     </section>
     <section class="cartao base-situacao" style="margin-top:1.2rem" id="base-situacao"></section>
+    <section class="cartao" style="margin-top:1.2rem" id="base-anterior"></section>
     <section class="cartao" style="margin-top:1.2rem">
       <div class="ferramentas">
         <input class="campo" id="base-busca" placeholder="Buscar nome, matrícula, função…" value="${esc(E.base.busca)}" style="min-width:260px">
@@ -2085,6 +2462,7 @@ function renderBase() {
   $('#base-vagas', el).addEventListener('change', e => { E.base.soVagas = e.target.checked; desenharBase(); });
   $('#base-proprias', el).addEventListener('change', e => { E.base.soProprias = e.target.checked; desenharBase(); });
   $('#baixar-modelo', el).addEventListener('click', baixarModeloBase);
+  desenharAnoAnterior($('#base-anterior', el));
   if (E.base.fila.length) previaImportacao(E.base.fila);
   $('#nova-vaga', el).addEventListener('click', () => editarColaborador(null, { vaga: true }));
   $('#novo-colab', el).addEventListener('click', () => editarColaborador(null, {}));
@@ -2259,6 +2637,80 @@ async function previaImportacao(arquivos) {
 }
 
 /** Situação da base: total por regional, matrículas repetidas e ações de limpeza. */
+// ----- Histórico do ano anterior (salário pago em cada mês), para o comparativo -----
+
+const MESES_LONGOS = ['JANEIRO', 'FEVEREIRO', 'MARCO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
+
+function desenharAnoAnterior(box) {
+  const ant = E.dados.anterior || [];
+  const a = anoAnt();
+  const folha = ant.reduce((t, x) => t + x.salarios.reduce((p, v) => p + (Number(v) || 0), 0), 0);
+  const hcMes = MESES.map((_, m) => ant.filter(x => Number(x.salarios[m]) > 0).length);
+  box.innerHTML = `
+    <h3>Histórico ${a} <small>· salário pago em cada mês, para comparar ${a} × ${E.dados.config.ano}</small></h3>
+    <p class="subtitulo" style="margin:0 0 .8rem">Uma linha por colaborador com o salário de cada mês de ${a}. A ferramenta aplica as regras das premissas (adicionais, férias + 1/3, 13º, FGTS, INSS, benefícios, PPR…) <b>sem o dissídio e sem o reajuste de benefícios de ${E.dados.config.ano}</b> e monta o custo de ${a} para o comparativo no Painel e na Simulação. Mês vazio ou 0 = a pessoa não estava na empresa naquele mês.</p>
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-claro btn-sm" id="ant-modelo">⬇ Modelo do histórico</button>
+      <label class="btn btn-marinho btn-sm" style="cursor:pointer">⬆ Importar histórico ${a}<input type="file" id="ant-arquivo" accept=".xlsx,.xls,.csv" hidden></label>
+      ${ant.length ? `<button class="btn btn-claro btn-sm" id="ant-apagar" style="color:var(--vermelho)">Apagar histórico</button>
+        <span class="chip ok">✓ ${num0.format(ant.length)} colaborador(es) · ${new Set(ant.map(x => x.filial)).size} filiais · folha ${a} ${brl0.format(folha)} · HC jan ${hcMes[0]} → dez ${hcMes[11]}</span>` : '<span class="chip falta">Sem histórico carregado</span>'}
+    </div>`;
+  $('#ant-modelo', box).addEventListener('click', baixarModeloAnterior);
+  $('#ant-arquivo', box).addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importarAnoAnterior(f); });
+  $('#ant-apagar', box)?.addEventListener('click', async () => {
+    if (!confirm(`Apagar o histórico de ${a}? O comparativo deixa de aparecer.`)) return;
+    try { await api('/api/ano-anterior', { method: 'DELETE' }); toast('Histórico apagado.'); await recarregarTudo(); } catch (e) { toast(e.message, 'erro'); }
+  });
+}
+
+function baixarModeloAnterior() {
+  if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
+  const a = String(anoAnt()).slice(-2);
+  const cab = ['MATRÍCULA', 'FUNCIONÁRIO', 'REGIONAL', 'FILIAL', 'FUNÇÃO', 'CARGO', 'CÓD. C. CUSTO', 'CENTRO DE CUSTO', ...MESES.map(m => `${m.toUpperCase()}/${a}`)];
+  const ws = XLSX.utils.aoa_to_sheet([cab,
+    ['21000038', 'NOME DO COLABORADOR', 'CENTRO OESTE', 'CUIABA', 'Mecânico II', '14-Operação - Apoio', '17151', 'MANUTENÇÃO', ...Array(4).fill(4658.04), ...Array(8).fill(4858.04)],
+    ['14000777', 'DESLIGADO EM JUNHO', 'NORTE', 'MAUA 3', 'Operador I', '15-Operação - Produção', '17150', 'OPERAÇÃO', ...Array(6).fill(4175.6), ...Array(6).fill(null)]]);
+  ws['!cols'] = [12, 34, 16, 22, 26, 26, 14, 26, ...MESES.map(() => 11)].map(wch => ({ wch }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, `Historico ${anoAnt()}`);
+  XLSX.writeFile(wb, `Modelo-historico-${anoAnt()}.xlsx`);
+}
+
+async function importarAnoAnterior(arquivo) {
+  try {
+    const wb = XLSX.read(await arquivo.arrayBuffer(), { type: 'array' });
+    let lido = null;
+    for (const nomeAba of wb.SheetNames) {
+      const l = XLSX.utils.sheet_to_json(wb.Sheets[nomeAba], { header: 1, raw: true, defval: null });
+      for (let h = 0; h < Math.min(l.length, 40) && !lido; h++) {
+        const cab = (l[h] || []).map(normCab);
+        const achar = campo => { for (const al of ALIASES[campo]) { const i = cab.indexOf(al); if (i >= 0) return i; } return -1; };
+        const col = Object.fromEntries(['matricula', 'nome', 'regional', 'filial', 'funcao', 'cargo', 'cc_cod', 'cc_nome'].map(k => [k, achar(k)]));
+        if (col.nome < 0 || col.filial < 0) continue;
+        // meses: "JAN/26", "JAN", "JANEIRO", "01/2026"…
+        const mesDe = c => { const t = c.replace(/[^A-Z0-9/]/g, ''); const i = MESES.findIndex(m => t.startsWith(normCab(m))); if (i >= 0) return i; const n = t.match(/^(\d{1,2})\//); return n ? Number(n[1]) - 1 : MESES_LONGOS.findIndex(m => t.startsWith(m)); };
+        const colMes = Array(12).fill(-1);
+        cab.forEach((c, i) => { if (Object.values(col).includes(i)) return; const m = mesDe(c); if (m >= 0 && m < 12 && colMes[m] < 0) colMes[m] = i; });
+        if (colMes.filter(i => i >= 0).length < 1) continue;
+        const num = v => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[R$\s]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')) || 0);
+        const txt = (r, k) => (col[k] >= 0 ? String(r[col[k]] ?? '').trim() : '');
+        lido = l.slice(h + 1).filter(r => r && txt(r, 'nome') && txt(r, 'filial')).map(r => ({
+          matricula: txt(r, 'matricula'), nome: txt(r, 'nome'), regional: txt(r, 'regional'), filial: txt(r, 'filial'), funcao: txt(r, 'funcao'),
+          cargo: txt(r, 'cargo'), cc_cod: txt(r, 'cc_cod'), cc_nome: txt(r, 'cc_nome'), salarios: colMes.map(i => (i >= 0 ? num(r[i]) : 0)),
+        }));
+      }
+      if (lido) break;
+    }
+    if (!lido || !lido.length) return toast('Não encontrei as colunas Funcionário, Filial e os meses (JAN/26 … DEZ/26). Use o modelo.', 'erro');
+    // Sem regional na planilha: usa a da filial na base
+    lido.forEach(x => { if (!x.regional) x.regional = E.dados.filiais[x.filial.toUpperCase()]?.regional || ''; });
+    if (!confirm(`${lido.length} colaborador(es) no histórico de ${anoAnt()}. Substituir o histórico atual por este?`)) return;
+    const r = await api('/api/ano-anterior/importar', { method: 'POST', body: { linhas: lido } });
+    toast(`Histórico de ${anoAnt()} carregado: ${r.importados} colaborador(es).`);
+    await recarregarTudo();
+  } catch (e) { toast(e.message || 'Não consegui ler o arquivo.', 'erro'); }
+}
+
 function desenharSituacaoBase() {
   const el = $('#base-situacao');
   if (!el) return;

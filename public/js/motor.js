@@ -4,6 +4,7 @@
 // Entrada:
 //   colaboradores: [{ id, matricula, nome, regional, filial, cargo, cc_cod, cc_nome, salario, mes_inicio, mes_fim, vaga, excecoes, avulso? }]
 //                  avulso: { rubrica, meses[12] } — outro lançamento (não é pessoa): o valor de cada mês vai direto para o item
+//                  salarios: [12] — histórico do ano anterior: salário pago em cada mês (ativo onde > 0, sem dissídio)
 //                  excecoes: { [rubrica]: { metodo: 'nao' | 'fixo' | 'pct' | 'multiplo', valor, origem? } } — condições próprias do
 //                  colaborador (ex.: sucedidos de outra empresa com benefício diferente). Valem no lugar da regra da filial.
 //   filiais:       { [filial]: { regional, dissidio_pct, dissidio_mes, reaj_benef_pct, reaj_benef_mes } }
@@ -219,6 +220,7 @@
     const ativo = (i, m) => {
       const c = colaboradores[i];
       if (c.avulso) return false; // lançamento avulso: não é uma pessoa
+      if (c.salarios) return num(c.salarios[m]) > 0; // histórico: ativo nos meses com salário pago
       const ini = num(c.mes_inicio) || 1;
       const fim = num(c.mes_fim) || 12;
       return m + 1 >= ini && m + 1 <= fim;
@@ -228,8 +230,11 @@
       const mesDiss = num(f.dissidio_mes);
       return mesDiss && m + 1 >= mesDiss ? 1 + num(f.dissidio_pct) / 100 : 1;
     };
-    const salario = (i, m) => num(colaboradores[i].salario) * fatorDissidio(i, m);
+    // Histórico do ano anterior (salarios[12]): o salário pago em cada mês, já com os reajustes daquele ano.
+    const salario = (i, m) => (colaboradores[i].salarios ? num(colaboradores[i].salarios[m]) : num(colaboradores[i].salario) * fatorDissidio(i, m));
     const salarioPpr = (i, p) => {
+      const sh = colaboradores[i].salarios;
+      if (sh) { for (let m = 11; m >= 0; m--) if (num(sh[m]) > 0) return num(sh[m]); return 0; } // último salário do ano
       const f = cfg[i];
       const reaj = !p.sem_dissidio && num(f.dissidio_pct) && num(f.dissidio_mes) ? 1 + num(f.dissidio_pct) / 100 : 1;
       return num(colaboradores[i].salario) * reaj;
@@ -374,7 +379,7 @@
         ag.n++;
         const ini = num(c.mes_inicio) || 1;
         const fim = num(c.mes_fim) || 12;
-        for (let m = 0; m < 12; m++) if (m + 1 >= ini && m + 1 <= fim) ag.hc[m]++;
+        for (let m = 0; m < 12; m++) if (c.salarios ? num(c.salarios[m]) > 0 : m + 1 >= ini && m + 1 <= fim) ag.hc[m]++;
       }
       const off = i * R * 12;
       for (let j = 0; j < R * 12; j++) {

@@ -161,6 +161,23 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
 **Guia do coordenador** (`public/guia/guia-do-coordenador.pdf`): link “Primeira vez aqui?” na tela de acesso e item
 “Guia do coordenador” no menu lateral, como na Trilha.
 
+**Comparativo com o ano anterior (ex.: 2026 × 2027)**
+- Em **Base de colaboradores › Histórico do ano anterior**: modelo em Excel (matrícula, funcionário, regional, filial,
+  função, cargo, CC e o salário pago em JAN…DEZ). A importação substitui o histórico; a regional é completada pela filial.
+- O ano anterior é calculado com o salário de cada mês + as **mesmas premissas** do orçamento, **sem dissídio** e **sem
+  reajuste de benefícios**. Quem ainda está na base (mesma matrícula) herda os valores próprios da planilha.
+  Outros lançamentos só entram no ano do orçamento.
+- **Painel**: botão “Só 2027 | 2026 × 2027” (a visão atual continua sendo a padrão). No comparativo: KPIs, custo mês a
+  mês nos dois anos com Δ R$ e Δ %, ponte de variação por conta, variação por grupo, ranking de aumento por conta
+  (clique abre as filiais) e tabela por regional/filial/CC.
+- **Headcount**: evolução mês a mês dos dois anos e colunas HC dez/26, Δ HC e minigráfico de 24 meses em “Cadeiras por”
+  (filial, função, CC, gestor…).
+- **Simulação**: mesmo botão; cada mês mostra o orçado com o realizado abaixo, totais dos dois anos, Δ R$ e Δ %, opção
+  “Só Δ”. Quem só existe no ano anterior aparece marcado “só em 2026”. O Excel ganha as abas de comparativo.
+- **Legenda das premissas** (Painel, recolhível): a regra de cada conta com custo no filtro, “varia por filial” quando
+  as filiais têm regras diferentes e quantos colaboradores usam valor próprio. A mesma regra aparece ao passar o mouse
+  nas contas da Simulação.
+
 **Coordenador** (só as regionais liberadas, sem alterar valores)
 - Painel e simulação da regional.
 - **Conferência** – cards por filial; premissas aplicadas e a tabela de colaboradores/vagas com **uma coluna por item**
