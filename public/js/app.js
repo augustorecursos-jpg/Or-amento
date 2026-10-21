@@ -16,7 +16,7 @@ const E = {
   res: null,          // cálculo com o rascunho do simulador aplicado
   resSalvo: null,     // cálculo só com o que está salvo (para medir o impacto do rascunho)
   resSemDissidio: null,
-  rascunho: {},       // filial → { dissidio_ant_pct, dissidio_ant_mes, dissidio_pct, dissidio_mes }
+  rascunho: {},       // filial → { dissidio_ant_pct/_mes, dissidio_pct/_mes, reaj_benef_ant_pct/_mes, reaj_benef_pct/_mes }
   filtro: filtroMulti({ regional: [], uf: [], filial: [], cc: [], conta: [] }), // filtros do topo: cada um aceita vários itens
   aba: 'painel',
   sim: { visao: 'rubricas', mil: false, fechados: new Set(), busca: '', abertos: new Set(), abertosAg: new Set() },
@@ -70,11 +70,15 @@ function recalcular() {
   b.resSemDissidio = Motor.calcular({ colaboradores, filiais: semDiss, premissas, niveis });
   // só com o dissídio do ano anterior: separa o impacto de cada dissídio
   b.resSoDissAnt = filiaisComDissAnt() ? Motor.calcular({ colaboradores, filiais: soAnt, premissas, niveis }) : b.resSemDissidio;
-  // Ano anterior: salários pagos de cada mês + as regras atuais, sem o dissídio e sem o reajuste de benefícios do orçamento
+  // Ano anterior: salários pagos de cada mês + as regras atuais. O dissídio e o reajuste de benefícios daquele ano que a base
+  // ainda não tem (os "ano anterior" da filial) entram a partir da data-base (a mesma do ano do orçamento); os do orçamento não.
   const ant = anteriorComoColaboradores();
   if (ant.length) {
     const semReaj = {};
-    for (const [f, cfg] of Object.entries(E.dados.filiais)) semReaj[f] = { ...cfg, dissidio_pct: 0, dissidio_ant_pct: 0, reaj_benef_pct: 0 };
+    for (const [f, cfg] of Object.entries(filiaisComRascunho())) {
+      semReaj[f] = { ...cfg, dissidio_ant_pct: 0, reaj_benef_ant_pct: 0,
+        dissidio_pct: Number(cfg.dissidio_ant_pct) || 0, dissidio_mes: cfg.dissidio_mes, reaj_benef_pct: Number(cfg.reaj_benef_ant_pct) || 0, reaj_benef_mes: cfg.reaj_benef_mes };
+    }
     b.resAnt = soGruposComparados(Motor.calcular({ colaboradores: ant, filiais: semReaj, premissas, niveis }));
     b.resCmp = soGruposComparados(b.res);
   } else b.resAnt = b.resCmp = null;
@@ -151,12 +155,23 @@ function mesesDeDissidio(cfgs) {
   return [...out].sort((a, b) => a - b);
 }
 /** "5% (2026, desde Jan) + 4,5% (2027, em Ago)" */
-function textoDissidio(f) {
+function textoReajuste(f, pre = 'dissidio') {
   if (!f) return '';
   const partes = [];
-  if (Number(f.dissidio_ant_pct)) partes.push(`${num2.format(f.dissidio_ant_pct)}% (${anoAnt()}, desde ${MESES[(f.dissidio_ant_mes || 1) - 1]})`);
-  if (Number(f.dissidio_pct)) partes.push(`${num2.format(f.dissidio_pct)}% (${E.dados.config.ano}, em ${MESES[(f.dissidio_mes || 1) - 1]})`);
-  return partes.join(' + ') || 'sem dissídio';
+  if (Number(f[`${pre}_ant_pct`])) partes.push(`${num2.format(f[`${pre}_ant_pct`])}% (${anoAnt()}, desde ${MESES[(f[`${pre}_ant_mes`] || 1) - 1]})`);
+  if (Number(f[`${pre}_pct`])) partes.push(`${num2.format(f[`${pre}_pct`])}% (${E.dados.config.ano}, em ${MESES[(f[`${pre}_mes`] || 1) - 1]})`);
+  return partes.join(' + ') || (pre === 'dissidio' ? 'sem dissídio' : 'sem reajuste');
+}
+const textoDissidio = f => textoReajuste(f, 'dissidio');
+/** Fator do reajuste de benefícios no mês (0–11): ano anterior × ano. */
+const fatorBenefDe = (f, m) => (m + 1 >= (Number(f.reaj_benef_ant_mes) || 1) ? 1 + (Number(f.reaj_benef_ant_pct) || 0) / 100 : 1)
+  * (m + 1 >= (Number(f.reaj_benef_mes) || 1) ? 1 + (Number(f.reaj_benef_pct) || 0) / 100 : 1);
+/** Nota do comparativo quando há dissídio/reajuste do ano anterior lançado (entra no lado do ano anterior como provisão). */
+function notaProvisaoAnt() {
+  const fils = filiaisVisiveis().map(f => filiaisComRascunho()[f]).filter(Boolean);
+  const d = fils.some(f => Number(f.dissidio_ant_pct)), b = fils.some(f => Number(f.reaj_benef_ant_pct));
+  if (!d && !b) return '';
+  return `${anoAnt()}: salário pago${d ? ` + dissídio ${anoAnt()}` : ''}${b ? ` + reajuste de benefícios ${anoAnt()}` : ''} a partir da data-base (provisão)`;
 }
 const anoAnt = () => Number(E.dados.config.ano) - 1;
 /** Histórico do ano anterior como colaboradores do cálculo. Quem ainda está na base herda dela as condições próprias
@@ -387,7 +402,7 @@ function faixaRascunho() {
   const n = Object.keys(E.rascunho).length;
   if (!n) return '';
   const dif = totalDe(E.res).total - totalDe(E.resSalvo).total;
-  return `<div class="faixa-rascunho"><span>🧪 <b>Simulação não salva</b> · dissídio alterado em ${n} filial(is) · impacto no ano de <b>${dif >= 0 ? '+' : ''}${brl0.format(dif)}</b></span>
+  return `<div class="faixa-rascunho"><span>🧪 <b>Simulação não salva</b> · reajuste alterado em ${n} filial(is) · impacto no ano de <b>${dif >= 0 ? '+' : ''}${brl0.format(dif)}</b></span>
     <span style="margin-left:auto;display:flex;gap:.5rem"><button class="btn btn-claro btn-sm" data-descartar>Descartar</button><button class="btn btn-laranja btn-sm" data-aplicar>Aplicar ao orçamento</button></span></div>`;
 }
 
@@ -615,7 +630,7 @@ function desenharComparativo(box) {
       <div class="pontilhado"></div>
       <div class="hero2-num">
         <small>CUSTO ANUAL DE PESSOAL · ${ant} × ${esc(ano)}</small>
-        <p class="comp-escopo">Remuneração, provisões, encargos e benefícios · o grupo Demais (treinamento, viagens, serviços…) fica fora do comparativo${notaProjecao() ? `<br>${notaProjecao()}` : ''}</p>
+        <p class="comp-escopo">Remuneração, provisões, encargos e benefícios · o grupo Demais (treinamento, viagens, serviços…) fica fora do comparativo${notaProjecao() ? `<br>${notaProjecao()}` : ''}${notaProvisaoAnt() ? `<br>${notaProvisaoAnt()}` : ''}</p>
         <div class="comp-totais">
           <div><span style="--c:${COR_ANT}">${ant} · realizado</span><b>${brl0.format(a0.total)}</b></div>
           <div class="comp-seta">→</div>
@@ -720,7 +735,7 @@ function regraDaRubrica(rid, fils = filiaisVisiveis()) {
 }
 function montarRegra(rid, fils) {
   const fixas = {
-    salario: `salário da base, com o dissídio da filial a partir do mês da data-base · ${anoAnt()}: salário pago em cada mês (histórico)`,
+    salario: `salário da base, com o dissídio ${anoAnt()} (que a base ainda não tem) e o de ${E.dados.config.ano} na data-base · ${anoAnt()}: salário pago em cada mês (histórico) + dissídio ${anoAnt()} a partir da data-base, se lançado`,
   };
   if (fixas[rid]) return fixas[rid];
   const rub = RUBRICAS.find(r => r.id === rid);
@@ -759,13 +774,14 @@ function legendaPremissasHtml() {
   const linhas = RUBRICAS.map((r, k) => ({ r, k })).filter(({ k }) => somaRub(ag, k) || (ag0 && somaRub(ag0, k)));
   if (!linhas.length) return '';
   const reaj = [...new Set(fils.map(f => Number(E.dados.filiais[f]?.reaj_benef_pct) || 0))];
+  const reajAnt = [...new Set(fils.map(f => Number(E.dados.filiais[f]?.reaj_benef_ant_pct) || 0))];
   const diss = [...new Set(fils.map(f => Number(E.dados.filiais[f]?.dissidio_pct) || 0))];
   const dissAnt = [...new Set(fils.map(f => Number(E.dados.filiais[f]?.dissidio_ant_pct) || 0))];
   const lista = v => (v.length === 1 ? `${fmtN(v[0])}%` : `de ${fmtN(Math.min(...v))}% a ${fmtN(Math.max(...v))}% conforme a filial`);
   return `<details class="cartao legenda-premissas" id="legenda-premissas"${E.legendaAberta ? ' open' : ''}>
     <summary><h3 style="display:inline">📖 Legenda das premissas <small>· como cada conta é calculada${E.comparar && E.resAnt ? ` em ${esc(E.dados.config.ano)} e em ${anoAnt()}` : ''}</small></h3></summary>
-    <p class="subtitulo" style="margin:.4rem 0 .8rem">${dissAnt.some(Boolean) ? `Dissídio ${anoAnt()} ${lista(dissAnt)} · ` : ''}Dissídio ${esc(E.dados.config.ano)} ${lista(diss)} · reajuste de benefícios ${lista(reaj)}.
-      ${E.resAnt ? `<br>${anoAnt()}: salário realmente pago em cada mês (histórico carregado${notaProjecao() ? `; ${notaProjecao().replace(/^\d+: /, '')}` : ''}) com as mesmas regras abaixo, <b>sem</b> dissídio e <b>sem</b> o reajuste de benefícios do orçamento. Outros lançamentos só entram em ${esc(E.dados.config.ano)}. O comparativo considera ${GRUPOS_CMP_TXT}; o grupo Demais fica fora.` : ''}</p>
+    <p class="subtitulo" style="margin:.4rem 0 .8rem">${dissAnt.some(Boolean) ? `Dissídio ${anoAnt()} ${lista(dissAnt)} · ` : ''}Dissídio ${esc(E.dados.config.ano)} ${lista(diss)} · ${reajAnt.some(Boolean) ? `reajuste de benefícios ${anoAnt()} ${lista(reajAnt)} · ` : ''}reajuste de benefícios ${esc(E.dados.config.ano)} ${lista(reaj)}.
+      ${E.resAnt ? `<br>${anoAnt()}: salário realmente pago em cada mês (histórico carregado${notaProjecao() ? `; ${notaProjecao().replace(/^\d+: /, '')}` : ''}) com as mesmas regras abaixo, <b>sem</b> o dissídio e o reajuste de benefícios de ${esc(E.dados.config.ano)}; o dissídio e o reajuste de benefícios de ${anoAnt()} lançados nas filiais entram a partir da data-base (provisão). Outros lançamentos só entram em ${esc(E.dados.config.ano)}. O comparativo considera ${GRUPOS_CMP_TXT}; o grupo Demais fica fora.` : ''}</p>
     <table class="tabela tabela-legenda"><thead><tr><th>Conta</th><th>Grupo</th><th>Premissa</th></tr></thead><tbody>
       ${linhas.map(({ r }) => `<tr><td><b>${esc(r.nome)}</b></td><td><i class="bola" style="background:${COR_GRUPO[r.grupo]}"></i>${esc(NOME_GRUPO[r.grupo])}</td>
         <td>${esc(regraDaRubrica(r.id, fils))}${NOTAS_LEGENDA[r.id] ? `<span class="sub">${esc(NOTAS_LEGENDA[r.id])}</span>` : ''}${r.dica ? `<span class="sub">${esc(r.dica)}</span>` : ''}</td></tr>`).join('')}
@@ -1146,13 +1162,14 @@ function contaDoItem(c, rub) {
   if (p.metodo === 'fixo' && rub.grupo === 'beneficios' && p.periodo !== 'por_mes') {
     // Benefício em R$: mostra o reajuste de benefícios da filial, que entra por cima do valor lançado.
     const f = filiaisComRascunho()[c.filial] || {};
-    const pct = Number(f.reaj_benef_pct) || 0;
+    const fim = fatorBenefDe(f, 11);
     const daBase = c.excecoes?.[rub.id]?.origem === 'base';
-    if (!pct) return daBase ? `${brl.format(p.valor)} da planilha da base` : '';
-    if (daBase) return `${brl.format(p.valor)} da planilha da base + reajuste de benefícios da filial de ${fmtN(pct)}% a partir de ${MESES[(f.reaj_benef_mes || 1) - 1]} = ${brl.format(p.valor * (1 + pct / 100))}`;
+    if (fim === 1) return daBase ? `${brl.format(p.valor)} da planilha da base` : '';
+    const reaj = `reajuste de benefícios da filial de ${textoReajuste(f, 'reaj_benef')}`;
+    if (daBase) return `${brl.format(p.valor)} da planilha da base + ${reaj} = ${brl.format(p.valor * fim)} em Dez`;
     const v = Motor.valorDe(p, c.funcao);
     const deFuncao = !c.excecoes?.[rub.id] && Motor.valorDe(p, c.funcao) !== Number(p.valor) ? ` (${c.funcao})` : '';
-    return `${brl.format(v)}${deFuncao} + reajuste de benefícios da filial de ${fmtN(pct)}% a partir de ${MESES[(f.reaj_benef_mes || 1) - 1]} = ${brl.format(v * (1 + pct / 100))}`;
+    return `${brl.format(v)}${deFuncao} + ${reaj} = ${brl.format(v * fim)} em Dez`;
   }
   if (p.metodo !== 'multiplo') return '';
   const mult = Motor.multiploDe(p, c.cargo, E.dados.niveis, c.funcao);
@@ -1267,20 +1284,25 @@ function simuladorHtml() {
   const fil = filiaisComRascunho();
   const dif = totalDe(E.res).total - totalDe(E.resSalvo).total;
   const n = Object.keys(E.rascunho).length;
+  const benef = E.sim.reaj === 'benef';
+  const pre = benef ? 'reaj_benef' : 'dissidio';
+  const nome = benef ? 'Reajuste de benefícios' : 'Dissídio';
+  const ano = esc(E.dados.config.ano);
   return `
-    <h3>Simulador de dissídio</h3>
-    <p>Dois dissídios por filial: o de <b>${anoAnt()}</b>, que o salário da base ainda não tem (vale desde janeiro, ou do mês escolhido), e o de <b>${esc(E.dados.config.ano)}</b>, na data-base, por cima do primeiro. Nada é salvo até você aplicar.</p>
-    <div class="sim-todas">Todas: <select class="campo" id="sim-todas-qual" style="width:70px"><option value="ant">${anoAnt()}</option><option value="atual" selected>${esc(E.dados.config.ano)}</option></select><input class="campo" id="sim-todas-pct" type="number" step="0.01" placeholder="%"> <select class="campo" id="sim-todas-mes" style="width:76px">${opcoesMes(5)}</select><button class="btn btn-claro btn-sm" id="sim-todas">Aplicar</button></div>
-    <div class="sim-cab"><span>Ano</span><span>Dissídio %</span><span>A partir de</span></div>
+    <h3>Simulador de reajustes</h3>
+    <div class="segmentos" id="sim-reaj" style="margin-bottom:.6rem"><button data-r="diss" class="${benef ? '' : 'ativo'}">📈 Dissídio</button><button data-r="benef" class="${benef ? 'ativo' : ''}">🎁 Benefícios</button></div>
+    <p>${benef ? 'Dois reajustes de benefícios' : 'Dois dissídios'} por filial: o de <b>${anoAnt()}</b>, que ${benef ? 'os valores lançados' : 'o salário da base'} ainda não ${benef ? 'têm' : 'tem'} (vale desde janeiro, ou do mês escolhido), e o de <b>${ano}</b>, na data-base, por cima do primeiro. O de ${anoAnt()} também entra no comparativo ${anoAnt()} × ${ano}, a partir da data-base. Nada é salvo até você aplicar.</p>
+    <div class="sim-todas">Todas: <select class="campo" id="sim-todas-qual" style="width:70px"><option value="ant">${anoAnt()}</option><option value="atual" selected>${ano}</option></select><input class="campo" id="sim-todas-pct" type="number" step="0.01" placeholder="%"> <select class="campo" id="sim-todas-mes" style="width:76px">${opcoesMes(5)}</select><button class="btn btn-claro btn-sm" id="sim-todas">Aplicar</button></div>
+    <div class="sim-cab"><span>Ano</span><span>${benef ? 'Reajuste %' : 'Dissídio %'}</span><span>A partir de</span></div>
     <div class="sim-lista">${fils.map(f => `
       <div class="sim-filial${E.rascunho[f] ? ' alterada' : ''}" data-filial="${esc(f)}">
-        <span class="sim-nome" title="${esc(f)}">${esc(f)}<small>salvo: ${esc(textoDissidio(E.dados.filiais[f]))}</small></span>
+        <span class="sim-nome" title="${esc(f)}">${esc(f)}<small>salvo: ${esc(textoReajuste(E.dados.filiais[f], pre))}</small></span>
         <em>${anoAnt()}</em>
-        <input class="campo" type="number" step="0.01" data-campo="dissidio_ant_pct" value="${fil[f].dissidio_ant_pct || 0}" aria-label="Dissídio ${anoAnt()} ${esc(f)}">
-        <select class="campo" data-campo="dissidio_ant_mes" aria-label="Mês do dissídio ${anoAnt()} ${esc(f)}">${opcoesMes(fil[f].dissidio_ant_mes || 1)}</select>
-        <em>${esc(E.dados.config.ano)}</em>
-        <input class="campo" type="number" step="0.01" data-campo="dissidio_pct" value="${fil[f].dissidio_pct}" aria-label="Dissídio ${esc(E.dados.config.ano)} ${esc(f)}">
-        <select class="campo" data-campo="dissidio_mes" aria-label="Data-base ${esc(E.dados.config.ano)} ${esc(f)}">${opcoesMes(fil[f].dissidio_mes)}</select>
+        <input class="campo" type="number" step="0.01" data-campo="${pre}_ant_pct" value="${fil[f][`${pre}_ant_pct`] || 0}" aria-label="${nome} ${anoAnt()} ${esc(f)}">
+        <select class="campo" data-campo="${pre}_ant_mes" aria-label="Mês ${nome} ${anoAnt()} ${esc(f)}">${opcoesMes(fil[f][`${pre}_ant_mes`] || 1)}</select>
+        <em>${ano}</em>
+        <input class="campo" type="number" step="0.01" data-campo="${pre}_pct" value="${fil[f][`${pre}_pct`] || 0}" aria-label="${nome} ${ano} ${esc(f)}">
+        <select class="campo" data-campo="${pre}_mes" aria-label="Mês ${nome} ${ano} ${esc(f)}">${opcoesMes(fil[f][`${pre}_mes`] || 1)}</select>
       </div>`).join('')}</div>
     <div class="sim-impacto${n ? '' : ' neutro'}" id="sim-impacto">${n ? `Impacto da simulação no ano<strong>${dif >= 0 ? '+' : ''}${brl0.format(dif)}</strong>${n} filial(is) alterada(s)` : 'Sem alterações<strong>Orçamento salvo</strong>'}</div>
     <div class="sim-acoes"><button class="btn btn-claro btn-sm" data-descartar ${n ? '' : 'disabled'}>Descartar</button><button class="btn btn-laranja btn-sm" data-aplicar ${n ? '' : 'disabled'}>Aplicar ao orçamento</button></div>`;
@@ -1291,7 +1313,7 @@ function renderSimulacao() {
   const admin = E.eu.admin;
   el.innerHTML = `
     <div class="cab-pagina"><div><h1 class="titulo-pagina">Simulação <em>mês a mês</em></h1>
-      <p class="subtitulo">Custo de pessoal por mês com as premissas de cada filial. ${admin ? 'Use o simulador ao lado para testar o dissídio.' : ''}</p></div></div>
+      <p class="subtitulo">Custo de pessoal por mês com as premissas de cada filial. ${admin ? 'Use o simulador ao lado para testar o dissídio e o reajuste de benefícios.' : ''}</p></div></div>
     <div id="sim-faixa">${faixaRascunho()}</div>
     <div class="sim-grade${admin ? '' : ' sem-painel'}">
       <div>
@@ -1383,7 +1405,7 @@ function ligarSimulador() {
   };
   const marcar = (f, campo, valor) => {
     const salvo = E.dados.filiais[f];
-    const CAMPOS = ['dissidio_ant_pct', 'dissidio_ant_mes', 'dissidio_pct', 'dissidio_mes'];
+    const CAMPOS = ['dissidio_ant_pct', 'dissidio_ant_mes', 'dissidio_pct', 'dissidio_mes', 'reaj_benef_ant_pct', 'reaj_benef_ant_mes', 'reaj_benef_pct', 'reaj_benef_mes'];
     const r = { ...Object.fromEntries(CAMPOS.map(k => [k, Number(salvo[k]) || 0])), ...(E.rascunho[f] || {}), [campo]: Number(valor) || 0 };
     if (CAMPOS.every(k => r[k] === (Number(salvo[k]) || 0))) delete E.rascunho[f];
     else E.rascunho[f] = r;
@@ -1395,7 +1417,8 @@ function ligarSimulador() {
   $('#sim-todas', box).addEventListener('click', () => {
     const pct = $('#sim-todas-pct', box).value;
     const mes = $('#sim-todas-mes', box).value;
-    const pre = $('#sim-todas-qual', box).value === 'ant' ? 'dissidio_ant_' : 'dissidio_';
+    const base = E.sim.reaj === 'benef' ? 'reaj_benef_' : 'dissidio_';
+    const pre = $('#sim-todas-qual', box).value === 'ant' ? `${base}ant_` : base;
     if (pct === '') return toast('Informe o % de dissídio.', 'erro');
     $$('.sim-filial', box).forEach(linha => {
       linha.querySelector(`[data-campo="${pre}pct"]`).value = pct;
@@ -1405,6 +1428,7 @@ function ligarSimulador() {
     });
     atualizar();
   });
+  $$('#sim-reaj button', box).forEach(b => b.addEventListener('click', () => { E.sim.reaj = b.dataset.r; box.innerHTML = simuladorHtml(); ligarSimulador(); }));
   box.querySelector('[data-descartar]').addEventListener('click', descartarRascunho);
   box.querySelector('[data-aplicar]').addEventListener('click', aplicarRascunho);
 }
@@ -1597,11 +1621,12 @@ function renderPremissas() {
             <div class="linha-campos" style="margin-top:.4rem"><b style="width:44px">${esc(E.dados.config.ano)}</b><input class="campo" type="number" step="0.01" data-fcampo="dissidio_pct" value="${cfgF.dissidio_pct}"> % a partir de <select class="campo" data-fcampo="dissidio_mes">${opcoesMes(cfgF.dissidio_mes)}</select></div>
             <p><b>${anoAnt()}</b>: dissídio que o salário da base ainda não tem (normalmente desde janeiro). <b>${esc(E.dados.config.ano)}</b>: o da data-base, por cima do primeiro. Adicionais, provisões e encargos acompanham.</p></div>
           <div class="reajuste"><h4>🎁 Reajuste de benefícios</h4>
-            <div class="linha-campos"><input class="campo" type="number" step="0.01" data-fcampo="reaj_benef_pct" value="${cfgF.reaj_benef_pct}"> % a partir de <select class="campo" data-fcampo="reaj_benef_mes">${opcoesMes(cfgF.reaj_benef_mes)}</select></div>
-            <p>Soma-se aos benefícios em R$ lançados abaixo (por colaborador ou total da filial): com 4,5%, R$ 803 viram R$ 839,14. <b>Se os valores lançados já estão reajustados, deixe 0.</b></p></div>
+            <div class="linha-campos"><b style="width:44px">${anoAnt()}</b><input class="campo" type="number" step="0.01" data-fcampo="reaj_benef_ant_pct" value="${cfgF.reaj_benef_ant_pct || 0}"> % a partir de <select class="campo" data-fcampo="reaj_benef_ant_mes">${opcoesMes(cfgF.reaj_benef_ant_mes || 1)}</select></div>
+            <div class="linha-campos" style="margin-top:.4rem"><b style="width:44px">${esc(E.dados.config.ano)}</b><input class="campo" type="number" step="0.01" data-fcampo="reaj_benef_pct" value="${cfgF.reaj_benef_pct}"> % a partir de <select class="campo" data-fcampo="reaj_benef_mes">${opcoesMes(cfgF.reaj_benef_mes)}</select></div>
+            <p>Soma-se aos benefícios em R$ lançados abaixo (por colaborador ou total da filial): com 4,5%, R$ 803 viram R$ 839,14. <b>${anoAnt()}</b>: reajuste que os valores lançados ainda não têm; <b>${esc(E.dados.config.ano)}</b>: o do ano, por cima. <b>Se os valores lançados já estão reajustados, deixe 0.</b></p></div>
         </div>` : `
         <div class="reajuste" style="margin-bottom:1rem"><h4>📈 Dissídio em lote</h4>
-          <div class="linha-campos">Aplicar o dissídio <select class="campo" id="lote-qual" style="width:76px"><option value="ant">${anoAnt()}</option><option value="atual" selected>${esc(E.dados.config.ano)}</option></select> de <input class="campo" type="number" step="0.01" id="lote-pct" placeholder="%"> % a partir de <select class="campo" id="lote-mes">${opcoesMes(5)}</select> em todas as filiais ${escopo === '*' ? 'da empresa' : 'da regional'} <button class="btn btn-claro btn-sm" id="lote-aplicar">Aplicar</button></div>
+          <div class="linha-campos">Aplicar o reajuste <select class="campo" id="lote-qual" style="width:auto"><option value="dissidio_ant_">salarial ${anoAnt()}</option><option value="dissidio_" selected>salarial ${esc(E.dados.config.ano)}</option><option value="reaj_benef_ant_">de benefícios ${anoAnt()}</option><option value="reaj_benef_">de benefícios ${esc(E.dados.config.ano)}</option></select> de <input class="campo" type="number" step="0.01" id="lote-pct" placeholder="%"> % a partir de <select class="campo" id="lote-mes">${opcoesMes(5)}</select> em todas as filiais ${escopo === '*' ? 'da empresa' : 'da regional'} <button class="btn btn-claro btn-sm" id="lote-aplicar">Aplicar</button></div>
           <p>Grava direto em cada filial. Depois é possível ajustar filial por filial.</p></div>`}
         <div class="tabela-wrap"><table class="tabela tabela-prem" id="tabela-prem"></table></div>
         <div class="prem-rodape">
@@ -1626,12 +1651,12 @@ function renderPremissas() {
     const pct = $('#lote-pct').value;
     if (pct === '') return toast('Informe o %.', 'erro');
     const alvo = escopo === '*' ? filiaisDa('') : filiaisDa(escopo.slice(2));
-    const pre = $('#lote-qual').value === 'ant' ? 'dissidio_ant_' : 'dissidio_';
-    const anoD = $('#lote-qual').value === 'ant' ? anoAnt() : E.dados.config.ano;
-    if (!confirm(`Aplicar dissídio ${anoD} de ${pct}% a partir de ${MESES[$('#lote-mes').value - 1]} em ${alvo.length} filial(is)?`)) return;
+    const pre = $('#lote-qual').value;
+    const qual = $('#lote-qual').selectedOptions[0].textContent;
+    if (!confirm(`Aplicar reajuste ${qual} de ${pct}% a partir de ${MESES[$('#lote-mes').value - 1]} em ${alvo.length} filial(is)?`)) return;
     await api('/api/filiais', { method: 'PUT', body: { filiais: alvo.map(filial => ({ filial, [`${pre}pct`]: pct, [`${pre}mes`]: $('#lote-mes').value })) } });
     await carregar();
-    toast('Dissídio aplicado.');
+    toast('Reajuste aplicado.');
     renderPremissas();
   });
   $('#cfg-ano', el)?.addEventListener('change', async e => {
@@ -1698,9 +1723,9 @@ function notaReajuste(rub, tipo, p) {
   const { escopo } = E.prem;
   if (rub.grupo !== 'beneficios' || (tipo !== 'fixo' && tipo !== 'rateio') || !E.dados.filiais[escopo]) return '';
   const cfg = { ...E.dados.filiais[escopo], ...E.prem.filial };
-  const pct = Number(cfg.reaj_benef_pct) || 0;
-  if (!pct || !Number(p.valor)) return '';
-  return `<small class="nota-reajuste" title="Reajuste de benefícios da filial">+${fmtN(pct)}% a partir de ${MESES[(cfg.reaj_benef_mes || 1) - 1]} → ${brl.format(Number(p.valor) * (1 + pct / 100))}</small>`;
+  const fim = fatorBenefDe(cfg, 11);
+  if (fim === 1 || !Number(p.valor)) return '';
+  return `<small class="nota-reajuste" title="Reajuste de benefícios da filial: ${esc(textoReajuste(cfg, 'reaj_benef'))}">+${esc(textoReajuste(cfg, 'reaj_benef'))} → ${brl.format(Number(p.valor) * fim)}</small>`;
 }
 
 function linhaPremHtml(rub, previa) {
@@ -1975,7 +2000,7 @@ function renderQuadro() {
 }
 
 // DISSÍDIO ANO ANTERIOR = o que a base ainda não tem (ex.: 2026); DISSÍDIO = o do ano do orçamento (data-base)
-const COLS_FIXAS = ['REGIONAL', 'UF', 'FILIAL', 'DISSÍDIO ANO ANTERIOR %', 'MÊS DISSÍDIO ANO ANTERIOR', 'DISSÍDIO %', 'MÊS DISSÍDIO', 'REAJ. BENEFÍCIOS %', 'MÊS REAJ. BENEFÍCIOS'];
+const COLS_FIXAS = ['REGIONAL', 'UF', 'FILIAL', 'DISSÍDIO ANO ANTERIOR %', 'MÊS DISSÍDIO ANO ANTERIOR', 'DISSÍDIO %', 'MÊS DISSÍDIO', 'REAJ. BENEFÍCIOS ANO ANTERIOR %', 'MÊS REAJ. BENEFÍCIOS ANO ANTERIOR', 'REAJ. BENEFÍCIOS %', 'MÊS REAJ. BENEFÍCIOS'];
 
 function exportarQuadro() {
   if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
@@ -1983,7 +2008,7 @@ function exportarQuadro() {
   const fils = Object.values(E.dados.filiais).sort((a, b) => a.regional.localeCompare(b.regional) || a.filial.localeCompare(b.filial));
   const linhas = [[...COLS_FIXAS, ...rubs.map(r => r.nome)]];
   for (const f of fils) {
-    linhas.push([f.regional, f.uf || '', f.filial, Number(f.dissidio_ant_pct) || 0, MESES[(f.dissidio_ant_mes || 1) - 1], f.dissidio_pct, MESES[f.dissidio_mes - 1], f.reaj_benef_pct, MESES[f.reaj_benef_mes - 1],
+    linhas.push([f.regional, f.uf || '', f.filial, Number(f.dissidio_ant_pct) || 0, MESES[(f.dissidio_ant_mes || 1) - 1], f.dissidio_pct, MESES[f.dissidio_mes - 1], Number(f.reaj_benef_ant_pct) || 0, MESES[(f.reaj_benef_ant_mes || 1) - 1], f.reaj_benef_pct, MESES[f.reaj_benef_mes - 1],
       ...rubs.map(r => {
         const p = Motor.premissaDe(E.dados.premissas, f.filial, f.regional, r.id);
         return p.metodo === 'fixo' ? Number(p.valor) : textoCurto(p);
@@ -2142,7 +2167,8 @@ async function gerarModeloPremissas(filiais, grupos, comReajustes) {
     if (comReajustes) {
       linha([...id, 'Reajustes', `Dissídio ${anoAnt()} % (a base ainda não tem)`, '', '', Number(cfg.dissidio_ant_pct) || 0, '', MESES[(cfg.dissidio_ant_mes || 1) - 1], ...MESES.map(() => null), '', 'dissidio_ant'], [8, 10, 23]);
       linha([...id, 'Reajustes', `Dissídio ${E.dados.config.ano} % (data-base)`, '', '', cfg.dissidio_pct, '', MESES[cfg.dissidio_mes - 1], ...MESES.map(() => null), '', 'dissidio'], [8, 10, 23]);
-      linha([...id, 'Reajustes', 'Reajuste de benefícios %', '', '', cfg.reaj_benef_pct, '', MESES[cfg.reaj_benef_mes - 1], ...MESES.map(() => null), '', 'reaj_benef'], [8, 10, 23]);
+      linha([...id, 'Reajustes', `Reajuste de benefícios ${anoAnt()} % (os valores ainda não têm)`, '', '', Number(cfg.reaj_benef_ant_pct) || 0, '', MESES[(cfg.reaj_benef_ant_mes || 1) - 1], ...MESES.map(() => null), '', 'reaj_benef_ant'], [8, 10, 23]);
+      linha([...id, 'Reajustes', `Reajuste de benefícios ${E.dados.config.ano} %`, '', '', cfg.reaj_benef_pct, '', MESES[cfg.reaj_benef_mes - 1], ...MESES.map(() => null), '', 'reaj_benef'], [8, 10, 23]);
     }
     for (const rub of RUBRICAS.filter(x => !x.fixa && grupos.includes(x.grupo))) {
       const p = efet(f, rub.id);
@@ -2212,7 +2238,7 @@ function lerModeloPremissas(linhas, h) {
     const uf = String(l[ic.uf] ?? '').trim().toUpperCase();
     if (cfg && UFS_BR.includes(uf) && uf !== (cfg.uf || '')) it.filial.uf = uf;
     const cod = String(l[ic.cod] ?? '').trim();
-    if (cod === 'dissidio' || cod === 'dissidio_ant' || cod === 'reaj_benef') {
+    if (['dissidio', 'dissidio_ant', 'reaj_benef', 'reaj_benef_ant'].includes(cod)) {
       const v = num(l[ic.valor]);
       const m = mesDe(l[ic.mes]);
       const pref = cod;
@@ -2317,6 +2343,8 @@ async function importarQuadro(arquivo) {
     if (mesDe(val('MÊS DISSÍDIO ANO ANTERIOR'))) filialCfg.dissidio_ant_mes = mesDe(val('MÊS DISSÍDIO ANO ANTERIOR'));
     if (val('DISSÍDIO %') != null && val('DISSÍDIO %') !== '') filialCfg.dissidio_pct = Number(String(val('DISSÍDIO %')).replace('%', '').replace(',', '.')) || 0;
     if (mesDe(val('MÊS DISSÍDIO'))) filialCfg.dissidio_mes = mesDe(val('MÊS DISSÍDIO'));
+    if (val('REAJ. BENEFÍCIOS ANO ANTERIOR %') != null && val('REAJ. BENEFÍCIOS ANO ANTERIOR %') !== '') filialCfg.reaj_benef_ant_pct = Number(String(val('REAJ. BENEFÍCIOS ANO ANTERIOR %')).replace('%', '').replace(',', '.')) || 0;
+    if (mesDe(val('MÊS REAJ. BENEFÍCIOS ANO ANTERIOR'))) filialCfg.reaj_benef_ant_mes = mesDe(val('MÊS REAJ. BENEFÍCIOS ANO ANTERIOR'));
     if (val('REAJ. BENEFÍCIOS %') != null && val('REAJ. BENEFÍCIOS %') !== '') filialCfg.reaj_benef_pct = Number(String(val('REAJ. BENEFÍCIOS %')).replace('%', '').replace(',', '.')) || 0;
     if (mesDe(val('MÊS REAJ. BENEFÍCIOS'))) filialCfg.reaj_benef_mes = mesDe(val('MÊS REAJ. BENEFÍCIOS'));
     const ufLida = String(val('UF') ?? val('ESTADO') ?? '').trim().toUpperCase();
@@ -2860,7 +2888,7 @@ function desenharAnoAnterior(box) {
   const hcMes = MESES.map((_, m) => ant.filter(x => Number(x.salarios[m]) > 0).length);
   box.innerHTML = `
     <h3>Histórico ${a} <small>· salário pago em cada mês, para comparar ${a} × ${E.dados.config.ano}</small></h3>
-    <p class="subtitulo" style="margin:0 0 .8rem">Uma linha por colaborador com o salário de cada mês de ${a}. A ferramenta aplica as regras das premissas (adicionais, férias + 1/3, 13º, FGTS, INSS, benefícios, PPR…) <b>sem o dissídio e sem o reajuste de benefícios de ${E.dados.config.ano}</b> e monta o custo de ${a} para o comparativo no Painel e na Simulação. Mês vazio ou 0 = a pessoa não estava na empresa naquele mês. Aceita também <b>uma linha por mês</b> (colunas Mês/Ano e Salário). Se o ano ainda não fechou, os meses que faltam são projetados com o salário do último mês de quem estava ativo nele.</p>
+    <p class="subtitulo" style="margin:0 0 .8rem">Uma linha por colaborador com o salário de cada mês de ${a}. A ferramenta aplica as regras das premissas (adicionais, férias + 1/3, 13º, FGTS, INSS, benefícios, PPR…) <b>sem o dissídio e sem o reajuste de benefícios de ${E.dados.config.ano}</b> (o dissídio e o reajuste de ${a} lançados nas filiais entram a partir da data-base, como provisão) e monta o custo de ${a} para o comparativo no Painel e na Simulação. Mês vazio ou 0 = a pessoa não estava na empresa naquele mês. Aceita também <b>uma linha por mês</b> (colunas Mês/Ano e Salário). Se o ano ainda não fechou, os meses que faltam são projetados com o salário do último mês de quem estava ativo nele.</p>
     <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center">
       <button class="btn btn-claro btn-sm" id="ant-modelo">⬇ Modelo do histórico</button>
       <label class="btn btn-marinho btn-sm" style="cursor:pointer">⬆ Importar histórico ${a}<input type="file" id="ant-arquivo" accept=".xlsx,.xls,.csv" hidden></label>
@@ -3229,7 +3257,7 @@ function detalheConferencia() {
       <h3 style="margin:.4rem 0 .7rem;font-size:.95rem">Premissas aplicadas</h3>
       <div class="resumo-prem">
         <div><span>Dissídio</span><b>${esc(textoDissidio(cfg))}</b><button class="btn-ajustar" data-pedir-prem="dissidio">✏️ Ajustar</button></div>
-        <div><span>Reajuste de benefícios</span><b>${num2.format(cfg.reaj_benef_pct)}% a partir de ${MESES[cfg.reaj_benef_mes - 1]}</b><button class="btn-ajustar" data-pedir-prem="reaj_benef">✏️ Ajustar</button></div>
+        <div><span>Reajuste de benefícios</span><b>${esc(textoReajuste(cfg, 'reaj_benef'))}</b><button class="btn-ajustar" data-pedir-prem="reaj_benef">✏️ Ajustar</button></div>
         ${ativas.map(({ r, p }) => `<div><span>${esc(r.nome)}</span><b>${esc(descreverComQuem(p))}</b><button class="btn-ajustar" data-pedir-prem="${r.id}">✏️ Ajustar</button></div>`).join('')}
       </div>
       <div class="ferramentas" style="margin:1.4rem 0 .7rem">

@@ -7,7 +7,7 @@
 //                  salarios: [12] — histórico do ano anterior: salário pago em cada mês (ativo onde > 0, sem dissídio)
 //                  excecoes: { [rubrica]: { metodo: 'nao' | 'fixo' | 'pct' | 'multiplo', valor, origem? } } — condições próprias do
 //                  colaborador (ex.: sucedidos de outra empresa com benefício diferente). Valem no lugar da regra da filial.
-//   filiais:       { [filial]: { regional, dissidio_ant_pct, dissidio_ant_mes, dissidio_pct, dissidio_mes, reaj_benef_pct, reaj_benef_mes } }
+//   filiais:       { [filial]: { regional, dissidio_ant_pct, dissidio_ant_mes, dissidio_pct, dissidio_mes, reaj_benef_ant_pct, reaj_benef_ant_mes, reaj_benef_pct, reaj_benef_mes } }
 //                  dissidio_ant = dissídio do ano anterior que a base ainda não tem; dissidio = o do ano do orçamento, por cima
 //   premissas:     { [escopo]: { [rubrica]: premissa } }  escopo = '*' (geral), 'R:<regional>' ou '<filial>'
 //   niveis:        { [nível do cargo]: múltiplo de salários do PPR } — tabela geral, usada se a regra não tiver a sua
@@ -233,19 +233,22 @@
       // dissídio do ano anterior × dissídio do ano do orçamento (um sobre o outro)
       return (m + 1 >= mesAnt ? 1 + num(f.dissidio_ant_pct) / 100 : 1) * (mesDiss && m + 1 >= mesDiss ? 1 + num(f.dissidio_pct) / 100 : 1);
     };
-    // Histórico do ano anterior (salarios[12]): o salário pago em cada mês, já com os reajustes daquele ano.
-    const salario = (i, m) => (colaboradores[i].salarios ? num(colaboradores[i].salarios[m]) : num(colaboradores[i].salario) * fatorDissidio(i, m));
+    // Histórico do ano anterior (salarios[12]): o salário pago em cada mês. O dissídio daquele ano que a folha ainda não
+    // tinha (provisão/retroativo) vem como dissidio_pct a partir da data-base; sem ele, o fator é 1.
+    const salario = (i, m) => (colaboradores[i].salarios ? num(colaboradores[i].salarios[m]) : num(colaboradores[i].salario)) * fatorDissidio(i, m);
     const salarioPpr = (i, p) => {
       const sh = colaboradores[i].salarios;
-      if (sh) { for (let m = 11; m >= 0; m--) if (num(sh[m]) > 0) return num(sh[m]); return 0; } // último salário do ano
+      if (sh) { for (let m = 11; m >= 0; m--) if (num(sh[m]) > 0) return num(sh[m]) * (p.sem_dissidio ? 1 : fatorDissidio(i, m)); return 0; } // último salário do ano
       const f = cfg[i];
       const reaj = p.sem_dissidio ? 1 : (1 + num(f.dissidio_ant_pct) / 100) * (num(f.dissidio_pct) && num(f.dissidio_mes) ? 1 + num(f.dissidio_pct) / 100 : 1);
       return num(colaboradores[i].salario) * reaj;
     };
     const fatorBenef = (i, m) => {
       const f = cfg[i];
+      const mesAnt = num(f.reaj_benef_ant_mes) || 1;
       const mes = num(f.reaj_benef_mes);
-      return mes && m + 1 >= mes ? 1 + num(f.reaj_benef_pct) / 100 : 1;
+      // reajuste do ano anterior × reajuste do ano (um sobre o outro)
+      return (m + 1 >= mesAnt ? 1 + num(f.reaj_benef_ant_pct) / 100 : 1) * (mes && m + 1 >= mes ? 1 + num(f.reaj_benef_pct) / 100 : 1);
     };
 
     // Grupos de rateio: colaboradores de cada filial.

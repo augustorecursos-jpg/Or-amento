@@ -165,6 +165,9 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
 desde janeiro ou do mês escolhido — e o do **ano do orçamento** (data-base 2027), aplicado por cima no mês da data-base.
 Ex.: base 10.000, 2026 5% e 2027 4,5% em agosto → jan–jul 10.500, ago–dez 10.972,50. PPR usa o salário com os dois.
 Simulador, premissas da filial, dissídio em lote e os Excel de premissas têm os dois; o Painel mostra o impacto de cada um.
+O **reajuste de benefícios** tem o mesmo par (ano anterior, que os valores lançados ainda não têm, e o do ano, por cima).
+No **comparativo**, o lado do ano anterior recebe o dissídio e o reajuste de benefícios do ano anterior a partir da
+data-base da filial (a mesma do ano do orçamento), como provisão/retroativo — inclusive nos meses projetados.
 
 **Filtros do topo com vários itens**: regional, estado, filial, centro de custo e conta são listas com caixinhas (busca,
 marcar todos, limpar; vale ao clicar em Aplicar ou fora da lista, Esc cancela). Nada marcado = todos.

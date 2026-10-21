@@ -151,6 +151,9 @@ if (!colFiliais.includes('uf')) db.exec('ALTER TABLE filiais ADD COLUMN uf TEXT'
 // O dissídio_pct/dissidio_mes continua sendo o do ano do orçamento (data-base 2027), aplicado por cima.
 if (!colFiliais.includes('dissidio_ant_pct')) db.exec('ALTER TABLE filiais ADD COLUMN dissidio_ant_pct REAL NOT NULL DEFAULT 0');
 if (!colFiliais.includes('dissidio_ant_mes')) db.exec('ALTER TABLE filiais ADD COLUMN dissidio_ant_mes INTEGER NOT NULL DEFAULT 1');
+// O mesmo para o reajuste de benefícios: o do ano anterior (que os valores lançados ainda não têm) e o do ano, por cima.
+if (!colFiliais.includes('reaj_benef_ant_pct')) db.exec('ALTER TABLE filiais ADD COLUMN reaj_benef_ant_pct REAL NOT NULL DEFAULT 0');
+if (!colFiliais.includes('reaj_benef_ant_mes')) db.exec('ALTER TABLE filiais ADD COLUMN reaj_benef_ant_mes INTEGER NOT NULL DEFAULT 1');
 // Perfil do acesso: 'coordenador' (confere e pede ajustes) ou 'leitura' (só visualiza, ex.: gerente)
 const colUsu = db.prepare('PRAGMA table_info(usuarios)').all().map(c => c.name);
 if (!colUsu.includes('perfil')) db.exec("ALTER TABLE usuarios ADD COLUMN perfil TEXT NOT NULL DEFAULT 'coordenador'");

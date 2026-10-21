@@ -50,6 +50,14 @@ test('dois dissídios: o do ano anterior desde janeiro e o do ano por cima, na d
   perto(tarde.valor(0, 0, 2), 10500);
 });
 
+test('reajuste de benefícios em dois anos: o do ano anterior desde janeiro e o do ano por cima', () => {
+  const filiais = { CUIABA: { reaj_benef_ant_pct: 4, reaj_benef_ant_mes: 1, reaj_benef_pct: 5, reaj_benef_mes: 8 } };
+  const premissas = { '*': { va: { metodo: 'fixo', valor: 803 } } };
+  const res = Motor.calcular({ colaboradores: [colab()], filiais, premissas });
+  perto(res.valor(0, Motor.IDX.va, 0), 835.12);   // 803 × 1,04
+  perto(res.valor(0, Motor.IDX.va, 7), 876.876);  // 803 × 1,04 × 1,05
+});
+
 test('rateio do total da filial por headcount e só entre quem recebe', () => {
   const premissas = { CUIABA: { horas_extras: { metodo: 'rateio', valor: 900, rateio: 'hc', periodo: 'mensal', quem: ['cc:17150'] } } };
   const colaboradores = [colab({ id: 1, cc_cod: '17150' }), colab({ id: 2, cc_cod: '17150' }), colab({ id: 3, cc_cod: '22153' })];
@@ -298,12 +306,17 @@ test('Total da filial vale sobre os valores da planilha da base (ex.: rescisão 
   perto(semTotal.valor(0, Motor.IDX.rescisao, 0), 500);
 });
 
-test('histórico do ano anterior: salário de cada mês, ativo só nos meses pagos, sem dissídio', () => {
+test('histórico do ano anterior: salário de cada mês, ativo só nos meses pagos; dissídio ainda não pago a partir da data-base', () => {
   const sal = [4000, 4000, 4000, 4000, 4200, 4200, 0, 0, 0, 0, 0, 0]; // desligado em julho
   const c = colab({ salarios: sal });
-  const res = Motor.calcular({ colaboradores: [c], filiais: { CUIABA: { dissidio_pct: 10, dissidio_mes: 1 } }, premissas: { '*': { periculosidade: { metodo: 'nao' } } } });
-  perto(res.valor(0, 0, 0), 4000);            // o dissídio do orçamento não entra no histórico
+  const premissas = { '*': { periculosidade: { metodo: 'nao' } } };
+  const res = Motor.calcular({ colaboradores: [c], filiais: { CUIABA: {} }, premissas });
+  perto(res.valor(0, 0, 0), 4000);            // sem dissídio: o salário pago
   perto(res.valor(0, 0, 4), 4200);
+  // dissídio daquele ano que a folha não tinha (provisão), a partir da data-base (maio)
+  const prov = Motor.calcular({ colaboradores: [c], filiais: { CUIABA: { dissidio_pct: 10, dissidio_mes: 5 } }, premissas });
+  perto(prov.valor(0, 0, 3), 4000);
+  perto(prov.valor(0, 0, 4), 4620);
   perto(res.valor(0, 0, 7), 0);
   perto(res.valor(0, Motor.IDX.decimo, 4), 4200 / 12);
   perto(res.valor(0, Motor.IDX.va, 7), 0);    // fora da empresa: sem benefícios
