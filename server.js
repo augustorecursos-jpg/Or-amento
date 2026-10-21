@@ -567,12 +567,14 @@ function salvarFilial(nome, b) {
   const novo = {
     dissidio_pct: b.dissidio_pct != null ? numero(b.dissidio_pct) : atual.dissidio_pct,
     dissidio_mes: mes(b.dissidio_mes, atual.dissidio_mes),
+    dissidio_ant_pct: b.dissidio_ant_pct != null ? numero(b.dissidio_ant_pct) : atual.dissidio_ant_pct,
+    dissidio_ant_mes: mes(b.dissidio_ant_mes, atual.dissidio_ant_mes),
     reaj_benef_pct: b.reaj_benef_pct != null ? numero(b.reaj_benef_pct) : atual.reaj_benef_pct,
     reaj_benef_mes: mes(b.reaj_benef_mes, atual.reaj_benef_mes),
     uf: b.uf !== undefined ? (UFS.includes(String(b.uf).toUpperCase()) ? String(b.uf).toUpperCase() : null) : atual.uf,
   };
-  db.prepare('UPDATE filiais SET dissidio_pct = ?, dissidio_mes = ?, reaj_benef_pct = ?, reaj_benef_mes = ?, uf = ? WHERE filial = ?')
-    .run(novo.dissidio_pct, novo.dissidio_mes, novo.reaj_benef_pct, novo.reaj_benef_mes, novo.uf, nome);
+  db.prepare('UPDATE filiais SET dissidio_pct = ?, dissidio_mes = ?, dissidio_ant_pct = ?, dissidio_ant_mes = ?, reaj_benef_pct = ?, reaj_benef_mes = ?, uf = ? WHERE filial = ?')
+    .run(novo.dissidio_pct, novo.dissidio_mes, novo.dissidio_ant_pct, novo.dissidio_ant_mes, novo.reaj_benef_pct, novo.reaj_benef_mes, novo.uf, nome);
   return true;
 }
 
@@ -582,7 +584,7 @@ app.put('/api/filiais', exigirAdmin, (req, res) => {
   let n = 0;
   for (const f of lista) if (salvarFilial(texto(f.filial, 120), f)) n++;
   db.exec('COMMIT');
-  registrar('Administrador', 'Alterou dissídio/reajuste', `${n} filial(is): ${lista.map(f => `${f.filial} ${f.dissidio_pct ?? ''}%`).join(', ').slice(0, 400)}`);
+  registrar('Administrador', 'Alterou dissídio/reajuste', `${n} filial(is): ${lista.map(f => `${f.filial}${f.dissidio_ant_pct != null ? ` ant. ${f.dissidio_ant_pct}%` : ''} ${f.dissidio_pct ?? ''}%`).join(', ').slice(0, 400)}`);
   res.json({ ok: true, atualizadas: n });
 });
 

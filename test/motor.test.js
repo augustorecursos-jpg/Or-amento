@@ -34,6 +34,22 @@ test('dissídio só a partir do mês da data-base', () => {
   perto(total(res, 'salario'), 4 * 1000 + 8 * 1100);
 });
 
+test('dois dissídios: o do ano anterior desde janeiro e o do ano por cima, na data-base (Holding)', () => {
+  // Base 10.000 sem o dissídio 2026 (5%); dissídio 2027 de 4,5% em agosto
+  const filiais = { CUIABA: { dissidio_ant_pct: 5, dissidio_ant_mes: 1, dissidio_pct: 4.5, dissidio_mes: 8 } };
+  const premissas = { '*': { ppr: { metodo: 'multiplo', valor: 1, periodo: 'anual_mes', mes: 3 } } };
+  const res = Motor.calcular({ colaboradores: [colab({ salario: 10000 })], filiais, premissas, mesesSalario: 12 });
+  perto(res.valor(0, 0, 0), 10500);   // jan: só o de 2026
+  perto(res.valor(0, 0, 6), 10500);   // jul
+  perto(res.valor(0, 0, 7), 10972.5); // ago: 10.000 × 1,05 × 1,045
+  perto(total(res, 'salario'), 7 * 10500 + 5 * 10972.5);
+  perto(total(res, 'ppr'), 10972.5);  // PPR sobre o salário com os dois dissídios
+  // o de 2026 pode começar depois de janeiro
+  const tarde = Motor.calcular({ colaboradores: [colab({ salario: 10000 })], filiais: { CUIABA: { dissidio_ant_pct: 5, dissidio_ant_mes: 3 } }, premissas: {}, mesesSalario: 12 });
+  perto(tarde.valor(0, 0, 1), 10000);
+  perto(tarde.valor(0, 0, 2), 10500);
+});
+
 test('rateio do total da filial por headcount e só entre quem recebe', () => {
   const premissas = { CUIABA: { horas_extras: { metodo: 'rateio', valor: 900, rateio: 'hc', periodo: 'mensal', quem: ['cc:17150'] } } };
   const colaboradores = [colab({ id: 1, cc_cod: '17150' }), colab({ id: 2, cc_cod: '17150' }), colab({ id: 3, cc_cod: '22153' })];

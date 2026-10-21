@@ -161,6 +161,11 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
 **Guia do coordenador** (`public/guia/guia-do-coordenador.pdf`): link “Primeira vez aqui?” na tela de acesso e item
 “Guia do coordenador” no menu lateral, como na Trilha.
 
+**Dois dissídios por filial**: o do **ano anterior** (ex.: data-base 2026), que o salário da base ainda não tem — vale
+desde janeiro ou do mês escolhido — e o do **ano do orçamento** (data-base 2027), aplicado por cima no mês da data-base.
+Ex.: base 10.000, 2026 5% e 2027 4,5% em agosto → jan–jul 10.500, ago–dez 10.972,50. PPR usa o salário com os dois.
+Simulador, premissas da filial, dissídio em lote e os Excel de premissas têm os dois; o Painel mostra o impacto de cada um.
+
 **Filtros do topo com vários itens**: regional, estado, filial, centro de custo e conta são listas com caixinhas (busca,
 marcar todos, limpar; vale ao clicar em Aplicar ou fora da lista, Esc cancela). Nada marcado = todos.
 **Filtro de conta** (ao lado do centro de custo): grupos inteiros (caixinha do grupo) e/ou contas soltas (Salário,

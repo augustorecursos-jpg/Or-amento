@@ -179,12 +179,14 @@ a.lateral-item { text-decoration: none; }
 .sim-todas { display: flex; gap: .4rem; align-items: center; font-size: .82rem; }
 .sim-todas .campo { padding: .4rem .5rem; width: 80px; }
 .sim-lista { max-height: 40vh; overflow-y: auto; display: grid; gap: .45rem; align-content: start; padding-right: 2px; }
-.sim-filial { display: grid; grid-template-columns: 1fr 74px 74px; gap: .35rem; align-items: center; font-size: .8rem; padding: .4rem .5rem; border-radius: 8px; background: var(--fundo); }
+.sim-filial { display: grid; grid-template-columns: 38px 1fr 74px; gap: .3rem .35rem; align-items: center; font-size: .8rem; padding: .45rem .5rem; border-radius: 8px; background: var(--fundo); }
+.sim-filial .sim-nome { grid-column: 1 / -1; }
+.sim-filial em { font-style: normal; font-size: .72rem; font-weight: 700; color: var(--texto-suave); }
 .sim-filial.alterada { background: var(--laranja-suave); box-shadow: inset 3px 0 0 var(--laranja); }
 .sim-filial span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .sim-filial span small { display: block; font-weight: 400; color: var(--texto-suave); font-size: .7rem; }
 .sim-filial .campo { padding: .35rem .4rem; font-size: .8rem; border-radius: 7px; }
-.sim-cab { display: grid; grid-template-columns: 1fr 74px 74px; gap: .35rem; font-size: .66rem; letter-spacing: .08em; text-transform: uppercase; color: var(--texto-suave); font-weight: 700; padding: 0 .5rem; }
+.sim-cab { display: grid; grid-template-columns: 38px 1fr 74px; gap: .35rem; font-size: .66rem; letter-spacing: .08em; text-transform: uppercase; color: var(--texto-suave); font-weight: 700; padding: 0 .5rem; }
 .sim-impacto { border-radius: 12px; padding: .8rem 1rem; background: var(--marinho); color: #dce7f0; font-size: .82rem; }
 .sim-impacto strong { display: block; font-family: var(--fonte-titulo); color: #fff; font-size: 1.15rem; }
 .sim-impacto.neutro { background: var(--fundo); color: var(--texto-suave); }
@@ -670,3 +672,6 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .multi-rodape small { flex: 1; color: var(--texto-suave); font-size: .74rem; }
 .barra-filtros .multi { min-width: 0; }
 @media (max-width: 900px) { .barra-filtros .multi { flex: 1; } .barra-filtros .multi .campo { width: 100%; max-width: none; } }
+.sim-todas { flex-wrap: wrap; }
+.sim-filial .campo, .sim-todas .campo { min-width: 0; }
+.sim-filial .campo { width: 100%; }

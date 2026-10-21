@@ -7,7 +7,8 @@
 //                  salarios: [12] — histórico do ano anterior: salário pago em cada mês (ativo onde > 0, sem dissídio)
 //                  excecoes: { [rubrica]: { metodo: 'nao' | 'fixo' | 'pct' | 'multiplo', valor, origem? } } — condições próprias do
 //                  colaborador (ex.: sucedidos de outra empresa com benefício diferente). Valem no lugar da regra da filial.
-//   filiais:       { [filial]: { regional, dissidio_pct, dissidio_mes, reaj_benef_pct, reaj_benef_mes } }
+//   filiais:       { [filial]: { regional, dissidio_ant_pct, dissidio_ant_mes, dissidio_pct, dissidio_mes, reaj_benef_pct, reaj_benef_mes } }
+//                  dissidio_ant = dissídio do ano anterior que a base ainda não tem; dissidio = o do ano do orçamento, por cima
 //   premissas:     { [escopo]: { [rubrica]: premissa } }  escopo = '*' (geral), 'R:<regional>' ou '<filial>'
 //   niveis:        { [nível do cargo]: múltiplo de salários do PPR } — tabela geral, usada se a regra não tiver a sua
 //
@@ -227,8 +228,10 @@
     };
     const fatorDissidio = (i, m) => {
       const f = cfg[i];
+      const mesAnt = num(f.dissidio_ant_mes) || 1;
       const mesDiss = num(f.dissidio_mes);
-      return mesDiss && m + 1 >= mesDiss ? 1 + num(f.dissidio_pct) / 100 : 1;
+      // dissídio do ano anterior × dissídio do ano do orçamento (um sobre o outro)
+      return (m + 1 >= mesAnt ? 1 + num(f.dissidio_ant_pct) / 100 : 1) * (mesDiss && m + 1 >= mesDiss ? 1 + num(f.dissidio_pct) / 100 : 1);
     };
     // Histórico do ano anterior (salarios[12]): o salário pago em cada mês, já com os reajustes daquele ano.
     const salario = (i, m) => (colaboradores[i].salarios ? num(colaboradores[i].salarios[m]) : num(colaboradores[i].salario) * fatorDissidio(i, m));
@@ -236,7 +239,7 @@
       const sh = colaboradores[i].salarios;
       if (sh) { for (let m = 11; m >= 0; m--) if (num(sh[m]) > 0) return num(sh[m]); return 0; } // último salário do ano
       const f = cfg[i];
-      const reaj = !p.sem_dissidio && num(f.dissidio_pct) && num(f.dissidio_mes) ? 1 + num(f.dissidio_pct) / 100 : 1;
+      const reaj = p.sem_dissidio ? 1 : (1 + num(f.dissidio_ant_pct) / 100) * (num(f.dissidio_pct) && num(f.dissidio_mes) ? 1 + num(f.dissidio_pct) / 100 : 1);
       return num(colaboradores[i].salario) * reaj;
     };
     const fatorBenef = (i, m) => {
