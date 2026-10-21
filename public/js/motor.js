@@ -8,6 +8,7 @@
 //                  excecoes: { [rubrica]: { metodo: 'nao' | 'fixo' | 'pct' | 'multiplo', valor, origem? } } — condições próprias do
 //                  colaborador (ex.: sucedidos de outra empresa com benefício diferente). Valem no lugar da regra da filial.
 //   filiais:       { [filial]: { regional, dissidio_ant_pct, dissidio_ant_mes, dissidio_pct, dissidio_mes, reaj_benef_ant_pct, reaj_benef_ant_mes, reaj_benef_pct, reaj_benef_mes } }
+//                  os *_ant valem o ano todo do orçamento; o *_ant_mes é a data-base daquele ano (usado no histórico)
 //                  dissidio_ant = dissídio do ano anterior que a base ainda não tem; dissidio = o do ano do orçamento, por cima
 //   premissas:     { [escopo]: { [rubrica]: premissa } }  escopo = '*' (geral), 'R:<regional>' ou '<filial>'
 //   niveis:        { [nível do cargo]: múltiplo de salários do PPR } — tabela geral, usada se a regra não tiver a sua
@@ -228,10 +229,10 @@
     };
     const fatorDissidio = (i, m) => {
       const f = cfg[i];
-      const mesAnt = num(f.dissidio_ant_mes) || 1;
       const mesDiss = num(f.dissidio_mes);
-      // dissídio do ano anterior × dissídio do ano do orçamento (um sobre o outro)
-      return (m + 1 >= mesAnt ? 1 + num(f.dissidio_ant_pct) / 100 : 1) * (mesDiss && m + 1 >= mesDiss ? 1 + num(f.dissidio_pct) / 100 : 1);
+      // Dissídio do ano anterior: começou na data-base daquele ano, então vale o ano todo do orçamento (até a nova data-base).
+      // Por cima dele, o dissídio do ano do orçamento a partir da data-base.
+      return (1 + num(f.dissidio_ant_pct) / 100) * (mesDiss && m + 1 >= mesDiss ? 1 + num(f.dissidio_pct) / 100 : 1);
     };
     // Histórico do ano anterior (salarios[12]): o salário pago em cada mês. O dissídio daquele ano que a folha ainda não
     // tinha (provisão/retroativo) vem como dissidio_pct a partir da data-base; sem ele, o fator é 1.
@@ -245,10 +246,9 @@
     };
     const fatorBenef = (i, m) => {
       const f = cfg[i];
-      const mesAnt = num(f.reaj_benef_ant_mes) || 1;
       const mes = num(f.reaj_benef_mes);
-      // reajuste do ano anterior × reajuste do ano (um sobre o outro)
-      return (m + 1 >= mesAnt ? 1 + num(f.reaj_benef_ant_pct) / 100 : 1) * (mes && m + 1 >= mes ? 1 + num(f.reaj_benef_pct) / 100 : 1);
+      // reajuste do ano anterior (vale o ano todo) × reajuste do ano a partir da data-base
+      return (1 + num(f.reaj_benef_ant_pct) / 100) * (mes && m + 1 >= mes ? 1 + num(f.reaj_benef_pct) / 100 : 1);
     };
 
     // Grupos de rateio: colaboradores de cada filial.

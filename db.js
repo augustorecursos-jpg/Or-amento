@@ -168,6 +168,13 @@ const PPR_HOLDING = {
   '07-Supervisores': 2, '09-Administrativo': 1, '06-Coordenação': 3, '05-Gerentes': 5, '01-Diretores': 10,
   '15-Operação - Produção': 1, '11-Operação - Nivel Superior': 1, '19-Engenheiros': 2, '08-Especialistas': 2, '04-Gerentes Executivo': 5,
 };
+// Uma vez: a data-base do dissídio/reajuste do ano anterior passa a ser o mês daquele ano; onde ainda não foi lançado,
+// começa igual à data-base do ano do orçamento.
+if (!db.prepare("SELECT 1 FROM config WHERE chave = 'data_base_ant'").get()) {
+  db.exec(`UPDATE filiais SET dissidio_ant_mes = dissidio_mes WHERE dissidio_ant_pct = 0;
+           UPDATE filiais SET reaj_benef_ant_mes = reaj_benef_mes WHERE reaj_benef_ant_pct = 0;
+           INSERT INTO config (chave, valor) VALUES ('data_base_ant', '1');`);
+}
 if (!db.prepare("SELECT 1 FROM config WHERE chave = 'ppr_holding'").get()) {
   db.prepare("INSERT OR IGNORE INTO premissas (escopo, rubrica, dados) VALUES ('HOLDING', 'ppr', ?)").run(JSON.stringify({
     metodo: 'multiplo', valor: 1, base: 'salario', periodo: 'anual_diluido', mes: 12, rateio: 'hc', teto: null,

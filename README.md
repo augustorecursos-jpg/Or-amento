@@ -161,13 +161,13 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
 **Guia do coordenador** (`public/guia/guia-do-coordenador.pdf`): link “Primeira vez aqui?” na tela de acesso e item
 “Guia do coordenador” no menu lateral, como na Trilha.
 
-**Dois dissídios por filial**: o do **ano anterior** (ex.: data-base 2026), que o salário da base ainda não tem — vale
-desde janeiro ou do mês escolhido — e o do **ano do orçamento** (data-base 2027), aplicado por cima no mês da data-base.
-Ex.: base 10.000, 2026 5% e 2027 4,5% em agosto → jan–jul 10.500, ago–dez 10.972,50. PPR usa o salário com os dois.
-Simulador, premissas da filial, dissídio em lote e os Excel de premissas têm os dois; o Painel mostra o impacto de cada um.
-O **reajuste de benefícios** tem o mesmo par (ano anterior, que os valores lançados ainda não têm, e o do ano, por cima).
-No **comparativo**, o lado do ano anterior recebe o dissídio e o reajuste de benefícios do ano anterior a partir da
-data-base da filial (a mesma do ano do orçamento), como provisão/retroativo — inclusive nos meses projetados.
+**Dois dissídios por filial**: o do **ano anterior** (ex.: 5% na data-base ago/26), que o salário da base ainda não tem,
+e o do **ano do orçamento** (ex.: 4,22% na data-base ago/27). O do ano anterior entra na data-base daquele ano (lado 2026
+do comparativo, como provisão, inclusive nos meses projetados) e **vale o ano todo do orçamento**, até a nova data-base;
+o do ano entra por cima na data-base. Ex.: base 13.720,34 → jan–jul/27 14.406,36 (× 1,05), ago–dez/27 15.014,31
+(× 1,05 × 1,0422). PPR usa o salário com os dois. O **reajuste de benefícios** tem o mesmo par.
+Simulador (abas Dissídio e Benefícios), premissas da filial, reajuste em lote e os Excel de premissas têm os dois; o
+Painel mostra o impacto de cada dissídio.
 
 **Filtros do topo com vários itens**: regional, estado, filial, centro de custo e conta são listas com caixinhas (busca,
 marcar todos, limpar; vale ao clicar em Aplicar ou fora da lista, Esc cancela). Nada marcado = todos.

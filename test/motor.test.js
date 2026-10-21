@@ -34,7 +34,7 @@ test('dissídio só a partir do mês da data-base', () => {
   perto(total(res, 'salario'), 4 * 1000 + 8 * 1100);
 });
 
-test('dois dissídios: o do ano anterior desde janeiro e o do ano por cima, na data-base (Holding)', () => {
+test('dois dissídios: o do ano anterior vale o ano todo e o do ano entra por cima na data-base (Holding)', () => {
   // Base 10.000 sem o dissídio 2026 (5%); dissídio 2027 de 4,5% em agosto
   const filiais = { CUIABA: { dissidio_ant_pct: 5, dissidio_ant_mes: 1, dissidio_pct: 4.5, dissidio_mes: 8 } };
   const premissas = { '*': { ppr: { metodo: 'multiplo', valor: 1, periodo: 'anual_mes', mes: 3 } } };
@@ -44,10 +44,11 @@ test('dois dissídios: o do ano anterior desde janeiro e o do ano por cima, na d
   perto(res.valor(0, 0, 7), 10972.5); // ago: 10.000 × 1,05 × 1,045
   perto(total(res, 'salario'), 7 * 10500 + 5 * 10972.5);
   perto(total(res, 'ppr'), 10972.5);  // PPR sobre o salário com os dois dissídios
-  // o de 2026 pode começar depois de janeiro
-  const tarde = Motor.calcular({ colaboradores: [colab({ salario: 10000 })], filiais: { CUIABA: { dissidio_ant_pct: 5, dissidio_ant_mes: 3 } }, premissas: {}, mesesSalario: 12 });
-  perto(tarde.valor(0, 0, 1), 10000);
-  perto(tarde.valor(0, 0, 2), 10500);
+  // a data-base de 2026 (ex.: agosto/26) não muda 2027: o dissídio 2026 já vale desde janeiro até a nova data-base
+  const ago = Motor.calcular({ colaboradores: [colab({ salario: 13720.34 })], filiais: { CUIABA: { dissidio_ant_pct: 5, dissidio_ant_mes: 8, dissidio_pct: 4.22, dissidio_mes: 8 } }, premissas: {}, mesesSalario: 12 });
+  perto(ago.valor(0, 0, 0), 14406.357);       // jan/27 = 13.720,34 × 1,05
+  perto(ago.valor(0, 0, 6), 14406.357);       // jul/27
+  perto(ago.valor(0, 0, 7), 15014.3053);      // ago/27 = × 1,0422
 });
 
 test('reajuste de benefícios em dois anos: o do ano anterior desde janeiro e o do ano por cima', () => {
