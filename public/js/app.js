@@ -218,7 +218,7 @@ function montarFiltros() {
   const depois = (k, rerender = true) => v => {
     sel[k] = v;
     if (k === 'conta') aplicarFiltroConta();
-    else montarFiltros();
+    montarFiltros(); // redesenha os botões (o da conta também), com a seleção nova
     if (rerender) renderAba();
   };
   montarMulti($('#f-regional'), { opcoes: regs.map(x => ({ v: x, rot: x })), sel: sel.regional, todos: E.eu.admin ? 'Todas as regionais' : 'Minhas regionais', plural: 'regionais', aplicar: depois('regional') });
@@ -283,7 +283,8 @@ function abrirMulti(el) {
   });
   busca?.addEventListener('input', desenhar);
   painelM.querySelector('[data-todos]').addEventListener('click', () => { visiveis().forEach(o => marcados.add(o.v)); desenhar(); });
-  painelM.querySelector('[data-limpar]').addEventListener('click', () => { marcados.clear(); desenhar(); });
+  // Limpar = volta para "todos" e já aplica
+  painelM.querySelector('[data-limpar]').addEventListener('click', () => { marcados.clear(); fecharMulti(el, true); });
   painelM.querySelector('[data-aplicar]').addEventListener('click', () => fecharMulti(el, true));
   busca?.focus();
 }
