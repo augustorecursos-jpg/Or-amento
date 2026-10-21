@@ -17,7 +17,7 @@ const E = {
   resSalvo: null,     // cálculo só com o que está salvo (para medir o impacto do rascunho)
   resSemDissidio: null,
   rascunho: {},       // filial → { dissidio_pct, dissidio_mes }
-  filtro: { regional: '', uf: '', filial: '', cc: '' },
+  filtro: { regional: '', uf: '', filial: '', cc: '', conta: '' },
   aba: 'painel',
   sim: { visao: 'rubricas', mil: false, fechados: new Set(), busca: '', abertos: new Set(), abertosAg: new Set() },
   prem: { escopo: '*', uf: '', edits: {}, filial: {}, propagar: {}, busca: '', visao: 'filial', ocultarVazios: true, quadroReg: '' },
@@ -58,20 +58,55 @@ function lancamentosComoLinhas() {
 function recalcular() {
   const { premissas, niveis } = E.dados;
   const colaboradores = [...E.dados.colaboradores, ...lancamentosComoLinhas()];
-  E.res = Motor.calcular({ colaboradores, filiais: filiaisComRascunho(), premissas, niveis });
-  E.resSalvo = Object.keys(E.rascunho).length ? Motor.calcular({ colaboradores, filiais: E.dados.filiais, premissas, niveis }) : E.res;
+  const b = {};
+  b.res = Motor.calcular({ colaboradores, filiais: filiaisComRascunho(), premissas, niveis });
+  b.resSalvo = Object.keys(E.rascunho).length ? Motor.calcular({ colaboradores, filiais: E.dados.filiais, premissas, niveis }) : b.res;
   const semDiss = {};
   for (const [f, cfg] of Object.entries(filiaisComRascunho())) semDiss[f] = { ...cfg, dissidio_pct: 0 };
-  E.resSemDissidio = Motor.calcular({ colaboradores, filiais: semDiss, premissas, niveis });
+  b.resSemDissidio = Motor.calcular({ colaboradores, filiais: semDiss, premissas, niveis });
   // Ano anterior: salários pagos de cada mês + as regras atuais, sem o dissídio e sem o reajuste de benefícios do orçamento
   const ant = anteriorComoColaboradores();
   if (ant.length) {
     const semReaj = {};
     for (const [f, cfg] of Object.entries(E.dados.filiais)) semReaj[f] = { ...cfg, dissidio_pct: 0, reaj_benef_pct: 0 };
-    E.resAnt = soGruposComparados(Motor.calcular({ colaboradores: ant, filiais: semReaj, premissas, niveis }));
-    E.resCmp = soGruposComparados(E.res);
-  } else E.resAnt = E.resCmp = null;
-  if (!E.resAnt) E.comparar = false;
+    b.resAnt = soGruposComparados(Motor.calcular({ colaboradores: ant, filiais: semReaj, premissas, niveis }));
+    b.resCmp = soGruposComparados(b.res);
+  } else b.resAnt = b.resCmp = null;
+  if (!b.resAnt) E.comparar = false;
+  E.bruto = b;
+  aplicarFiltroConta();
+}
+
+/** Filtro de conta do topo: '' = todas; 'g:<grupo>' = um grupo; 'r:<rubrica>' = uma conta. */
+function contaNoFiltro() {
+  const f = E.filtro.conta;
+  if (!f) return null;
+  const [t, id] = [f.slice(0, 1), f.slice(2)];
+  return RUBRICAS.map((r, k) => ((t === 'g' ? r.grupo === id : r.id === id) ? k : -1)).filter(k => k >= 0);
+}
+const nomeContaFiltro = () => {
+  const f = E.filtro.conta;
+  if (!f) return '';
+  return f.startsWith('g:') ? `Grupo ${NOME_GRUPO[f.slice(2)]}` : RUBRICAS.find(r => r.id === f.slice(2))?.nome || '';
+};
+/** Cópia do cálculo só com algumas contas (índices das rubricas). */
+function soRubricas(res, manter) {
+  const fica = new Set(manter);
+  const fora = RUBRICAS.map((_, k) => k).filter(k => !fica.has(k));
+  const valores = Float64Array.from(res.valores);
+  for (let i = 0; i < res.n; i++) for (const k of fora) valores.fill(0, (i * RN + k) * 12, (i * RN + k) * 12 + 12);
+  return { ...res, valores, valor: (i, r, m) => valores[(i * RN + r) * 12 + m] };
+}
+/** Aplica o filtro de conta sobre os cálculos já feitos (sem recalcular). */
+function aplicarFiltroConta() {
+  const b = E.bruto;
+  const ks = contaNoFiltro();
+  const ap = r => (r && ks ? soRubricas(r, ks) : r);
+  E.res = ap(b.res);
+  E.resSalvo = b.resSalvo === b.res ? E.res : ap(b.resSalvo);
+  E.resSemDissidio = ap(b.resSemDissidio);
+  E.resAnt = ap(b.resAnt);
+  E.resCmp = ap(b.resCmp);
   _regras = new Map();
 }
 
@@ -80,10 +115,7 @@ const GRUPOS_CMP = new Set(['remuneracao', 'provisoes', 'encargos', 'beneficios'
 const GRUPOS_CMP_TXT = 'remuneração, provisões, encargos e benefícios';
 /** Cópia do cálculo só com as contas dos grupos comparados. */
 function soGruposComparados(res) {
-  const fora = RUBRICAS.map((r, k) => (GRUPOS_CMP.has(r.grupo) ? -1 : k)).filter(k => k >= 0);
-  const valores = Float64Array.from(res.valores);
-  for (let i = 0; i < res.n; i++) for (const k of fora) valores.fill(0, (i * RN + k) * 12, (i * RN + k) * 12 + 12);
-  return { ...res, valores, valor: (i, r, m) => valores[(i * RN + r) * 12 + m] };
+  return soRubricas(res, RUBRICAS.map((r, k) => (GRUPOS_CMP.has(r.grupo) ? k : -1)).filter(k => k >= 0));
 }
 /** Meses do ano anterior que são realizados; os seguintes foram projetados com o salário do último mês. */
 const mesesReaisAnt = () => Number(E.dados.config.anterior_meses_reais) || 12;
@@ -163,6 +195,10 @@ function montarFiltros() {
   E.dados.colaboradores.filter(c => fils.includes(c.filial) && (!E.filtro.filial || c.filial === E.filtro.filial))
     .forEach(c => ccs.set(String(c.cc_cod || ''), rotuloCc(c)));
   if (E.filtro.cc && !ccs.has(E.filtro.cc)) E.filtro.cc = '';
+  $('#f-conta').innerHTML = `<option value="">Todas as contas</option>${GRUPOS.map(g => `<optgroup label="${esc(g.nome)}">
+    <option value="g:${g.id}" ${E.filtro.conta === `g:${g.id}` ? 'selected' : ''}>Todo o grupo ${esc(g.nome)}</option>
+    ${RUBRICAS.filter(r => r.grupo === g.id).map(r => `<option value="r:${r.id}" ${E.filtro.conta === `r:${r.id}` ? 'selected' : ''}>${esc(r.nome)}</option>`).join('')}</optgroup>`).join('')}`;
+  $('#f-conta').classList.toggle('filtro-ativo', Boolean(E.filtro.conta));
   $('#f-cc').innerHTML = `<option value="">Todos os centros de custo</option>${[...ccs].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR', { numeric: true }))
     .map(([cod, rot]) => `<option value="${esc(cod)}" ${cod === E.filtro.cc ? 'selected' : ''}>${esc(rot)}</option>`).join('')}`;
 }
@@ -264,7 +300,7 @@ function renderPainel() {
   const fil = filiaisComRascunho();
   const mesesDiss = [...new Set(col.map(c => fil[c.filial]).filter(f => f && f.dissidio_pct).map(f => f.dissidio_mes - 1))].sort((a, b) => a - b);
   const encBen = (somaG('encargos') + somaG('beneficios')) / (ag.total || 1);
-  const escopo = [E.filtro.filial || [E.filtro.regional, E.filtro.uf && (E.filtro.uf === '_' ? 'estado a definir' : E.filtro.uf)].filter(Boolean).join(' · ') || (E.eu.admin ? 'Todas as regionais' : E.eu.regionais.join(' · ')), ccFiltrado()].filter(Boolean).join(' · ');
+  const escopo = [E.filtro.filial || [E.filtro.regional, E.filtro.uf && (E.filtro.uf === '_' ? 'estado a definir' : E.filtro.uf)].filter(Boolean).join(' · ') || (E.eu.admin ? 'Todas as regionais' : E.eu.regionais.join(' · ')), ccFiltrado(), nomeContaFiltro()].filter(Boolean).join(' · ');
   const nivelCards = E.filtro.filial ? 'cc' : E.filtro.regional ? 'filial' : 'regional';
   const tituloCards = { regional: 'Custo por regional', filial: `Filiais da regional ${E.filtro.regional}`, cc: `Centros de custo · ${E.filtro.filial}` }[nivelCards];
 
@@ -316,7 +352,7 @@ function renderPainel() {
     <section class="hero2">
       <div class="pontilhado"></div>
       <div class="hero2-num">
-        <small>CUSTO ANUAL DE PESSOAL</small>
+        <small>${E.filtro.conta ? `CUSTO ANUAL · ${esc(nomeContaFiltro().toUpperCase())}` : 'CUSTO ANUAL DE PESSOAL'}</small>
         <div class="hero2-total" id="hero-total">${brl0.format(ag.total)}</div>
         <p>média de <b>${brl0.format(ag.total / 12)}</b> por mês · <b>${num0.format(hcMedio)}</b> colaboradores em média</p>
         <div class="hero2-chips">
@@ -864,6 +900,7 @@ function linhasSimulacao(res = E.res) {
         .map(({ r, i }) => ({ rotulo: r.nome, meses: [...ag.porRubrica.slice(i * 12, i * 12 + 12)] }))
         .filter(l => l.meses.some(x => x));
       const meses = MESES.map((_, m) => filhos.reduce((s, f) => s + f.meses[m], 0));
+      if (E.filtro.conta && !filhos.length) continue; // com filtro de conta, só os grupos que têm valor
       linhas.push({ grupo: g.id, rotulo: g.nome, meses, cor: g.cor });
       if (!E.sim.fechados.has(g.id)) filhos.forEach(f => linhas.push({ ...f, filho: true }));
     }
@@ -2191,7 +2228,7 @@ function atualizarRodapePrem(previa) {
   let total = 0;
   for (let i = 0; i < previa.n; i++) for (let r = 0; r < RUBRICAS.length; r++) for (let m = 0; m < 12; m++) total += previa.valor(i, r, m);
   $('#prem-total').textContent = brl0.format(total);
-  const salvo = totalDe(E.resSalvo, colabsDoEscopo(E.prem.escopo)).total;
+  const salvo = totalDe(E.bruto.resSalvo, colabsDoEscopo(E.prem.escopo)).total; // premissas: sempre todas as contas
   const pend = Object.keys(E.prem.edits).length + Object.keys(E.prem.filial).length;
   const dif = total - salvo;
   $('#prem-info').innerHTML = pend ? `<b>${pend}</b> alteração(ões) não salva(s) · impacto <b style="color:${dif > 0 ? '#b54d12' : '#177a44'}">${dif >= 0 ? '+' : ''}${brl0.format(dif)}</b> no ano` : 'Tudo salvo';
@@ -3442,12 +3479,13 @@ async function renderContabil() {
   const semCc = ccsBase.filter(([cod]) => ccContabil(cfg, cod).como === 'sem');
   const opcoes = (lista, sel, vazio) => `<option value="">${vazio}</option>${[...new Set([...lista, sel].filter(Boolean))].map(x => `<option ${x === sel ? 'selected' : ''}>${esc(x)}</option>`).join('')}`;
   const anualRub = k => { let s = 0; E.res.colaboradores.forEach((c, i) => { if (noFiltro(c)) for (let m = 0; m < 12; m++) s += E.res.valor(i, k, m); }); return s; };
-  const escopo = [E.filtro.filial || [E.filtro.regional, E.filtro.uf && (E.filtro.uf === '_' ? 'estado a definir' : E.filtro.uf)].filter(Boolean).join(' · ') || 'Todas as regionais', ccFiltrado()].filter(Boolean).join(' · ');
+  const escopo = [E.filtro.filial || [E.filtro.regional, E.filtro.uf && (E.filtro.uf === '_' ? 'estado a definir' : E.filtro.uf)].filter(Boolean).join(' · ') || 'Todas as regionais', ccFiltrado(), nomeContaFiltro()].filter(Boolean).join(' · ');
 
   el.innerHTML = `
     <div class="cab-pagina"><div><h1 class="titulo-pagina">Relatório <em>contábil</em></h1>
       <p class="subtitulo">Gera o arquivo no formato da contabilidade (Pacote · Centro de Custo · Conta Contábil · Terceiro · meses). Cada item do orçamento vai para uma conta contábil e cada CÓD. C. CUSTO da base vai para o centro de custo contábil.</p></div>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn btn-laranja" id="ct-baixar">⬇ Baixar relatório (Excel)</button><button class="btn btn-marinho" id="ct-baixar-epm">⬇ Baixar EPM (Excel)</button></div></div>
+    ${E.filtro.conta ? `<p class="aviso-ajuste">⚠ Filtro de conta ativo (<b>${esc(nomeContaFiltro())}</b>): o relatório e o EPM saem só com essa conta. Escolha <b>Todas as contas</b> no topo para o relatório completo.</p>` : ''}
 
     <div class="contabil-passos">
       <section class="cartao">
@@ -3966,6 +4004,12 @@ async function iniciar() {
   $('#f-uf').addEventListener('change', e => { E.filtro.uf = e.target.value; E.filtro.filial = ''; montarFiltros(); renderAba(); });
   $('#f-filial').addEventListener('change', e => { E.filtro.filial = e.target.value; montarFiltros(); renderAba(); });
   $('#f-cc').addEventListener('change', e => { E.filtro.cc = e.target.value; renderAba(); });
+  $('#f-conta').addEventListener('change', e => {
+    E.filtro.conta = e.target.value;
+    e.target.classList.toggle('filtro-ativo', Boolean(E.filtro.conta));
+    aplicarFiltroConta();
+    renderAba();
+  });
   window.addEventListener('beforeunload', e => {
     if (Object.keys(E.rascunho).length || Object.keys(E.prem.edits).length) { e.preventDefault(); e.returnValue = ''; }
   });

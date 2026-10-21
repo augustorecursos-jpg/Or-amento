@@ -643,3 +643,4 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .kpis-comp .kpi2 strong { font-size: clamp(1rem, 1.35vw, 1.3rem); white-space: nowrap; }
 .tabela tfoot .sub-ant { color: #f6b27a; }
 .hero2 .comp-escopo { margin: .35rem 0 0; font-size: .78rem; color: #9fb6c9; }
+.barra-filtros .campo.filtro-ativo { border-color: var(--laranja); box-shadow: 0 0 0 2px rgba(236, 107, 36, .18); font-weight: 600; }
