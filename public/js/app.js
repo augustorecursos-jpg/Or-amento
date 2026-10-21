@@ -17,7 +17,7 @@ const E = {
   resSalvo: null,     // cálculo só com o que está salvo (para medir o impacto do rascunho)
   resSemDissidio: null,
   rascunho: {},       // filial → { dissidio_pct, dissidio_mes }
-  filtro: { regional: '', uf: '', filial: '', cc: '', conta: '' },
+  filtro: filtroMulti({ regional: [], uf: [], filial: [], cc: [], conta: [] }), // filtros do topo: cada um aceita vários itens
   aba: 'painel',
   sim: { visao: 'rubricas', mil: false, fechados: new Set(), busca: '', abertos: new Set(), abertosAg: new Set() },
   prem: { escopo: '*', uf: '', edits: {}, filial: {}, propagar: {}, busca: '', visao: 'filial', ocultarVazios: true, quadroReg: '' },
@@ -79,15 +79,22 @@ function recalcular() {
 
 /** Filtro de conta do topo: '' = todas; 'g:<grupo>' = um grupo; 'r:<rubrica>' = uma conta. */
 function contaNoFiltro() {
-  const f = E.filtro.conta;
-  if (!f) return null;
-  const [t, id] = [f.slice(0, 1), f.slice(2)];
-  return RUBRICAS.map((r, k) => ((t === 'g' ? r.grupo === id : r.id === id) ? k : -1)).filter(k => k >= 0);
+  const ids = E.filtro.sel.conta;
+  if (!ids.length) return null;
+  return RUBRICAS.map((r, k) => (ids.includes(r.id) ? k : -1)).filter(k => k >= 0);
 }
 const nomeContaFiltro = () => {
-  const f = E.filtro.conta;
-  if (!f) return '';
-  return f.startsWith('g:') ? `Grupo ${NOME_GRUPO[f.slice(2)]}` : RUBRICAS.find(r => r.id === f.slice(2))?.nome || '';
+  const ids = E.filtro.sel.conta;
+  if (!ids.length) return '';
+  // grupos inteiros pelo nome; o resto conta a conta
+  const partes = [];
+  const sobra = new Set(ids);
+  for (const g of GRUPOS) {
+    const doG = RUBRICAS.filter(r => r.grupo === g.id).map(r => r.id);
+    if (doG.every(id => sobra.has(id))) { partes.push(`Grupo ${g.nome}`); doG.forEach(id => sobra.delete(id)); }
+  }
+  RUBRICAS.filter(r => sobra.has(r.id)).forEach(r => partes.push(r.nome));
+  return partes.length <= 3 ? partes.join(' + ') : `${ids.length} contas`;
 };
 /** Cópia do cálculo só com algumas contas (índices das rubricas). */
 function soRubricas(res, manter) {
@@ -154,15 +161,20 @@ async function carregar() {
 
 // Estado (UF) da filial; '_' = ainda não definido
 const ufDe = filial => E.dados.filiais[filial]?.uf || '';
-const bateUf = (filial, uf = E.filtro.uf) => !uf || (uf === '_' ? !ufDe(filial) : ufDe(filial) === uf);
-const noFiltro = c => (!E.filtro.regional || c.regional === E.filtro.regional) && bateUf(c.filial) && (!E.filtro.filial || c.filial === E.filtro.filial)
-  && (!E.filtro.cc || String(c.cc_cod || '') === E.filtro.cc);
+/** Estado da filial bate com um estado (texto) ou com algum de uma lista ([] / '' = todos). */
+const bateUf = (filial, ufs = E.filtro.sel.uf) => {
+  const lista = Array.isArray(ufs) ? ufs : ufs ? [ufs] : [];
+  return !lista.length || lista.some(uf => (uf === '_' ? !ufDe(filial) : ufDe(filial) === uf));
+};
+/** O valor passa no filtro k do topo? (nada marcado = passa tudo) */
+const noSel = (k, v) => !E.filtro.sel[k].length || E.filtro.sel[k].includes(v);
+const noFiltro = c => noSel('regional', c.regional) && bateUf(c.filial) && noSel('filial', c.filial) && noSel('cc', String(c.cc_cod || ''));
 const rotuloCc = c => `${c.cc_cod || '—'} · ${c.cc_nome || 'Sem centro de custo'}`;
 const regionais = () => [...new Set(Object.values(E.dados.filiais).map(f => f.regional))].sort();
 const filiaisDa = regional => Object.values(E.dados.filiais).filter(f => !regional || f.regional === regional).map(f => f.filial).sort();
 /** Filiais que passam pelos filtros do topo (regional, estado e filial). */
-const filiaisVisiveis = () => filiaisDa(E.filtro.regional).filter(f => bateUf(f) && (!E.filtro.filial || f === E.filtro.filial)
-  && (!E.filtro.cc || E.dados.colaboradores.some(c => c.filial === f && String(c.cc_cod || '') === E.filtro.cc)));
+const filiaisVisiveis = () => Object.values(E.dados.filiais).filter(f => noSel('regional', f.regional)).map(f => f.filial).sort()
+  .filter(f => bateUf(f) && noSel('filial', f) && (!E.filtro.sel.cc.length || E.dados.colaboradores.some(c => c.filial === f && E.filtro.sel.cc.includes(String(c.cc_cod || '')))));
 const UFS_BR = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
 /** Opções de estado presentes nas filiais (mais "a definir" se houver). */
 function opcoesUf(fils, sel, rotuloTodos = 'Todos os estados') {
@@ -178,32 +190,131 @@ function totalDe(res, filtro = noFiltro) {
 
 // ---------- estrutura (menu, filtros, modal) ----------
 
+/** Filtros do topo com vários itens. regional/uf/filial/cc também respondem como texto: o item, quando só um está marcado. */
+function filtroMulti(sel) {
+  const f = { sel };
+  for (const k of ['regional', 'uf', 'filial', 'cc']) {
+    Object.defineProperty(f, k, { get: () => (sel[k].length === 1 ? sel[k][0] : ''), set: v => { sel[k] = v ? [v] : []; }, enumerable: true });
+  }
+  Object.defineProperty(f, 'conta', { get: () => sel.conta.join(','), enumerable: true });
+  return f;
+}
+const temFiltroTopo = () => ['regional', 'uf', 'filial', 'cc'].some(k => E.filtro.sel[k].length);
+
 function montarFiltros() {
-  const r = $('#f-regional');
-  const f = $('#f-filial');
+  const sel = E.filtro.sel;
   const regs = regionais();
-  if (!regs.includes(E.filtro.regional)) E.filtro.regional = '';
-  r.innerHTML = `<option value="">${E.eu.admin ? 'Todas as regionais' : 'Minhas regionais'}</option>${regs.map(x => `<option ${x === E.filtro.regional ? 'selected' : ''}>${esc(x)}</option>`).join('')}`;
-  const doReg = filiaisDa(E.filtro.regional);
-  if (E.filtro.uf && !doReg.some(x => bateUf(x))) E.filtro.uf = '';
-  $('#f-uf').innerHTML = opcoesUf(doReg, E.filtro.uf);
+  sel.regional = sel.regional.filter(x => regs.includes(x));
+  const doReg = Object.values(E.dados.filiais).filter(f => noSel('regional', f.regional)).map(f => f.filial).sort();
+  const ufs = [...new Set(doReg.map(ufDe).filter(Boolean))].sort();
+  const temSemUf = doReg.some(f => !ufDe(f));
+  sel.uf = sel.uf.filter(u => (u === '_' ? temSemUf : ufs.includes(u)));
   const fils = doReg.filter(x => bateUf(x));
-  if (!fils.includes(E.filtro.filial)) E.filtro.filial = '';
-  f.innerHTML = `<option value="">Todas as filiais</option>${fils.map(x => `<option ${x === E.filtro.filial ? 'selected' : ''}>${esc(x)}</option>`).join('')}`;
+  sel.filial = sel.filial.filter(x => fils.includes(x));
   // Centros de custo das filiais que passam pelos filtros acima
   const ccs = new Map();
-  E.dados.colaboradores.filter(c => fils.includes(c.filial) && (!E.filtro.filial || c.filial === E.filtro.filial))
-    .forEach(c => ccs.set(String(c.cc_cod || ''), rotuloCc(c)));
-  if (E.filtro.cc && !ccs.has(E.filtro.cc)) E.filtro.cc = '';
-  $('#f-conta').innerHTML = `<option value="">Todas as contas</option>${GRUPOS.map(g => `<optgroup label="${esc(g.nome)}">
-    <option value="g:${g.id}" ${E.filtro.conta === `g:${g.id}` ? 'selected' : ''}>Todo o grupo ${esc(g.nome)}</option>
-    ${RUBRICAS.filter(r => r.grupo === g.id).map(r => `<option value="r:${r.id}" ${E.filtro.conta === `r:${r.id}` ? 'selected' : ''}>${esc(r.nome)}</option>`).join('')}</optgroup>`).join('')}`;
-  $('#f-conta').classList.toggle('filtro-ativo', Boolean(E.filtro.conta));
-  $('#f-cc').innerHTML = `<option value="">Todos os centros de custo</option>${[...ccs].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR', { numeric: true }))
-    .map(([cod, rot]) => `<option value="${esc(cod)}" ${cod === E.filtro.cc ? 'selected' : ''}>${esc(rot)}</option>`).join('')}`;
+  E.dados.colaboradores.filter(c => fils.includes(c.filial) && noSel('filial', c.filial)).forEach(c => ccs.set(String(c.cc_cod || ''), rotuloCc(c)));
+  sel.cc = sel.cc.filter(x => ccs.has(x));
+  const depois = (k, rerender = true) => v => {
+    sel[k] = v;
+    if (k === 'conta') aplicarFiltroConta();
+    else montarFiltros();
+    if (rerender) renderAba();
+  };
+  montarMulti($('#f-regional'), { opcoes: regs.map(x => ({ v: x, rot: x })), sel: sel.regional, todos: E.eu.admin ? 'Todas as regionais' : 'Minhas regionais', plural: 'regionais', aplicar: depois('regional') });
+  montarMulti($('#f-uf'), { opcoes: [...ufs.map(u => ({ v: u, rot: u })), ...(temSemUf ? [{ v: '_', rot: 'Estado a definir' }] : [])], sel: sel.uf, todos: 'Todos os estados', plural: 'estados', aplicar: depois('uf') });
+  montarMulti($('#f-filial'), { opcoes: fils.map(x => ({ v: x, rot: x })), sel: sel.filial, todos: 'Todas as filiais', plural: 'filiais', aplicar: depois('filial') });
+  montarMulti($('#f-cc'), {
+    opcoes: [...ccs].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR', { numeric: true })).map(([v, rot]) => ({ v, rot })),
+    sel: sel.cc, todos: 'Todos os centros de custo', plural: 'centros de custo', aplicar: depois('cc'),
+  });
+  montarMulti($('#f-conta'), {
+    opcoes: RUBRICAS.map(r => ({ v: r.id, rot: r.nome, grupo: r.grupo })), grupos: GRUPOS,
+    sel: sel.conta, todos: 'Todas as contas', plural: 'contas', aplicar: depois('conta'), nomeSel: nomeContaFiltro,
+  });
 }
+
+/** Lista suspensa com caixinhas. Marcar nada = todos. Vale ao fechar (Aplicar, clique fora); Esc cancela. */
+function montarMulti(el, cfg) {
+  el._cfg = cfg;
+  const n = cfg.sel.length;
+  const rot = !n ? cfg.todos : cfg.nomeSel ? cfg.nomeSel() : n === 1 ? cfg.opcoes.find(o => o.v === cfg.sel[0])?.rot || cfg.sel[0] : `${n} ${cfg.plural}`;
+  el.classList.add('multi');
+  el.innerHTML = `<button type="button" class="campo multi-botao${n ? ' filtro-ativo' : ''}" aria-haspopup="listbox" title="${esc(n ? cfg.sel.map(v => cfg.opcoes.find(o => o.v === v)?.rot || v).join(' · ') : cfg.todos)}"><span>${esc(rot)}</span></button>`;
+  el.querySelector('.multi-botao').addEventListener('click', e => { e.stopPropagation(); el.querySelector('.multi-painel') ? fecharMulti(el, true) : abrirMulti(el); });
+}
+
+function abrirMulti(el) {
+  $$('.multi').forEach(o => { if (o !== el && o.querySelector('.multi-painel')) fecharMulti(o, true); });
+  const cfg = el._cfg;
+  const marcados = new Set(cfg.sel);
+  const painelM = document.createElement('div');
+  painelM.className = 'multi-painel';
+  painelM.innerHTML = `${cfg.opcoes.length > 7 ? '<input class="campo multi-busca" placeholder="Buscar…">' : ''}
+    <div class="multi-acoes"><button type="button" data-todos>Marcar todos</button><button type="button" data-limpar>Limpar</button></div>
+    <div class="multi-lista" role="listbox" aria-multiselectable="true"></div>
+    <div class="multi-rodape"><small></small><button type="button" class="btn btn-laranja btn-sm" data-aplicar>Aplicar</button></div>`;
+  el.appendChild(painelM);
+  el._marcados = marcados;
+  const busca = painelM.querySelector('.multi-busca');
+  const visiveis = () => { const b = normCab(busca?.value || ''); return cfg.opcoes.filter(o => !b || normCab(o.rot).includes(b)); };
+  const desenhar = () => {
+    const vis = visiveis();
+    const linha = o => `<label class="multi-item"><input type="checkbox" value="${esc(o.v)}" ${marcados.has(o.v) ? 'checked' : ''}><span>${esc(o.rot)}</span></label>`;
+    painelM.querySelector('.multi-lista').innerHTML = cfg.grupos
+      ? cfg.grupos.map(g => {
+        const itens = vis.filter(o => o.grupo === g.id);
+        if (!itens.length) return '';
+        const todosG = itens.every(o => marcados.has(o.v));
+        const algum = itens.some(o => marcados.has(o.v));
+        return `<label class="multi-item multi-grupo"><input type="checkbox" data-grupo="${g.id}" ${todosG ? 'checked' : ''} ${!todosG && algum ? 'data-meio="1"' : ''}><i class="bola" style="background:${g.cor}"></i><span>${esc(g.nome)}</span></label>${itens.map(linha).join('')}`;
+      }).join('')
+      : vis.map(linha).join('') || '<p class="multi-vazio">Nada encontrado.</p>';
+    painelM.querySelectorAll('[data-meio]').forEach(c => { c.indeterminate = true; });
+    painelM.querySelector('.multi-rodape small').textContent = marcados.size ? `${marcados.size} marcado(s)` : `nada marcado = ${cfg.todos.toLowerCase()}`;
+  };
+  desenhar();
+  painelM.addEventListener('click', e => e.stopPropagation());
+  painelM.querySelector('.multi-lista').addEventListener('change', e => {
+    const c = e.target;
+    if (c.dataset.grupo) visiveis().filter(o => o.grupo === c.dataset.grupo).forEach(o => (c.checked ? marcados.add(o.v) : marcados.delete(o.v)));
+    else c.checked ? marcados.add(c.value) : marcados.delete(c.value);
+    desenhar();
+  });
+  busca?.addEventListener('input', desenhar);
+  painelM.querySelector('[data-todos]').addEventListener('click', () => { visiveis().forEach(o => marcados.add(o.v)); desenhar(); });
+  painelM.querySelector('[data-limpar]').addEventListener('click', () => { marcados.clear(); desenhar(); });
+  painelM.querySelector('[data-aplicar]').addEventListener('click', () => fecharMulti(el, true));
+  busca?.focus();
+}
+
+function fecharMulti(el, aplicar) {
+  const painelM = el.querySelector('.multi-painel');
+  if (!painelM) return;
+  painelM.remove();
+  const cfg = el._cfg;
+  // tudo marcado = o mesmo que nada marcado (todos)
+  let novo = cfg.opcoes.map(o => o.v).filter(v => el._marcados.has(v));
+  if (novo.length === cfg.opcoes.length) novo = [];
+  const mudou = novo.length !== cfg.sel.length || novo.some(v => !cfg.sel.includes(v));
+  if (aplicar && mudou) cfg.aplicar(novo);
+}
+document.addEventListener('click', () => $$('.multi').forEach(o => fecharMulti(o, true)));
+document.addEventListener('keydown', e => { if (e.key === 'Escape') $$('.multi').forEach(o => fecharMulti(o, false)); });
+
 /** Texto do centro de custo filtrado no topo (para títulos). */
-const ccFiltrado = () => { const c = E.filtro.cc && E.dados.colaboradores.find(x => String(x.cc_cod || '') === E.filtro.cc); return c ? rotuloCc(c) : ''; };
+const ccFiltrado = () => {
+  const sel = E.filtro.sel.cc;
+  if (sel.length > 1) return `${sel.length} centros de custo`;
+  const c = sel.length && E.dados.colaboradores.find(x => String(x.cc_cod || '') === sel[0]);
+  return c ? rotuloCc(c) : '';
+};
+/** Título do escopo filtrado no topo (filiais, ou regionais + estados). */
+function escopoFiltro(padrao) {
+  const sel = E.filtro.sel;
+  const um = (k, plural, nome = x => x) => (sel[k].length && sel[k].length <= 3 ? sel[k].map(nome).join(' + ') : sel[k].length ? `${sel[k].length} ${plural}` : '');
+  return um('filial', 'filiais') || [um('regional', 'regionais'), um('uf', 'estados', u => (u === '_' ? 'estado a definir' : u))].filter(Boolean).join(' · ') || padrao;
+}
 
 const TITULOS = {
   painel: 'Painel', simulacao: 'Simulação mês a mês', premissas: 'Premissas e regras', base: 'Base de colaboradores',
@@ -300,7 +411,7 @@ function renderPainel() {
   const fil = filiaisComRascunho();
   const mesesDiss = [...new Set(col.map(c => fil[c.filial]).filter(f => f && f.dissidio_pct).map(f => f.dissidio_mes - 1))].sort((a, b) => a - b);
   const encBen = (somaG('encargos') + somaG('beneficios')) / (ag.total || 1);
-  const escopo = [E.filtro.filial || [E.filtro.regional, E.filtro.uf && (E.filtro.uf === '_' ? 'estado a definir' : E.filtro.uf)].filter(Boolean).join(' · ') || (E.eu.admin ? 'Todas as regionais' : E.eu.regionais.join(' · ')), ccFiltrado(), nomeContaFiltro()].filter(Boolean).join(' · ');
+  const escopo = [escopoFiltro(E.eu.admin ? 'Todas as regionais' : E.eu.regionais.join(' · ')), ccFiltrado(), nomeContaFiltro()].filter(Boolean).join(' · ');
   const nivelCards = E.filtro.filial ? 'cc' : E.filtro.regional ? 'filial' : 'regional';
   const tituloCards = { regional: 'Custo por regional', filial: `Filiais da regional ${E.filtro.regional}`, cc: `Centros de custo · ${E.filtro.filial}` }[nivelCards];
 
@@ -575,7 +686,7 @@ function desenharComparativo(box) {
 /** Regra efetiva de uma conta nas filiais visíveis: o texto da premissa, ou "varia por filial". */
 let _regras = new Map(); // memória por render (zerada em recalcular)
 function regraDaRubrica(rid, fils = filiaisVisiveis()) {
-  const chave = `${rid}|${E.filtro.cc}|${fils.join(',')}`;
+  const chave = `${rid}|${E.filtro.sel.cc.join(',')}|${fils.join(',')}`;
   if (!_regras.has(chave)) _regras.set(chave, montarRegra(rid, fils));
   return _regras.get(chave);
 }
@@ -3479,13 +3590,13 @@ async function renderContabil() {
   const semCc = ccsBase.filter(([cod]) => ccContabil(cfg, cod).como === 'sem');
   const opcoes = (lista, sel, vazio) => `<option value="">${vazio}</option>${[...new Set([...lista, sel].filter(Boolean))].map(x => `<option ${x === sel ? 'selected' : ''}>${esc(x)}</option>`).join('')}`;
   const anualRub = k => { let s = 0; E.res.colaboradores.forEach((c, i) => { if (noFiltro(c)) for (let m = 0; m < 12; m++) s += E.res.valor(i, k, m); }); return s; };
-  const escopo = [E.filtro.filial || [E.filtro.regional, E.filtro.uf && (E.filtro.uf === '_' ? 'estado a definir' : E.filtro.uf)].filter(Boolean).join(' · ') || 'Todas as regionais', ccFiltrado(), nomeContaFiltro()].filter(Boolean).join(' · ');
+  const escopo = [escopoFiltro('Todas as regionais'), ccFiltrado(), nomeContaFiltro()].filter(Boolean).join(' · ');
 
   el.innerHTML = `
     <div class="cab-pagina"><div><h1 class="titulo-pagina">Relatório <em>contábil</em></h1>
       <p class="subtitulo">Gera o arquivo no formato da contabilidade (Pacote · Centro de Custo · Conta Contábil · Terceiro · meses). Cada item do orçamento vai para uma conta contábil e cada CÓD. C. CUSTO da base vai para o centro de custo contábil.</p></div>
       <div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn btn-laranja" id="ct-baixar">⬇ Baixar relatório (Excel)</button><button class="btn btn-marinho" id="ct-baixar-epm">⬇ Baixar EPM (Excel)</button></div></div>
-    ${E.filtro.conta ? `<p class="aviso-ajuste">⚠ Filtro de conta ativo (<b>${esc(nomeContaFiltro())}</b>): o relatório e o EPM saem só com essa conta. Escolha <b>Todas as contas</b> no topo para o relatório completo.</p>` : ''}
+    ${E.filtro.conta ? `<p class="aviso-ajuste">⚠ Filtro de conta ativo (<b>${esc(nomeContaFiltro())}</b>): o relatório e o EPM saem só com essa(s) conta(s). Escolha <b>Todas as contas</b> no topo para o relatório completo.</p>` : ''}
 
     <div class="contabil-passos">
       <section class="cartao">
@@ -3708,8 +3819,8 @@ function baixarContabil(cfg) {
 
 const RUBS_LANC = RUBRICAS.filter(r => !r.fixa && r.grupo !== 'encargos');
 const nomeItemLanc = id => (id === 'outras' ? 'Outra conta' : RUBRICAS[IDX[id]]?.nome || id);
-const noFiltroLanc = l => (l.regional === '*' || !E.filtro.regional || l.regional === E.filtro.regional) && (!E.filtro.filial || l.filial === E.filtro.filial)
-  && (!l.filial || bateUf(l.filial)) && (!E.filtro.cc || String(l.cc_cod || '') === E.filtro.cc);
+const noFiltroLanc = l => (l.regional === '*' || noSel('regional', l.regional)) && noSel('filial', l.filial)
+  && (!l.filial || bateUf(l.filial)) && noSel('cc', String(l.cc_cod || ''));
 const regionalLanc = l => (l.regional === '*' ? 'Todas as regionais (Brasil)' : l.regional);
 const filialLanc = l => l.filial || (l.dividir === 'hc' ? `Todas as filiais${l.regional === '*' ? '' : ' da regional'} · por headcount` : l.regional === '*' ? '— empresa (valor único) —' : '— só a regional —');
 const somaMeses = l => (l.meses || []).reduce((a, b) => a + (Number(b) || 0), 0);
@@ -3740,7 +3851,7 @@ async function renderLancamentos() {
           <td class="n"><b>${num2.format(somaMeses(l))}</b></td>
           <td><span class="acoes"><button class="btn-ic" data-editar title="Editar">✏️</button><button class="btn-ic" data-apagar title="Remover">🗑</button></span></td></tr>`).join('')}</tbody>
         <tfoot><tr class="total"><td class="fixa">Total · ${lista.length} lançamento(s)</td><td></td><td></td><td></td><td></td>${totMes.map(v => `<td class="n">${num2.format(v)}</td>`).join('')}<td class="n">${num2.format(totMes.reduce((a, b) => a + b, 0))}</td><td></td></tr></tfoot></table></div>`
-      : `<div class="vazio"><span>📌</span><h3>Nenhum lançamento${E.filtro.regional || E.filtro.filial || E.filtro.cc ? ' com esses filtros' : ''}</h3><p>Use <b>+ Novo lançamento</b> ou importe vários de uma vez pelo Excel (o botão <b>⬇ Excel / modelo</b> baixa o modelo).</p></div>`}
+      : `<div class="vazio"><span>📌</span><h3>Nenhum lançamento${temFiltroTopo() ? ' com esses filtros' : ''}</h3><p>Use <b>+ Novo lançamento</b> ou importe vários de uma vez pelo Excel (o botão <b>⬇ Excel / modelo</b> baixa o modelo).</p></div>`}
     </section>`;
   $('#lanc-novo', el).addEventListener('click', () => editarLancamento(null));
   $('#lanc-excel', el).addEventListener('click', () => baixarLancamentos(cfg, lista));
@@ -4000,16 +4111,6 @@ async function iniciar() {
   $$('.lateral-item[data-aba]').forEach(b => b.addEventListener('click', () => irPara(b.dataset.aba)));
   $('#btn-menu').addEventListener('click', () => $('#lateral').classList.toggle('aberta'));
   $('#sair').addEventListener('click', async () => { await api('/api/logout', { method: 'POST' }); location.replace('index.html'); });
-  $('#f-regional').addEventListener('change', e => { E.filtro.regional = e.target.value; E.filtro.filial = ''; montarFiltros(); renderAba(); });
-  $('#f-uf').addEventListener('change', e => { E.filtro.uf = e.target.value; E.filtro.filial = ''; montarFiltros(); renderAba(); });
-  $('#f-filial').addEventListener('change', e => { E.filtro.filial = e.target.value; montarFiltros(); renderAba(); });
-  $('#f-cc').addEventListener('change', e => { E.filtro.cc = e.target.value; renderAba(); });
-  $('#f-conta').addEventListener('change', e => {
-    E.filtro.conta = e.target.value;
-    e.target.classList.toggle('filtro-ativo', Boolean(E.filtro.conta));
-    aplicarFiltroConta();
-    renderAba();
-  });
   window.addEventListener('beforeunload', e => {
     if (Object.keys(E.rascunho).length || Object.keys(E.prem.edits).length) { e.preventDefault(); e.returnValue = ''; }
   });

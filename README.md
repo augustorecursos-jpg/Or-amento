@@ -161,8 +161,10 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
 **Guia do coordenador** (`public/guia/guia-do-coordenador.pdf`): link “Primeira vez aqui?” na tela de acesso e item
 “Guia do coordenador” no menu lateral, como na Trilha.
 
-**Filtro de conta** (topo, ao lado do centro de custo): todas as contas, um grupo inteiro (Remuneração, Provisões…) ou
-uma conta (Salário, Horas extras, Adicional noturno…). Vale para Painel, Headcount (custos), Comparativo, Simulação,
+**Filtros do topo com vários itens**: regional, estado, filial, centro de custo e conta são listas com caixinhas (busca,
+marcar todos, limpar; vale ao clicar em Aplicar ou fora da lista, Esc cancela). Nada marcado = todos.
+**Filtro de conta** (ao lado do centro de custo): grupos inteiros (caixinha do grupo) e/ou contas soltas (Salário,
+Horas extras, Adicional noturno…). Vale para Painel, Headcount (custos), Comparativo, Simulação,
 Base, Conferência e Relatório contábil (com aviso de que o relatório sai só com a conta filtrada). Premissas sempre
 mostram todas as contas.
 

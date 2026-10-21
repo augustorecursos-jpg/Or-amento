@@ -644,3 +644,29 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .tabela tfoot .sub-ant { color: #f6b27a; }
 .hero2 .comp-escopo { margin: .35rem 0 0; font-size: .78rem; color: #9fb6c9; }
 .barra-filtros .campo.filtro-ativo { border-color: var(--laranja); box-shadow: 0 0 0 2px rgba(236, 107, 36, .18); font-weight: 600; }
+
+/* ----- Filtros do topo com vários itens ----- */
+.multi { position: relative; }
+.multi-botao { display: flex; align-items: center; gap: .4rem; text-align: left; cursor: pointer; background: #fff; }
+.multi-botao span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.multi-botao::after { content: '▾'; color: var(--texto-suave); font-size: .8rem; }
+.multi-painel {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 60; width: 300px; max-width: 86vw; background: #fff;
+  border: 1px solid #dfe6ee; border-radius: 12px; box-shadow: 0 18px 40px -18px rgba(10, 44, 69, .45); padding: .6rem;
+  display: flex; flex-direction: column; gap: .45rem;
+}
+.multi-busca { width: 100%; padding: .45rem .65rem; font-size: .85rem; }
+.multi-acoes { display: flex; gap: .8rem; font-size: .78rem; }
+.multi-acoes button { background: none; border: 0; padding: 0; color: var(--azul, #2f6fa3); cursor: pointer; font-weight: 600; }
+.multi-lista { max-height: 330px; overflow: auto; display: flex; flex-direction: column; }
+.multi-item { display: flex; align-items: center; gap: .5rem; padding: .32rem .35rem; border-radius: 6px; font-size: .84rem; cursor: pointer; }
+.multi-item:hover { background: #f2f6fa; }
+.multi-item input { accent-color: var(--laranja); margin: 0; }
+.multi-grupo { font-weight: 700; color: var(--marinho, #164d74); margin-top: .25rem; border-top: 1px solid #eef2f6; padding-top: .45rem; }
+.multi-grupo:first-child { border-top: 0; margin-top: 0; }
+.multi-grupo + .multi-item, .multi-grupo ~ .multi-item:not(.multi-grupo) { padding-left: 1.4rem; }
+.multi-vazio { margin: .4rem; color: var(--texto-suave); font-size: .82rem; }
+.multi-rodape { display: flex; align-items: center; gap: .5rem; border-top: 1px solid #eef2f6; padding-top: .5rem; }
+.multi-rodape small { flex: 1; color: var(--texto-suave); font-size: .74rem; }
+.barra-filtros .multi { min-width: 0; }
+@media (max-width: 900px) { .barra-filtros .multi { flex: 1; } .barra-filtros .multi .campo { width: 100%; max-width: none; } }
