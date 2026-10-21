@@ -293,7 +293,10 @@ function ufSugerida(filial, regional) {
   return achado ? achado[1] : UF_POR_REGIONAL[String(regional || '').toUpperCase()] || null;
 }
 
+const CAMPOS_REAJUSTE = ['dissidio_ant_pct', 'dissidio_ant_mes', 'dissidio_pct', 'dissidio_mes', 'reaj_benef_ant_pct', 'reaj_benef_ant_mes', 'reaj_benef_pct', 'reaj_benef_mes'];
+
 function sincronizarFiliais() {
+  const antes = new Set(db.prepare('SELECT filial FROM filiais').all().map(f => f.filial));
   db.exec(`
     INSERT OR IGNORE INTO filiais (filial, regional)
     SELECT filial, MIN(regional) FROM colaboradores GROUP BY filial;
@@ -304,6 +307,20 @@ function sincronizarFiliais() {
   const sem = db.prepare("SELECT filial, regional FROM filiais WHERE uf IS NULL OR uf = ''").all();
   const gravar = db.prepare('UPDATE filiais SET uf = ? WHERE filial = ?');
   for (const f of sem) { const uf = ufSugerida(f.filial, f.regional); if (uf) gravar.run(uf, f.filial); }
+  // Filial nova (ex.: unidade que começa no ano do orçamento): começa com o dissídio e o reajuste de benefícios mais
+  // comuns das outras filiais da mesma regional — depois dá para ajustar na tela.
+  if (!antes.size) return;
+  const novas = db.prepare('SELECT filial, regional FROM filiais').all().filter(f => !antes.has(f.filial));
+  const copiar = db.prepare(`UPDATE filiais SET ${CAMPOS_REAJUSTE.map(k => `${k} = ?`).join(', ')} WHERE filial = ?`);
+  for (const f of novas) {
+    const irmas = db.prepare(`SELECT filial, ${CAMPOS_REAJUSTE.join(', ')} FROM filiais WHERE regional = ? AND filial <> ?`).all(f.regional, f.filial)
+      .filter(x => !novas.some(n => n.filial === x.filial));
+    if (!irmas.length) continue;
+    const cont = new Map();
+    irmas.forEach(x => { const k = JSON.stringify(CAMPOS_REAJUSTE.map(c => x[c])); cont.set(k, (cont.get(k) || 0) + 1); });
+    const [maisComum] = [...cont].sort((a, b) => b[1] - a[1])[0];
+    copiar.run(...JSON.parse(maisComum), f.filial);
+  }
 }
 
 module.exports = { db, DATA_DIR, registrar, sincronizarFiliais, ufSugerida, PPR_HOLDING };
