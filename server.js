@@ -88,7 +88,17 @@ function usuarioDaSessao(req) {
   if (s.admin) return { admin: true, nome: 'Administrador', login: 'admin', regionais: null };
   const u = db.prepare('SELECT * FROM usuarios WHERE id = ? AND ativo = 1').get(s.uid);
   if (!u) return null;
-  return { admin: false, id: u.id, nome: u.nome, login: u.login, regionais: JSON.parse(u.regionais || '[]') };
+  let regionais = JSON.parse(u.regionais || '[]');
+  const todas = regionais.includes('*'); // '*' = todas as regionais, inclusive as que entrarem depois
+  if (todas) regionais = db.prepare('SELECT DISTINCT regional FROM filiais ORDER BY regional').all().map(r => r.regional);
+  return { admin: false, id: u.id, nome: u.nome, login: u.login, regionais, todas, leitura: u.perfil === 'leitura' };
+}
+
+/** Acesso somente de visualização (ex.: gerente): não confere filial nem envia pedidos. */
+function bloquearLeitura(req, res) {
+  if (!req.usuario.leitura) return false;
+  res.status(403).json({ erro: 'Acesso somente para visualização.' });
+  return true;
 }
 
 function exigirLogin(req, res, next) {
@@ -223,8 +233,8 @@ app.post('/api/logout', (req, res) => {
 });
 
 app.get('/api/eu', exigirLogin, (req, res) => {
-  const { admin, nome, login, regionais } = req.usuario;
-  res.json({ admin, nome, login, regionais });
+  const { admin, nome, login, regionais, todas, leitura } = req.usuario;
+  res.json({ admin, nome, login, regionais, todas: Boolean(todas), leitura: Boolean(leitura) });
 });
 
 // ----- dados do orçamento (base + premissas) -----
@@ -577,6 +587,7 @@ app.put('/api/filiais', exigirAdmin, (req, res) => {
 });
 
 app.put('/api/filiais/:filial/conferencia', exigirLogin, (req, res) => {
+  if (bloquearLeitura(req, res)) return;
   const f = db.prepare('SELECT * FROM filiais WHERE filial = ?').get(req.params.filial);
   if (!f || !podeVerRegional(req.usuario, f.regional)) return res.status(404).json({ erro: 'Filial não encontrada.' });
   const status = req.body?.status === 'conferida' ? 'conferida' : 'pendente';
@@ -716,7 +727,7 @@ app.put('/api/contabil', exigirAdmin, (req, res) => {
 // ----- coordenadores -----
 
 app.get('/api/usuarios', exigirAdmin, (req, res) => {
-  const lista = db.prepare('SELECT id, nome, login, regionais, ativo, criado_em, ultimo_acesso FROM usuarios ORDER BY nome').all()
+  const lista = db.prepare('SELECT id, nome, login, regionais, perfil, ativo, criado_em, ultimo_acesso FROM usuarios ORDER BY nome').all()
     .map(u => ({ ...u, regionais: JSON.parse(u.regionais || '[]') }));
   res.json(lista);
 });
@@ -729,8 +740,9 @@ app.post('/api/usuarios', exigirAdmin, (req, res) => {
   if (!nome || !login || login === 'admin') return res.status(400).json({ erro: 'Informe nome e um login diferente de "admin".' });
   if (senha.length < 6) return res.status(400).json({ erro: 'A senha precisa ter pelo menos 6 caracteres.' });
   if (db.prepare('SELECT 1 FROM usuarios WHERE login = ?').get(login)) return res.status(400).json({ erro: 'Este login já existe.' });
-  db.prepare('INSERT INTO usuarios (nome, login, senha_hash, regionais) VALUES (?, ?, ?, ?)').run(nome, login, hashSenha(senha), JSON.stringify(regionais));
-  registrar('Administrador', 'Criou acesso de coordenador', `${nome} (${login}) · ${regionais.join(', ')}`);
+  const perfil = req.body?.perfil === 'leitura' ? 'leitura' : 'coordenador';
+  db.prepare('INSERT INTO usuarios (nome, login, senha_hash, regionais, perfil) VALUES (?, ?, ?, ?, ?)').run(nome, login, hashSenha(senha), JSON.stringify(regionais), perfil);
+  registrar('Administrador', perfil === 'leitura' ? 'Criou acesso somente visualização' : 'Criou acesso de coordenador', `${nome} (${login}) · ${regionais.join(', ').replace('*', 'todas as regionais')}`);
   res.json({ ok: true });
 });
 
@@ -740,12 +752,13 @@ app.put('/api/usuarios/:id', exigirAdmin, (req, res) => {
   const nome = texto(req.body?.nome, 120) || u.nome;
   const regionais = Array.isArray(req.body?.regionais) ? req.body.regionais.map(r => texto(r, 80).toUpperCase()).filter(Boolean) : JSON.parse(u.regionais);
   const ativo = req.body?.ativo == null ? u.ativo : (req.body.ativo ? 1 : 0);
+  const perfil = req.body?.perfil == null ? u.perfil : req.body.perfil === 'leitura' ? 'leitura' : 'coordenador';
   let hash = u.senha_hash;
   if (req.body?.senha) {
     if (String(req.body.senha).length < 6) return res.status(400).json({ erro: 'A senha precisa ter pelo menos 6 caracteres.' });
     hash = hashSenha(req.body.senha);
   }
-  db.prepare('UPDATE usuarios SET nome = ?, regionais = ?, ativo = ?, senha_hash = ? WHERE id = ?').run(nome, JSON.stringify(regionais), ativo, hash, u.id);
+  db.prepare('UPDATE usuarios SET nome = ?, regionais = ?, ativo = ?, senha_hash = ?, perfil = ? WHERE id = ?').run(nome, JSON.stringify(regionais), ativo, hash, perfil, u.id);
   registrar('Administrador', 'Alterou acesso de coordenador', `${nome} (${u.login})`);
   res.json({ ok: true });
 });
@@ -768,6 +781,7 @@ app.get('/api/solicitacoes', exigirLogin, (req, res) => {
 });
 
 app.post('/api/solicitacoes', exigirLogin, (req, res) => {
+  if (bloquearLeitura(req, res)) return;
   const u = req.usuario;
   const b = req.body || {};
   const regional = texto(b.regional, 80).toUpperCase();
@@ -787,6 +801,7 @@ app.put('/api/solicitacoes/:id', exigirLogin, (req, res) => {
   const s = db.prepare('SELECT * FROM solicitacoes WHERE id = ?').get(req.params.id);
   const u = req.usuario;
   if (!s || !podeVerRegional(u, s.regional)) return res.status(404).json({ erro: 'Solicitação não encontrada.' });
+  if (bloquearLeitura(req, res)) return;
   if (!u.admin) {
     // O coordenador só pode cancelar um pedido próprio que ainda não foi tratado.
     if (s.usuario_id !== u.id || s.status !== 'aberta') return res.status(403).json({ erro: 'Só é possível cancelar pedidos em aberto.' });

@@ -193,6 +193,10 @@ mostram todas as contas.
   as filiais têm regras diferentes e quantos colaboradores usam valor próprio. A mesma regra aparece ao passar o mouse
   nas contas da Simulação.
 
+**Somente visualização** (ex.: gerente) — criado em Acessos dos coordenadores com o perfil “Somente visualização”:
+Painel e Simulação das regionais liberadas (ou “Todas as regionais”, inclusive as que entrarem depois), sem
+Conferência e sem pedidos de ajuste (o servidor também bloqueia).
+
 **Coordenador** (só as regionais liberadas, sem alterar valores)
 - Painel e simulação da regional.
 - **Conferência** – cards por filial; premissas aplicadas e a tabela de colaboradores/vagas com **uma coluna por item**

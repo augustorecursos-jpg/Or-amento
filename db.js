@@ -147,6 +147,9 @@ const colLanc = db.prepare('PRAGMA table_info(lancamentos)').all().map(c => c.na
 if (!colLanc.includes('dividir')) db.exec("ALTER TABLE lancamentos ADD COLUMN dividir TEXT NOT NULL DEFAULT ''");
 const colFiliais = db.prepare('PRAGMA table_info(filiais)').all().map(c => c.name);
 if (!colFiliais.includes('uf')) db.exec('ALTER TABLE filiais ADD COLUMN uf TEXT');
+// Perfil do acesso: 'coordenador' (confere e pede ajustes) ou 'leitura' (só visualiza, ex.: gerente)
+const colUsu = db.prepare('PRAGMA table_info(usuarios)').all().map(c => c.name);
+if (!colUsu.includes('perfil')) db.exec("ALTER TABLE usuarios ADD COLUMN perfil TEXT NOT NULL DEFAULT 'coordenador'");
 
 if (!db.prepare("SELECT 1 FROM config WHERE chave = 'ano'").get()) {
   db.prepare("INSERT INTO config (chave, valor) VALUES ('ano', ?)").run(String(new Date().getFullYear() + 1));

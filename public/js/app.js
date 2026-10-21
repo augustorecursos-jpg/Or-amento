@@ -4021,15 +4021,15 @@ async function renderCoordenadores() {
   const usuarios = await api('/api/usuarios');
   el.innerHTML = `
     <div class="cab-pagina"><div><h1 class="titulo-pagina">Acessos dos <em>coordenadores</em></h1>
-      <p class="subtitulo">Cada coordenador entra em <b>${esc(location.origin)}</b> com o login e a senha criados aqui e vê apenas as regionais liberadas: painel, simulação e conferência, sem poder alterar valores.</p></div>
+      <p class="subtitulo">Cada pessoa entra em <b>${esc(location.origin)}</b> com o login e a senha criados aqui e vê apenas as regionais liberadas, sem poder alterar valores. <b>Coordenador de RH</b>: painel, simulação, conferência e pedidos de ajuste. <b>Somente visualização</b> (ex.: gerente): painel e simulação, sem conferência nem pedidos.</p></div>
       <button class="btn btn-laranja" id="novo-usuario">+ Novo acesso</button></div>
     <section class="cartao"><div class="tabela-wrap"><table class="tabela">
-      <thead><tr><th>Nome</th><th>Login</th><th>Regionais</th><th>Último acesso</th><th>Status</th><th></th></tr></thead>
-      <tbody>${usuarios.map(u => `<tr><td><b>${esc(u.nome)}</b></td><td>${esc(u.login)}</td><td>${u.regionais.map(r => `<span class="chip">${esc(r)}</span>`).join(' ')}</td>
+      <thead><tr><th>Nome</th><th>Login</th><th>Perfil</th><th>Regionais</th><th>Último acesso</th><th>Status</th><th></th></tr></thead>
+      <tbody>${usuarios.map(u => `<tr><td><b>${esc(u.nome)}</b></td><td>${esc(u.login)}</td><td>${u.perfil === 'leitura' ? '<span class="etiqueta azul">👁 Somente visualização</span>' : '<span class="etiqueta neutra">Coordenador de RH</span>'}</td><td>${u.regionais.map(r => `<span class="chip">${esc(r === '*' ? 'Todas as regionais' : r)}</span>`).join(' ')}</td>
         <td>${u.ultimo_acesso ? dataBr(u.ultimo_acesso) : '<span class="sub" style="display:inline">nunca</span>'}</td>
         <td>${u.ativo ? '<span class="etiqueta ok">Ativo</span>' : '<span class="etiqueta neutra">Bloqueado</span>'}</td>
         <td><span class="acoes"><button class="btn-ic" data-editar="${u.id}" title="Editar">✎</button><button class="btn-ic" data-remover="${u.id}" title="Remover">🗑</button></span></td></tr>`).join('')
-        || '<tr><td colspan="6"><div class="vazio"><span>🔑</span>Nenhum coordenador cadastrado ainda.</div></td></tr>'}</tbody></table></div></section>`;
+        || '<tr><td colspan="7"><div class="vazio"><span>🔑</span>Nenhum coordenador cadastrado ainda.</div></td></tr>'}</tbody></table></div></section>`;
   $('#novo-usuario', el).addEventListener('click', () => editarUsuario(null));
   $$('[data-editar]', el).forEach(b => b.addEventListener('click', () => editarUsuario(usuarios.find(u => u.id === Number(b.dataset.editar)))));
   $$('[data-remover]', el).forEach(b => b.addEventListener('click', async () => {
@@ -4041,29 +4041,37 @@ async function renderCoordenadores() {
 }
 
 function editarUsuario(u) {
-  const regs = [...new Set([...regionais(), ...(u?.regionais || [])])];
+  const regs = [...new Set([...regionais(), ...(u?.regionais || [])])].filter(r => r !== '*');
+  const todas = Boolean(u?.regionais.includes('*'));
   const d = abrirModal({
     titulo: u ? u.nome : 'Novo acesso de coordenador', sup: 'ACESSO',
     corpo: `<form class="form-grade" id="form-usuario">
       <label class="rotulo">Nome<input class="campo" name="nome" required value="${esc(u?.nome || '')}"></label>
       <label class="rotulo">Login<input class="campo" name="login" required value="${esc(u?.login || '')}" ${u ? 'readonly' : ''} placeholder="ex.: joao.silva"></label>
       <label class="rotulo inteiro">${u ? 'Nova senha <small>(deixe em branco para manter)</small>' : 'Senha inicial <small>(mín. 6 caracteres)</small>'}<input class="campo" name="senha" type="text" ${u ? '' : 'required minlength="6"'} autocomplete="new-password"></label>
-      <div class="inteiro rotulo">Regionais que pode ver<div class="regionais-check">${regs.map(r => `<label class="check"><input type="checkbox" name="regionais" value="${esc(r)}" ${u?.regionais.includes(r) ? 'checked' : ''}> ${esc(r)}</label>`).join('') || '<small>Importe a base para listar as regionais.</small>'}</div></div>
+      <label class="rotulo inteiro">Perfil<select class="campo" name="perfil">
+        <option value="coordenador" ${u?.perfil !== 'leitura' ? 'selected' : ''}>Coordenador de RH · painel, simulação, conferência e pedidos de ajuste</option>
+        <option value="leitura" ${u?.perfil === 'leitura' ? 'selected' : ''}>Somente visualização (ex.: gerente) · painel e simulação, sem conferência</option></select></label>
+      <div class="inteiro rotulo">Regionais que pode ver
+        <label class="check"><input type="checkbox" name="todas" ${todas ? 'checked' : ''}> <b>Todas as regionais</b> <small>(inclusive as que entrarem depois)</small></label>
+        <div class="regionais-check" id="regs-lista" ${todas ? 'hidden' : ''}>${regs.map(r => `<label class="check"><input type="checkbox" name="regionais" value="${esc(r)}" ${u?.regionais.includes(r) ? 'checked' : ''}> ${esc(r)}</label>`).join('') || '<small>Importe a base para listar as regionais.</small>'}</div></div>
       ${u ? `<label class="check inteiro"><input type="checkbox" name="ativo" ${u.ativo ? 'checked' : ''}> Acesso ativo</label>` : ''}
     </form>`,
     rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="salvar-usuario">Salvar</button>',
   });
+  $('input[name="todas"]', d).addEventListener('change', e => { $('#regs-lista', d).hidden = e.target.checked; });
   $('#salvar-usuario', d).addEventListener('click', async () => {
     const f = $('#form-usuario', d);
     if (!f.reportValidity()) return;
-    const body = { nome: f.nome.value, login: f.login.value, senha: f.senha.value, regionais: $$('input[name="regionais"]:checked', f).map(i => i.value) };
+    const body = { nome: f.nome.value, login: f.login.value, senha: f.senha.value, perfil: f.perfil.value,
+      regionais: f.todas.checked ? ['*'] : $$('input[name="regionais"]:checked', f).map(i => i.value) };
     if (!body.regionais.length) return toast('Marque ao menos uma regional.', 'erro');
     if (u) body.ativo = f.ativo.checked;
     try {
       await api(u ? `/api/usuarios/${u.id}` : '/api/usuarios', { method: u ? 'PUT' : 'POST', body });
       d.close();
       renderCoordenadores();
-      toast(u ? 'Acesso atualizado.' : `Acesso criado. Envie ao coordenador: login “${body.login}” e a senha definida.`);
+      toast(u ? 'Acesso atualizado.' : `Acesso criado. Envie: login “${body.login}” e a senha definida.`);
     } catch (e) { toast(e.message, 'erro'); }
   });
 }
@@ -4100,8 +4108,9 @@ async function iniciar() {
   }
   $$('.so-admin').forEach(x => { x.hidden = !E.eu.admin; });
   $$('.so-coord').forEach(x => { x.hidden = E.eu.admin; });
+  if (E.eu.leitura) $$('.so-confere').forEach(x => { x.hidden = true; }); // somente visualização: sem conferência nem pedidos
   $('#u-nome').textContent = E.eu.nome;
-  $('#u-papel').textContent = E.eu.admin ? 'Administrador' : `Coordenador · ${E.eu.regionais.join(', ')}`;
+  $('#u-papel').textContent = E.eu.admin ? 'Administrador' : `${E.eu.leitura ? 'Visualização' : 'Coordenador'} · ${E.eu.todas ? 'todas as regionais' : E.eu.regionais.join(', ')}`;
   $('#u-avatar').textContent = E.eu.nome.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
   if (!E.eu.admin) $('#rot-solic').textContent = 'Meus pedidos';
 
