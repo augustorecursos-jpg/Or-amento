@@ -59,6 +59,18 @@ test('reajuste de benefícios em dois anos: o do ano anterior desde janeiro e o 
   perto(res.valor(0, Motor.IDX.va, 7), 876.876);  // 803 × 1,04 × 1,05
 });
 
+test('promoções e méritos: % da folha em dois meses, somando e ficando no salário dos meses seguintes', () => {
+  const premissas = { '*': { promocoes: { metodo: 'pct', valor: 0.4, base: 'folha', inicio: 4, inicio2: 10 }, periculosidade: { metodo: 'nao' }, horas_extras: { metodo: 'nao' } } };
+  const res = Motor.calcular({ colaboradores: [colab({ salario: 10000 })], filiais: {}, premissas, mesesSalario: 12 });
+  const v = m => res.valor(0, Motor.IDX.promocoes, m);
+  perto(v(2), 0);        // mar: ainda não
+  perto(v(3), 40);       // abr: 0,40% de 10.000
+  perto(v(8), 40);       // set
+  perto(v(9), 80);       // out: + 0,40% (0,80% no total)
+  perto(v(11), 80);
+  perto(res.valor(0, Motor.IDX.fgts, 9), (10000 + 80) * 0.08); // reflexo: FGTS sobre salário + promoção
+});
+
 test('rateio do total da filial por headcount e só entre quem recebe', () => {
   const premissas = { CUIABA: { horas_extras: { metodo: 'rateio', valor: 900, rateio: 'hc', periodo: 'mensal', quem: ['cc:17150'] } } };
   const colaboradores = [colab({ id: 1, cc_cod: '17150' }), colab({ id: 2, cc_cod: '17150' }), colab({ id: 3, cc_cod: '22153' })];

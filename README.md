@@ -173,6 +173,9 @@ Painel mostra o impacto de cada dissídio.
 %, para o que está nos filtros do topo (sem filtro = empresa toda). Mostra conta hoje × simulada, reflexos (férias, 13º,
 FGTS, INSS…), impacto total, gráfico mês a mês e tabela por filial; exporta Excel. Nada é salvo — o administrador pode
 **Aplicar às premissas** (grava a regra nas filiais do escopo). Coordenadores e gerente podem simular.
+**Promoções e méritos em dois meses**: no ⚙ da regra em % há "A partir de" e "2º aumento a partir de" — o mesmo % entra
+de novo no 2º mês e soma ao 1º (ex.: 0,40% da folha em abril e em outubro → abr–set 0,40%, out–dez 0,80%), ficando no
+salário dos meses seguintes, com reflexos. Também no quadro (edição manual) e na calculadora.
 **% da folha** em "Como é calculado" (ex.: PPR 0,40% da folha = % sobre salário + todo o grupo Remuneração do mês).
 
 **Edição manual no quadro de premissas**: em Premissas › Quadro de todas as filiais, o botão **✏️ Editar manualmente**

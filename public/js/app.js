@@ -26,7 +26,7 @@ const E = {
   painelVisao: 'custo', // 'custo' ou 'hc' (headcount)
   comparar: false, // comparativo com o ano anterior (painel e simulação)
   hc: { dim: 'filial', busca: '', aberto: '', sub: 'funcao' },
-  calc: { rub: 'promocoes', modo: 'regra', tipo: '', valor: '', periodo: '', inicio: '', alvo: '', pct: '', substituir: false, incluirSem: false },
+  calc: { rub: 'promocoes', modo: 'regra', tipo: '', valor: '', periodo: '', inicio: '', inicio2: null, alvo: '', pct: '', substituir: false, incluirSem: false },
   solic: [],
   solicFiltro: 'pendentes',
   contabil: { cfg: null, zeradas: false, porFilial: true, formato: 'contabil' },
@@ -1067,7 +1067,7 @@ function cenarioCalculadora(k = 1) {
       novo.valor = Number(c.valor) || 0;
       if (c.periodo && !String(c.tipo).startsWith('pct') && c.tipo !== 'nivel') novo.periodo = c.periodo;
       if (novo.periodo === 'por_mes') novo.periodo = 'mensal';
-      if (String(c.tipo).startsWith('pct')) novo.inicio = Number(c.inicio) || 1;
+      if (String(c.tipo).startsWith('pct')) { novo.inicio = Number(c.inicio) || 1; novo.inicio2 = Number(c.inicio2) || 0; }
     } else novo = escalarRegra(p, k);
     regras[f] = novo;
     premissas[f] = { ...(premissas[f] || {}), [c.rub]: novo };
@@ -1130,6 +1130,7 @@ function renderCalculadora() {
   const valorHoje = tipoComum === 'nao' ? '' : valorComum; // sugestão no campo; vazio = sem mudança
   if (!c.periodo) c.periodo = periodoComum === 'por_mes' ? 'mensal' : periodoComum || 'mensal';
   if (!c.inicio) c.inicio = Math.min(...(comTem.length ? comTem : efetivas).map(p => Number(p.inicio) || 1), 12) || 1;
+  if (c.inicio2 == null) c.inicio2 = (comTem.find(p => Number(p.inicio2) > 1) || {}).inicio2 || '';
   const semConta = efetivas.filter(p => p.metodo === 'nao').length;
   const tipos = r.adicional ? { pct: TIPOS.pct, fixo: TIPOS.fixo, rateio: TIPOS.rateio } : Object.fromEntries(Object.entries(TIPOS).filter(([k]) => k !== 'nivel'));
   const quandos = { mensal: QUANDO_ROTULO.mensal, anual_mes: QUANDO_ROTULO.anual_mes, anual_diluido: QUANDO_ROTULO.anual_diluido };
@@ -1148,7 +1149,8 @@ function renderCalculadora() {
         ${c.modo === 'regra' ? `
           <label class="rotulo">Como é calculado<select class="campo" id="calc-tipo">${Object.entries(tipos).map(([k, v]) => `<option value="${k}" ${k === c.tipo ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
           <label class="rotulo">Novo valor <small>(${esc(unidadeValor(c.tipo, c.periodo) || '')})</small><input class="campo" id="calc-valor" type="number" step="any" value="${esc(c.valor)}" placeholder="${valorHoje !== '' ? `hoje: ${fmtN(valorHoje)}` : 'digite o novo valor'}"></label>
-          ${String(c.tipo).startsWith('pct') ? `<label class="rotulo">A partir de<select class="campo" id="calc-inicio">${opcoesMes(c.inicio)}</select></label>` : ''}
+          ${String(c.tipo).startsWith('pct') ? `<label class="rotulo">A partir de<select class="campo" id="calc-inicio">${opcoesMes(c.inicio)}</select></label>
+          <label class="rotulo">2º aumento a partir de <small>(opcional · soma o mesmo %)</small><select class="campo" id="calc-inicio2">${opcoesMes(c.inicio2, true)}</select></label>` : ''}
           ${semConta ? `<label class="check"><input type="checkbox" id="calc-incluir" ${c.incluirSem ? 'checked' : ''}> <span>Incluir as <b>${semConta}</b> filial(is) que hoje não têm esta conta</span></label>` : ''}
           ${!String(c.tipo).startsWith('pct') ? `<label class="rotulo">Quando é pago<select class="campo" id="calc-periodo">${Object.entries(quandos).map(([k, v]) => `<option value="${k}" ${k === c.periodo ? 'selected' : ''}>${v}</option>`).join('')}</select></label>` : ''}
           ${proprios ? `<label class="check"><input type="checkbox" id="calc-subst" ${c.substituir ? 'checked' : ''}> <span>Aplicar também aos <b>${num0.format(proprios)}</b> colaborador(es) com valor próprio <small>(planilha da base ou ajustado à mão; sem marcar, eles ficam com o valor deles)</small></span></label>` : ''}`
@@ -1162,13 +1164,14 @@ function renderCalculadora() {
       <div id="calc-resultado"></div>
     </div>`;
   const re = () => renderCalculadora();
-  $('#calc-rub', el).addEventListener('change', e => { Object.assign(c, { rub: e.target.value, tipo: '', valor: '', periodo: '', inicio: '', alvo: '', pct: '', substituir: false, incluirSem: false }); re(); });
+  $('#calc-rub', el).addEventListener('change', e => { Object.assign(c, { rub: e.target.value, tipo: '', valor: '', periodo: '', inicio: '', inicio2: null, alvo: '', pct: '', substituir: false, incluirSem: false }); re(); });
   $$('#calc-modo button', el).forEach(b => b.addEventListener('click', () => { c.modo = b.dataset.m; re(); }));
   $('#calc-tipo', el)?.addEventListener('change', e => { c.tipo = e.target.value; re(); });
   $('#calc-periodo', el)?.addEventListener('change', e => { c.periodo = e.target.value; re(); });
   $('#calc-subst', el)?.addEventListener('change', e => { c.substituir = e.target.checked; desenharResultadoCalc(); });
   $('#calc-incluir', el)?.addEventListener('change', e => { c.incluirSem = e.target.checked; desenharResultadoCalc(); });
   $('#calc-inicio', el)?.addEventListener('change', e => { c.inicio = e.target.value; desenharResultadoCalc(); });
+  $('#calc-inicio2', el)?.addEventListener('change', e => { c.inicio2 = e.target.value; desenharResultadoCalc(); });
   let t;
   const digitar = (campo, id) => $(id, el)?.addEventListener('input', e => { c[campo] = e.target.value; clearTimeout(t); t = setTimeout(desenharResultadoCalc, 250); });
   digitar('valor', '#calc-valor'); digitar('alvo', '#calc-alvo'); digitar('pct', '#calc-pct');
@@ -1239,7 +1242,7 @@ function desenharResultadoCalc() {
     try {
       await api('/api/premissas/lote', { method: 'PUT', body: { itens } });
       await carregar();
-      Object.assign(c, { tipo: '', valor: '', periodo: '', inicio: '', alvo: '', pct: '' });
+      Object.assign(c, { tipo: '', valor: '', periodo: '', inicio: '', inicio2: null, alvo: '', pct: '' });
       renderCalculadora();
       toast(`${r.nome}: regra gravada em ${itens.length} filial(is).`);
     } catch (e) { toast(e.message, 'erro'); }
@@ -1913,7 +1916,7 @@ function metodoAoLigar(rub, p) {
 
 /** Resumo curto dos detalhes (base, periodicidade, rateio, teto). */
 function resumoDetalhes(p) {
-  if (p.metodo === 'pct') return `s/ ${BASES[p.base].toLowerCase()}${p.teto ? ` · teto ${brl0.format(p.teto)}` : ''}${p.inicio > 1 ? ` · a partir de ${MESES[p.inicio - 1]}` : ''}`;
+  if (p.metodo === 'pct') return `s/ ${BASES[p.base].toLowerCase()}${p.teto ? ` · teto ${brl0.format(p.teto)}` : ''}${p.inicio > 1 ? ` · a partir de ${MESES[p.inicio - 1]}` : ''}${p.inicio2 > 1 ? ` · + ${fmtN(p.valor)}% a partir de ${MESES[p.inicio2 - 1]}` : ''}`;
   const per = { mensal: 'todo mês', anual_mes: `1x no ano · ${MESES[p.mes - 1]}`, anual_diluido: 'anual ÷ 12', por_mes: 'valor por mês' }[p.periodo];
   if (p.metodo === 'rateio') return `${{ mensal: 'total do mês', anual_mes: `total em ${MESES[p.mes - 1]}`, anual_diluido: 'total do ano ÷ 12', por_mes: 'total de cada mês' }[p.periodo]}${p.dividir === 'escopo' ? ' · dividido entre as filiais' : ''} · ${p.rateio === 'salario' ? 'proporcional ao salário' : 'média por colaborador'}`;
   if (p.metodo === 'multiplo') return per;
@@ -2025,7 +2028,8 @@ function editarDetalhes(rub) {
       ${m === 'pct' ? `
         <label class="rotulo">% calculado sobre${sel('base', bases, p.base)}<small>Remuneração = salário + adicionais. Folha = remuneração + horas extras.</small></label>
         <label class="rotulo">Teto mensal (R$) <small>opcional</small><input class="campo" name="teto" type="number" step="any" value="${p.teto ?? ''}" placeholder="sem teto"></label>
-        <label class="rotulo">A partir de<select class="campo" name="inicio">${opcoesMes(p.inicio || 1)}</select><small>Mês em que o % passa a valer (ex.: méritos de 2% a partir de abril). Janeiro = o ano todo.</small></label>`
+        <label class="rotulo">A partir de<select class="campo" name="inicio">${opcoesMes(p.inicio || 1)}</select><small>Mês em que o % passa a valer (ex.: méritos de 2% a partir de abril). Janeiro = o ano todo.</small></label>
+        <label class="rotulo">2º aumento a partir de <small>(opcional)</small><select class="campo" name="inicio2">${opcoesMes(p.inicio2 || '', true)}</select><small>Mais o mesmo % a partir deste mês, somado ao 1º (ex.: 0,40% da folha em abril e mais 0,40% em outubro). O aumento fica no salário dos meses seguintes.</small></label>`
       : `
         <label class="rotulo">Quando é pago${sel('periodo', m === 'multiplo' ? Object.fromEntries(Object.entries(PERIODOS).filter(([k]) => k !== 'por_mes')) : PERIODOS, p.periodo)}<small>“Uma vez no ano” lança o valor inteiro no mês escolhido (ex.: PPR em fevereiro). “Valor diferente em cada mês” serve para gastos que variam (ex.: ações de endomarketing).</small></label>
         <label class="rotulo" id="box-mes">Mês do pagamento<select class="campo" name="mes">${opcoesMes(p.mes)}</select></label>
@@ -2071,6 +2075,7 @@ function editarDetalhes(rub) {
     if (f.base) novo.base = f.base.value;
     if (f.teto) novo.teto = f.teto.value === '' ? null : Number(f.teto.value);
     if (f.inicio) novo.inicio = Number(f.inicio.value);
+    if (f.inicio2) novo.inicio2 = Number(f.inicio2.value) || 0;
     if (f.periodo) novo.periodo = f.periodo.value;
     if (f.mes) novo.mes = Number(f.mes.value);
     if (f.rateio) novo.rateio = f.rateio.value;
@@ -2296,8 +2301,10 @@ const mesDe = v => {
   return i >= 0 ? i + 1 : null;
 };
 
-const CAMPOS_REGRA = ['metodo', 'valor', 'base', 'periodo', 'mes', 'rateio', 'teto', 'por_nivel', 'quem'];
-const mesmaRegra = (a, b) => CAMPOS_REGRA.every(k => JSON.stringify(a[k] ?? null) === JSON.stringify(b[k] ?? null));
+const CAMPOS_REGRA = ['metodo', 'valor', 'base', 'periodo', 'mes', 'rateio', 'teto', 'por_nivel', 'quem', 'inicio', 'inicio2'];
+// inicio/inicio2 vazios, 0 ou janeiro são o mesmo (vale o ano todo / sem 2º aumento)
+const normCampo = (k, v) => ((k === 'inicio' || k === 'inicio2') && (!v || Number(v) <= 1) ? null : v ?? null);
+const mesmaRegra = (a, b) => CAMPOS_REGRA.every(k => JSON.stringify(normCampo(k, a[k])) === JSON.stringify(normCampo(k, b[k])));
 
 // ----- Modelo de preenchimento das premissas (uma linha por filial e item, com listas de seleção) -----
 
@@ -2518,6 +2525,8 @@ function editarCelulaQuadro(filial, rub, filsQuadro) {
       <label class="rotulo" data-so-tem>Valor <small data-unidade></small><input class="campo" name="valor" type="number" step="any" value="${Number(p.valor) || 0}"></label>
       <label class="rotulo" data-so-tem data-quando>Quando é pago<select class="campo" name="periodo">${Object.entries(quandos).map(([k, v]) => `<option value="${k}" ${k === (p.periodo === 'por_mes' ? 'mensal' : p.periodo) ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       <label class="rotulo" data-so-tem data-mes>Mês<select class="campo" name="mes">${opcoesMes(p.mes || 12)}</select></label>
+      <label class="rotulo" data-so-tem data-sopct>A partir de<select class="campo" name="inicio">${opcoesMes(p.inicio || 1)}</select></label>
+      <label class="rotulo" data-so-tem data-sopct>2º aumento a partir de <small>(opcional)</small><select class="campo" name="inicio2">${opcoesMes(p.inicio2 || '', true)}</select></label>
       ${p.periodo === 'por_mes' || (p.quem || []).length || Object.keys(p.por_funcao || {}).length ? `<p class="inteiro aviso-ajuste" style="margin:0">ℹ Esta regra tem detalhes (valor por mês, quem recebe ou valor por função) que só aparecem em <b>Editar por filial</b>; o que não mudar aqui fica como está.</p>` : ''}
       ${outras.length ? `<div class="inteiro rotulo">Aplicar a mesma regra também em
         <div style="display:flex;gap:.8rem;margin:.3rem 0"><button type="button" class="btn-link" data-todas>Marcar todas</button><button type="button" class="btn-link" data-nenhuma>Nenhuma</button></div>
@@ -2533,6 +2542,7 @@ function editarCelulaQuadro(filial, rub, filsQuadro) {
     const tipo = f.tipo.value;
     $('[data-quando]', f).hidden = tipo.startsWith('pct') || tipo === 'nivel';
     $('[data-mes]', f).hidden = $('[data-quando]', f).hidden || f.periodo.value !== 'anual_mes';
+    $$('[data-sopct]', f).forEach(x => { x.hidden = !tipo.startsWith('pct'); });
     f.valor.closest('label').hidden = tipo === 'nivel';
     $('[data-unidade]', f).textContent = `(${unidadeValor(tipo === 'nivel' ? 'multiplo' : tipo, f.periodo.value) || ''})`;
   };
@@ -2551,6 +2561,7 @@ function editarCelulaQuadro(filial, rub, filsQuadro) {
         : { metodo: tipo, por_nivel: false, valor: Number(f.valor.value) || 0, ...(tipo === 'pct' && p.base === 'folha' ? { base: 'salario' } : {}) };
       if (!tipo.startsWith('pct') && tipo !== 'nivel') lido.periodo = f.periodo.value;
       if (lido.periodo === 'anual_mes') lido.mes = Number(f.mes.value);
+      if (tipo.startsWith('pct')) { lido.inicio = Number(f.inicio.value) || 1; lido.inicio2 = Number(f.inicio2.value) || 0; }
     }
     const alvo = [filial, ...$$('input[name=outras]:checked', f).map(i => i.value)];
     const itens = alvo.map(fil => {
@@ -3487,7 +3498,7 @@ function descreverPremissa(p) {
     return `valor diferente por mês · ${brl.format((p.meses || []).reduce((a, b) => a + (Number(b) || 0), 0))} no ano${p.metodo === 'rateio' ? ' (total da filial)' : ' por colaborador'}`;
   }
   switch (p.metodo) {
-    case 'pct': return `${num2.format(v)}% s/ ${BASES[p.base].split(' (')[0].toLowerCase()}${p.teto ? ` · teto ${brl.format(p.teto)}` : ''}${p.inicio > 1 ? ` · a partir de ${MESES[p.inicio - 1]}` : ''}`;
+    case 'pct': return `${num2.format(v)}% s/ ${BASES[p.base].split(' (')[0].toLowerCase()}${p.teto ? ` · teto ${brl.format(p.teto)}` : ''}${p.inicio > 1 ? ` · a partir de ${MESES[p.inicio - 1]}` : ''}${p.inicio2 > 1 ? ` · + ${num2.format(v)}% a partir de ${MESES[p.inicio2 - 1]}` : ''}`;
     case 'fixo': return `${brl.format(v)} por colaborador${per}`;
     case 'rateio': return `${brl.format(v)} ${p.dividir === 'escopo' ? 'total único dividido entre as filiais' : 'total da filial'} · rateio ${p.rateio === 'salario' ? 'pelo salário' : 'por HC'}${per}`;
     case 'multiplo': return `${p.por_nivel ? 'pela tabela de nível' : `${num2.format(v)} salário(s)`}${per}`;

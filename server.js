@@ -147,6 +147,7 @@ function limparPremissa(p) {
     periodo: Motor.PERIODOS[p.periodo] ? p.periodo : 'mensal',
     mes: mes(p.mes, 12),
     inicio: mes(p.inicio, 1),
+    inicio2: p.inicio2 ? mes(p.inicio2, 0) : 0, // 2º mês de aumento (soma ao 1º daí em diante)
     rateio: p.rateio === 'salario' ? 'salario' : 'hc',
     dividir: p.dividir === 'escopo' ? 'escopo' : '',
     teto: p.teto === '' || p.teto == null ? null : numero(p.teto),

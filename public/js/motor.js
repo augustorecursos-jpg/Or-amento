@@ -326,8 +326,10 @@
           switch (p.metodo) {
             case 'pct':
               // "A partir de" (inicio): o % só vale desse mês em diante (ex.: budget de méritos de 2% a partir de abril).
-              v = num(p.inicio) > 1 && m + 1 < num(p.inicio) ? 0
-                : (valorDe(p, colaboradores[i].funcao) / 100) * base(i, rub.adicional ? 'salario' : p.base, rub.grupo !== 'encargos');
+              // inicio2: um 2º aumento do mesmo % a partir de outro mês, somado ao 1º (ex.: 0,40% da folha em abril e
+              // mais 0,40% em outubro → abr–set 0,40%, out–dez 0,80%); o aumento fica no salário dos meses seguintes.
+              v = (num(p.inicio) > 1 && m + 1 < num(p.inicio) ? 0 : 1) + (num(p.inicio2) && m + 1 >= num(p.inicio2) ? 1 : 0);
+              v *= (valorDe(p, colaboradores[i].funcao) / 100) * base(i, rub.adicional ? 'salario' : p.base, rub.grupo !== 'encargos');
               if (p.teto != null && p.teto !== '' && num(p.teto) > 0) v = Math.min(v, num(p.teto));
               break;
             case 'fixo':
