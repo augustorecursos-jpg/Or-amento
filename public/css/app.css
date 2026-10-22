@@ -713,3 +713,4 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .chips-valor > span { font-weight: 700; color: var(--marinho, #164d74); }
 .chip-valor { cursor: pointer; border: 1px solid #dfe6ee; background: #fff; }
 .chip-valor.ativo { background: var(--marinho, #164d74); color: #fff; border-color: transparent; }
+.tabela-contabil tr.linha-hc td { background: #eef5fb; font-weight: 700; color: var(--marinho, #164d74); }

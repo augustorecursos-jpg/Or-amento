@@ -29,7 +29,7 @@ const E = {
   calc: { rub: 'promocoes', modo: 'regra', tipo: '', valor: '', periodo: '', inicio: '', inicio2: null, alvo: '', pct: '', substituir: false, incluirSem: false },
   solic: [],
   solicFiltro: 'pendentes',
-  contabil: { cfg: null, zeradas: false, porFilial: true, formato: 'contabil' },
+  contabil: { cfg: null, zeradas: false, porFilial: true, formato: 'contabil', hc: true },
 };
 
 const $ = (sel, raiz = document) => raiz.querySelector(sel);
@@ -4039,8 +4039,12 @@ function ccContabil(cfg, cod) {
 }
 
 /** Linhas do relatório: Pacote · Centro de custo contábil · Conta contábil · Terceiro · 12 meses. */
+const CONTA_HC = 'HC - HEADCOUNT (colaboradores + vagas)';
+const PACOTE_HC = 'HEADCOUNT';
+
 function linhasContabeis(cfg, epm = false) {
   const porChave = new Map();
+  const hcPor = new Map(); // headcount de cada mês por filial/CC (ou empresa/CC no EPM)
   E.res.colaboradores.forEach((c, i) => {
     if (!noFiltro(c)) return;
     const ccColab = ccContabil(cfg, c.cc_cod).cc;
@@ -4048,6 +4052,13 @@ function linhasContabeis(cfg, epm = false) {
     // Com "regional e filial", cada filial tem as suas linhas (para conferência); sem, soma como a contabilidade recebe.
     const regional = E.contabil.porFilial ? c.regional : '';
     const filial = E.contabil.porFilial ? c.filial : '';
+    if (E.contabil.hc && !c.avulso) {
+      const numCc = /^\d+$/.test(codigoDe(ccColab)) ? codigoDe(ccColab) : /^\d+$/.test(String(c.cc_cod || '').trim()) ? String(c.cc_cod).trim() : 'NA';
+      const k = epm ? `${empresa}\u0000CC_${numCc}` : `${regional}\u0000${filial}\u0000${ccColab}`;
+      if (!hcPor.has(k)) hcPor.set(k, { regional, filial, pacote: PACOTE_HC, cc: ccColab, conta: CONTA_HC, empresa, ccEpm: epm ? `CC_${numCc}` : '', contaEpm: epm ? 'HEADCOUNT' : '', meses: new Float64Array(12), hc: true });
+      const h = hcPor.get(k);
+      for (let m = 0; m < 12; m++) if (m + 1 >= (Number(c.mes_inicio) || 1) && m + 1 <= (Number(c.mes_fim) || 12)) h.meses[m]++;
+    }
     RUBRICAS.forEach((r, k) => {
       const av = c.avulso;
       if (av && r.id !== (av.rubrica || 'outras')) return;
@@ -4066,6 +4077,7 @@ function linhasContabeis(cfg, epm = false) {
       for (let m = 0; m < 12; m++) l.meses[m] += E.res.valor(i, k, m);
     });
   });
+  for (const [k, h] of hcPor) porChave.set(`HC\u0000${k}`, h);
   const ordemConta = new Map(cfg.contas.map((c, i) => [c, i]));
   if (epm) {
     return [...porChave.values()].filter(l => E.contabil.zeradas || l.meses.some(v => Math.abs(v) >= 0.005))
@@ -4162,7 +4174,8 @@ async function renderContabil() {
     <section class="cartao" style="margin-top:1.2rem">
       <div class="ferramentas" style="margin-bottom:.8rem"><h3 style="margin:0">Prévia · ${esc(escopo)} <small>· ${linhas.length} linha(s) · ${colabs.length} colaborador(es)</small></h3>
         <div class="segmentos" id="ct-formato"><button data-f="contabil" class="${E.contabil.formato !== 'epm' ? 'ativo' : ''}">Contabilidade</button><button data-f="epm" class="${E.contabil.formato === 'epm' ? 'ativo' : ''}">EPM</button></div>
-        <span class="direita" style="display:flex;gap:1rem;flex-wrap:wrap"><label class="check" title="Desmarque para gerar no formato original da contabilidade (somado por centro de custo e conta)"><input type="checkbox" id="ct-filial" ${E.contabil.porFilial ? 'checked' : ''}> colunas de regional e filial</label><label class="check"><input type="checkbox" id="ct-zeradas" ${E.contabil.zeradas ? 'checked' : ''}> incluir linhas zeradas</label></span></div>
+        <span class="direita" style="display:flex;gap:1rem;flex-wrap:wrap"><label class="check" title="Desmarque para gerar no formato original da contabilidade (somado por centro de custo e conta)"><input type="checkbox" id="ct-filial" ${E.contabil.porFilial ? 'checked' : ''}> colunas de regional e filial</label><label class="check"><input type="checkbox" id="ct-zeradas" ${E.contabil.zeradas ? 'checked' : ''}> incluir linhas zeradas</label><label class="check" title="Uma linha de headcount (colaboradores + vagas ativos no mês) por filial e centro de custo"><input type="checkbox" id="ct-hc" ${E.contabil.hc ? 'checked' : ''}> linhas de HC</label></span></div>
+      ${(() => { const hc = MESES.map((_, m) => colabs.filter(c => m + 1 >= (Number(c.mes_inicio) || 1) && m + 1 <= (Number(c.mes_fim) || 12)).length); return `<p class="subtitulo" style="margin:0 0 .6rem">👥 <b>HC total</b> (colaboradores + vagas ativos no mês): ${MESES.map((m, i) => `${m} <b>${num0.format(hc[i])}</b>`).join(' · ')}</p>`; })()}
       ${E.contabil.formato === 'epm' ? (() => {
         const epm = linhasContabeis(cfg, true);
         const fy = `FY${ano.slice(-2)}`;
@@ -4171,12 +4184,12 @@ async function renderContabil() {
           <tr><th></th><th></th><th></th>${MESES.map(m => `<th class="n">${m}</th>`).join('')}</tr>
           <tr><th></th><th></th><th></th>${MESES.map(() => `<th class="n">Budget_${ano}</th>`).join('')}</tr>
           <tr><th></th><th></th><th></th>${MESES.map(() => '<th class="n">Trabalho</th>').join('')}</tr></thead>
-          <tbody>${epm.slice(0, 400).map(l => `<tr><td>${esc(l.empresa)}</td><td>${esc(l.ccEpm)}</td><td>${esc(l.contaEpm)}</td>${[...l.meses].map(v => `<td class="n">${Math.abs(v) >= 0.005 ? num2.format(v) : '-'}</td>`).join('')}</tr>`).join('')
+          <tbody>${epm.slice(0, 400).map(l => `<tr${l.hc ? ' class="linha-hc"' : ''}><td>${esc(l.empresa)}</td><td>${esc(l.ccEpm)}</td><td>${esc(l.contaEpm)}</td>${[...l.meses].map(v => `<td class="n">${Math.abs(v) >= 0.005 ? (l.hc ? num0.format(v) : num2.format(v)) : '-'}</td>`).join('')}</tr>`).join('')
             || '<tr><td colspan="15" class="vazio">Nada para mostrar com esses filtros.</td></tr>'}</tbody></table></div>
           ${epm.length > 400 ? `<p class="subtitulo" style="margin:.6rem 0 0">Mostrando 400 de ${epm.length} linhas — o Excel traz todas.</p>` : ''}`;
       })() : `
       <div class="tabela-wrap alta"><table class="tabela tabela-contabil"><thead><tr>${E.contabil.porFilial ? '<th>Regional</th><th>Filial</th>' : ''}<th>Pacote</th><th>Centro de Custo</th><th>Conta Contábil</th><th>Terceiro</th>${meses.map(m => `<th class="n">${m}</th>`).join('')}</tr></thead>
-      <tbody>${linhas.slice(0, 400).map(l => `<tr>${E.contabil.porFilial ? `<td>${esc(l.regional)}</td><td>${esc(l.filial)}</td>` : ''}<td>${esc(l.pacote)}</td><td>${esc(l.cc)}</td><td>${esc(l.conta)}</td><td>${esc(cfg.terceiro)}</td>${[...l.meses].map(v => `<td class="n">${Math.round(v) ? num0.format(Math.round(v)) : '-'}</td>`).join('')}</tr>`).join('')
+      <tbody>${linhas.slice(0, 400).map(l => `<tr${l.hc ? ' class="linha-hc"' : ''}>${E.contabil.porFilial ? `<td>${esc(l.regional)}</td><td>${esc(l.filial)}</td>` : ''}<td>${esc(l.pacote)}</td><td>${esc(l.cc)}</td><td>${esc(l.conta)}</td><td>${esc(cfg.terceiro)}</td>${[...l.meses].map(v => `<td class="n">${Math.round(v) ? num0.format(Math.round(v)) : '-'}</td>`).join('')}</tr>`).join('')
         || '<tr><td colspan="18" class="vazio">Nada para mostrar com esses filtros.</td></tr>'}</tbody></table></div>
       ${linhas.length > 400 ? `<p class="subtitulo" style="margin:.6rem 0 0">Mostrando 400 de ${linhas.length} linhas — o Excel traz todas.</p>` : ''}`}
     </section>`;
@@ -4194,6 +4207,7 @@ async function renderContabil() {
   $$('[data-ccrub]', el).forEach(s => s.addEventListener('change', () => salvar({ cc_rubricas: { ...cfg.cc_rubricas, [s.dataset.ccrub]: s.value || '-' } })));
   $('#ct-zeradas', el).addEventListener('change', e => { E.contabil.zeradas = e.target.checked; renderContabil(); });
   $('#ct-filial', el).addEventListener('change', e => { E.contabil.porFilial = e.target.checked; renderContabil(); });
+  $('#ct-hc', el).addEventListener('change', e => { E.contabil.hc = e.target.checked; renderContabil(); });
   $$('[data-cc]', el).forEach(s => s.addEventListener('change', () => {
     const mapa = { ...cfg.mapa_cc };
     if (s.value) mapa[s.dataset.cc] = s.value; else delete mapa[s.dataset.cc];
