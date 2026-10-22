@@ -181,6 +181,11 @@ e, dos meses seguintes em diante, o aumento acumulado entra no **Salário** como
 ("Promoções e méritos · aumento da filial"), sem mudar o salário de cada colaborador; férias, 13º, FGTS e INSS acompanham.
 **% da folha** em "Como é calculado" (ex.: PPR 0,40% da folha = % sobre salário + todo o grupo Remuneração do mês).
 
+**Valor da planilha da base × premissa**: quem tem o valor do item na planilha da base fica com esse valor (não o da
+regra). Para a regra valer para todos — ex.: VA reajustado na premissa — marque, na linha do item, "Usar esta regra também
+para os N com valor da planilha da base" (também no quadro e na calculadora). Ajustes feitos à mão no colaborador
+continuam valendo.
+
 **Edição manual no quadro de premissas**: em Premissas › Quadro de todas as filiais, o botão **✏️ Editar manualmente**
 liga a edição; clicar numa célula (filial × item) abre a regra (tem?, como é calculado, valor, quando é pago, mês) e
 permite aplicar a mesma regra em outras filiais de uma vez. Sem o botão ligado, o clique abre a filial como antes.

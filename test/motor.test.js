@@ -87,6 +87,16 @@ test('provisão de aumento: promoções só em mar e set; nos meses seguintes o 
   perto(ag.hc[3], 2);                                            // a linha da filial não conta como pessoa
 });
 
+test('valor da planilha da base vale no lugar da regra, a não ser que a regra seja "vale para todos"', () => {
+  const c = colab({ excecoes: { va: { metodo: 'fixo', valor: 1601.96, origem: 'base' } } });
+  const comBase = Motor.calcular({ colaboradores: [c], filiais: {}, premissas: { CUIABA: { va: { metodo: 'fixo', valor: 1602.96 } } } });
+  perto(comBase.valor(0, Motor.IDX.va, 0), 1601.96);
+  const todos = Motor.calcular({ colaboradores: [c], filiais: {}, premissas: { CUIABA: { va: { metodo: 'fixo', valor: 1602.96, vale_todos: true } } } });
+  perto(todos.valor(0, Motor.IDX.va, 0), 1602.96);
+  const manual = colab({ excecoes: { va: { metodo: 'fixo', valor: 900 } } }); // ajustado à mão continua valendo
+  perto(Motor.calcular({ colaboradores: [manual], filiais: {}, premissas: { CUIABA: { va: { metodo: 'fixo', valor: 1602.96, vale_todos: true } } } }).valor(0, Motor.IDX.va, 0), 900);
+});
+
 test('rateio do total da filial por headcount e só entre quem recebe', () => {
   const premissas = { CUIABA: { horas_extras: { metodo: 'rateio', valor: 900, rateio: 'hc', periodo: 'mensal', quem: ['cc:17150'] } } };
   const colaboradores = [colab({ id: 1, cc_cod: '17150' }), colab({ id: 2, cc_cod: '17150' }), colab({ id: 3, cc_cod: '22153' })];

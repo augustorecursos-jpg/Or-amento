@@ -211,7 +211,8 @@
     // ficam de fora (ex.: rescisão anual da filial). Ajustes feitos à mão no cadastro continuam valendo.
     const excecaoVale = (i, r) => {
       const e = colaboradores[i].excecoes?.[RUBRICAS[r].id];
-      return Boolean(e) && !(e.origem === 'base' && premsFilial[i][r]?.metodo === 'rateio');
+      // "vale_todos": a regra da filial vale também para quem tem valor da planilha da base (ex.: VA reajustado na premissa).
+      return Boolean(e) && !(e.origem === 'base' && (premsFilial[i][r]?.metodo === 'rateio' || premsFilial[i][r]?.vale_todos));
     };
     const prems = colaboradores.map((c, i) => {
       const exc = c.excecoes;

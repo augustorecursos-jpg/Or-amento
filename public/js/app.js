@@ -1068,6 +1068,7 @@ function cenarioCalculadora(k = 1) {
       if (c.periodo && !String(c.tipo).startsWith('pct') && c.tipo !== 'nivel') novo.periodo = c.periodo;
       if (novo.periodo === 'por_mes') novo.periodo = 'mensal';
       if (String(c.tipo).startsWith('pct')) { novo.inicio = Number(c.inicio) || 1; novo.inicio2 = Number(c.inicio2) || 0; }
+      if (c.substituir) novo.vale_todos = true; // vale também para quem tem valor da planilha da base
     } else novo = escalarRegra(p, k);
     regras[f] = novo;
     premissas[f] = { ...(premissas[f] || {}), [c.rub]: novo };
@@ -1345,13 +1346,21 @@ function detalheColaborador(id, res = E.res) {
   const out = [];
   for (const g of GRUPOS) {
     const filhos = RUBRICAS.map((r, k) => ({ r, k })).filter(x => x.r.grupo === g.id).map(({ r, k }) => ({
-      rotulo: r.nome, meses: MESES.map((_, m) => res.valor(i, k, m)), propria: c.excecoes?.[r.id] ? (c.excecoes[r.id].origem === 'base' ? 'base' : 'manual') : '', conta: contaDoItem(c, r),
+      rotulo: r.nome, meses: MESES.map((_, m) => res.valor(i, k, m)), propria: excecaoEfetiva(c, r.id) ? (c.excecoes[r.id].origem === 'base' ? 'base' : 'manual') : '', conta: contaDoItem(c, r),
     })).filter(f => f.meses.some(x => x));
     if (!filhos.length) continue;
     out.push({ rotulo: g.nome, cor: g.cor, meses: MESES.map((_, m) => filhos.reduce((s, f) => s + f.meses[m], 0)), det: 'grupo' });
     filhos.forEach(f => out.push({ ...f, det: 'rubrica' }));
   }
   return out;
+}
+
+/** Exceção do colaborador que vale de fato (a da planilha da base perde para "Total da filial" e para regra "vale para todos"). */
+function excecaoEfetiva(c, rid) {
+  const e = c.excecoes?.[rid];
+  if (!e || e.origem !== 'base') return e;
+  const p = Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rid);
+  return p.metodo === 'rateio' || p.vale_todos ? undefined : e;
 }
 
 /** Explica a conta do item no detalhe do colaborador: PPR (salário × target) e benefício em R$ com reajuste. */
@@ -1362,23 +1371,23 @@ function contaDoItem(c, rub) {
   const notaMeses = onze ? `mês cheio × ${onze} · 1 mês do ano é pago como férias + 1/3` : '';
   if (rub.fixa || (rub.grupo === 'remuneracao' && rub.adicional)) return notaMeses;
   if (rub.id === 'horas_extras') {
-    const p = Motor.aplicarExcecao(Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rub.id), c.excecoes?.[rub.id]);
+    const p = Motor.aplicarExcecao(Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rub.id), excecaoEfetiva(c, rub.id));
     return p.metodo === 'rateio' ? '' : notaMeses;
   }
   if (rub.id === 'ferias') return '(salário + adicionais + HE) ÷ 12 + 1/3 · provisão de férias';
   if (rub.id === 'decimo') return '(salário + adicionais + HE) ÷ 12';
   if (rub.id === 'fgts' || rub.id === 'inss') return `sobre salário + adicionais + HE${onze ? ` pagos no mês (${onze})` : ''}`;
-  const p = Motor.aplicarExcecao(Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rub.id), c.excecoes?.[rub.id]);
+  const p = Motor.aplicarExcecao(Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rub.id), excecaoEfetiva(c, rub.id));
   if (p.metodo === 'fixo' && rub.grupo === 'beneficios' && p.periodo !== 'por_mes') {
     // Benefício em R$: mostra o reajuste de benefícios da filial, que entra por cima do valor lançado.
     const f = filiaisComRascunho()[c.filial] || {};
     const fim = fatorBenefDe(f, 11);
-    const daBase = c.excecoes?.[rub.id]?.origem === 'base';
+    const daBase = excecaoEfetiva(c, rub.id)?.origem === 'base';
     if (fim === 1) return daBase ? `${brl.format(p.valor)} da planilha da base` : '';
     const reaj = `reajuste de benefícios da filial de ${textoReajuste(f, 'reaj_benef')}`;
     if (daBase) return `${brl.format(p.valor)} da planilha da base + ${reaj} = ${brl.format(p.valor * fim)} em Dez`;
     const v = Motor.valorDe(p, c.funcao);
-    const deFuncao = !c.excecoes?.[rub.id] && Motor.valorDe(p, c.funcao) !== Number(p.valor) ? ` (${c.funcao})` : '';
+    const deFuncao = !excecaoEfetiva(c, rub.id) && Motor.valorDe(p, c.funcao) !== Number(p.valor) ? ` (${c.funcao})` : '';
     return `${brl.format(v)}${deFuncao} + ${reaj} = ${brl.format(v * fim)} em Dez`;
   }
   if (p.metodo !== 'multiplo') return '';
@@ -1963,11 +1972,14 @@ function linhaPremHtml(rub, previa) {
     ? `<button class="btn-detalhe btn-niveis" data-niveis title="Target de salários por nível do cargo">📋 Tabela por nível · ${nNiveis ? `${nNiveis} nível(is)` : 'preencher'}</button>`
     : `<span class="valor-un"><input class="campo" type="number" step="any" data-campo="valor" value="${p.valor ?? 0}"><small>${unidadeValor(tipo, p.periodo).replace('R$ total', tipo === 'rateio' && p.dividir === 'escopo' ? `R$ total ${E.prem.escopo === '*' ? 'da empresa' : 'da regional'}` : 'R$ total')}</small></span>${notaReajuste(rub, tipo, p)}`;
   const desab = tem ? '' : ' desab';
+  // Quem tem valor da planilha da base para este item: por padrão fica com o valor dele; marcando, a regra vale para todos.
+  const daBase = tem && tipo !== 'rateio' ? E.dados.colaboradores.filter(colabsDoEscopo(escopo)).filter(c => c.excecoes?.[rub.id]?.origem === 'base').length : 0;
+  const valeTodos = daBase ? `<label class="vale-todos${p.vale_todos ? ' ligado' : ''}" title="Estes colaboradores têm o valor deste item na planilha da base, que vale no lugar da regra"><input type="checkbox" data-vale-todos ${p.vale_todos ? 'checked' : ''}> Usar esta regra também para os <b>${num0.format(daBase)}</b> com valor da planilha da base</label>` : '';
   return `<tr class="${propria ? 'propria' : 'herdada'}${tem ? '' : ' nao-tem'}" data-rub="${rub.id}">
     <td class="rub fixa">${esc(rub.nome)}<small>${propria ? (escopo === '*' ? 'regra geral' : escopo.startsWith('R:') ? 'regra da regional' : 'regra desta filial') : `herdada · ${esc(origem)}`}</small></td>
     <td><label class="chave" title="A filial tem este item?"><input type="checkbox" data-tem ${tem ? 'checked' : ''}><span></span><b>${tem ? 'Sim' : 'Não'}</b></label></td>
     <td class="${desab}"><select class="campo" data-campo="metodo">${Object.entries(tipos).map(([k, v]) => `<option value="${k}" ${k === tipo ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
-    <td class="${desab}">${valorHtml}</td>
+    <td class="${desab}">${valorHtml}${valeTodos}</td>
     <td class="${desab}"><button class="btn-detalhe" data-detalhes title="Base, periodicidade, rateio e teto">⚙ ${esc(resumoDetalhes(regraDoTipo(tipo, p)))}</button></td>
     <td class="${desab}"><button class="btn-detalhe" data-quem title="Quem recebe esta rubrica">👥 ${[p.publico === 'F' ? '♀ Mulheres' : p.publico === 'M' ? '♂ Homens' : '', p.quem?.length ? `${p.quem.length} grupo(s)` : ''].filter(Boolean).join(' · ') || 'Todos'}${Object.keys(p.por_funcao || {}).length ? ' · valor por função' : ''}${p.periodo === 'por_mes' && p.publico_meses?.some(Boolean) ? ' · público por mês' : ''}</button></td>
     <td class="n" data-anual>${anual ? brl0.format(anual) : '–'}</td>
@@ -2011,6 +2023,7 @@ function desenharTabelaPrem() {
     tr.querySelector('[data-detalhes]').addEventListener('click', () => editarDetalhes(rub));
     tr.querySelector('[data-quem]').addEventListener('click', () => escolherQuem(rub));
     tr.querySelector('[data-reset]')?.addEventListener('click', () => { E.prem.edits[rub] = null; desenharTabelaPrem(); });
+    tr.querySelector('[data-vale-todos]')?.addEventListener('change', e => { E.prem.edits[rub] = { ...atual(), vale_todos: e.target.checked }; desenharTabelaPrem(); });
     tr.querySelector('[data-ver]')?.addEventListener('click', () => verDistribuicao(rub));
   });
   atualizarRodapePrem(previa);
@@ -2304,9 +2317,9 @@ const mesDe = v => {
   return i >= 0 ? i + 1 : null;
 };
 
-const CAMPOS_REGRA = ['metodo', 'valor', 'base', 'periodo', 'mes', 'rateio', 'teto', 'por_nivel', 'quem', 'inicio', 'inicio2', 'provisao'];
+const CAMPOS_REGRA = ['metodo', 'valor', 'base', 'periodo', 'mes', 'rateio', 'teto', 'por_nivel', 'quem', 'inicio', 'inicio2', 'provisao', 'vale_todos'];
 // inicio/inicio2 vazios, 0 ou janeiro são o mesmo (vale o ano todo / sem 2º aumento)
-const normCampo = (k, v) => ((k === 'inicio' || k === 'inicio2') && (!v || Number(v) <= 1) ? null : k === 'provisao' ? Boolean(v) || null : v ?? null);
+const normCampo = (k, v) => ((k === 'inicio' || k === 'inicio2') && (!v || Number(v) <= 1) ? null : k === 'provisao' || k === 'vale_todos' ? Boolean(v) || null : v ?? null);
 const mesmaRegra = (a, b) => CAMPOS_REGRA.every(k => JSON.stringify(normCampo(k, a[k])) === JSON.stringify(normCampo(k, b[k])));
 
 // ----- Modelo de preenchimento das premissas (uma linha por filial e item, com listas de seleção) -----
@@ -2530,6 +2543,7 @@ function editarCelulaQuadro(filial, rub, filsQuadro) {
       <label class="rotulo" data-so-tem data-mes>Mês<select class="campo" name="mes">${opcoesMes(p.mes || 12)}</select></label>
       <label class="rotulo" data-so-tem data-sopct>A partir de<select class="campo" name="inicio">${opcoesMes(p.inicio || 1)}</select></label>
       <label class="rotulo" data-so-tem data-sopct>2º aumento a partir de <small>(opcional)</small><select class="campo" name="inicio2">${opcoesMes(p.inicio2 || '', true)}</select></label>
+      <label class="check inteiro" data-so-tem><input type="checkbox" name="vale_todos" ${p.vale_todos ? 'checked' : ''}> <span>Usar também para quem tem valor deste item na <b>planilha da base</b> (sem marcar, essas pessoas ficam com o valor delas)</span></label>
       ${p.periodo === 'por_mes' || (p.quem || []).length || Object.keys(p.por_funcao || {}).length ? `<p class="inteiro aviso-ajuste" style="margin:0">ℹ Esta regra tem detalhes (valor por mês, quem recebe ou valor por função) que só aparecem em <b>Editar por filial</b>; o que não mudar aqui fica como está.</p>` : ''}
       ${outras.length ? `<div class="inteiro rotulo">Aplicar a mesma regra também em
         <div style="display:flex;gap:.8rem;margin:.3rem 0"><button type="button" class="btn-link" data-todas>Marcar todas</button><button type="button" class="btn-link" data-nenhuma>Nenhuma</button></div>
@@ -2565,6 +2579,7 @@ function editarCelulaQuadro(filial, rub, filsQuadro) {
       if (!tipo.startsWith('pct') && tipo !== 'nivel') lido.periodo = f.periodo.value;
       if (lido.periodo === 'anual_mes') lido.mes = Number(f.mes.value);
       if (tipo.startsWith('pct')) { lido.inicio = Number(f.inicio.value) || 1; lido.inicio2 = Number(f.inicio2.value) || 0; }
+      lido.vale_todos = f.vale_todos.checked;
     }
     const alvo = [filial, ...$$('input[name=outras]:checked', f).map(i => i.value)];
     const itens = alvo.map(fil => {

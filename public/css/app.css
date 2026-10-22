@@ -702,3 +702,6 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .calc-card.destaque b { font-size: 1.6rem; color: #fff; }
 .calc-card.destaque b.delta-sobe { color: #ffb38a; }
 .calc-card.destaque b.delta-desce { color: #8fe0d4; }
+.vale-todos { display: flex; gap: .35rem; align-items: center; margin-top: .3rem; font-size: .72rem; color: #b54d12; line-height: 1.25; max-width: 260px; cursor: pointer; }
+.vale-todos.ligado { color: var(--marinho, #164d74); }
+.vale-todos input { accent-color: var(--laranja); margin: 0; }

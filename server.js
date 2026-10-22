@@ -153,7 +153,8 @@ function limparPremissa(p) {
     teto: p.teto === '' || p.teto == null ? null : numero(p.teto),
     por_nivel: Boolean(p.por_nivel),
     sem_dissidio: Boolean(p.sem_dissidio),
-    provisao: Boolean(p.provisao), // % só nos meses do aumento; depois vai para o salário da filial
+    provisao: Boolean(p.provisao),
+    vale_todos: Boolean(p.vale_todos), // a regra vale também para quem tem valor da planilha da base // % só nos meses do aumento; depois vai para o salário da filial
     meses: Array.from({ length: 12 }, (_, i) => numero(Array.isArray(p.meses) ? p.meses[i] : 0)),
     publico: ['F', 'M'].includes(p.publico) ? p.publico : '',
     publico_meses: Array.from({ length: 12 }, (_, i) => (Array.isArray(p.publico_meses) && ['F', 'M'].includes(p.publico_meses[i]) ? p.publico_meses[i] : '')),
