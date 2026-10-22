@@ -169,6 +169,12 @@ o do ano entra por cima na data-base. Ex.: base 13.720,34 → jan–jul/27 14.40
 Simulador (abas Dissídio e Benefícios), premissas da filial, reajuste em lote e os Excel de premissas têm os dois; o
 Painel mostra o impacto de cada dissídio.
 
+**Calculadora de impacto** (menu): escolha a conta e simule um novo valor da regra, um novo total no ano ou uma variação
+%, para o que está nos filtros do topo (sem filtro = empresa toda). Mostra conta hoje × simulada, reflexos (férias, 13º,
+FGTS, INSS…), impacto total, gráfico mês a mês e tabela por filial; exporta Excel. Nada é salvo — o administrador pode
+**Aplicar às premissas** (grava a regra nas filiais do escopo). Coordenadores e gerente podem simular.
+**% da folha** em "Como é calculado" (ex.: PPR 0,40% da folha = % sobre salário + todo o grupo Remuneração do mês).
+
 **Edição manual no quadro de premissas**: em Premissas › Quadro de todas as filiais, o botão **✏️ Editar manualmente**
 liga a edição; clicar numa célula (filial × item) abre a regra (tem?, como é calculado, valor, quando é pago, mês) e
 permite aplicar a mesma regra em outras filiais de uma vez. Sem o botão ligado, o clique abre a filial como antes.

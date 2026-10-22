@@ -26,6 +26,7 @@ const E = {
   painelVisao: 'custo', // 'custo' ou 'hc' (headcount)
   comparar: false, // comparativo com o ano anterior (painel e simulação)
   hc: { dim: 'filial', busca: '', aberto: '', sub: 'funcao' },
+  calc: { rub: 'promocoes', modo: 'regra', tipo: '', valor: '', periodo: '', inicio: '', alvo: '', pct: '', substituir: false, incluirSem: false },
   solic: [],
   solicFiltro: 'pendentes',
   contabil: { cfg: null, zeradas: false, porFilial: true, formato: 'contabil' },
@@ -358,7 +359,7 @@ function escopoFiltro(padrao) {
 }
 
 const TITULOS = {
-  painel: 'Painel', simulacao: 'Simulação mês a mês', premissas: 'Premissas e regras', base: 'Base de colaboradores',
+  painel: 'Painel', simulacao: 'Simulação mês a mês', calculadora: 'Calculadora de impacto', premissas: 'Premissas e regras', base: 'Base de colaboradores',
   conferencia: 'Conferência', contabil: 'Relatório contábil', lancamentos: 'Outros lançamentos', solicitacoes: 'Pedidos de ajuste', coordenadores: 'Acessos dos coordenadores', historico: 'Histórico',
 };
 
@@ -367,7 +368,7 @@ function irPara(aba) {
   $$('.lateral-item[data-aba]').forEach(b => b.classList.toggle('ativo', b.dataset.aba === aba));
   $$('[data-painel]').forEach(s => { s.hidden = s.dataset.painel !== aba; });
   $('#barra-pagina').textContent = TITULOS[aba];
-  $('#barra-filtros').style.visibility = ['painel', 'simulacao', 'base', 'conferencia', 'contabil', 'lancamentos'].includes(aba) ? '' : 'hidden';
+  $('#barra-filtros').style.visibility = ['painel', 'simulacao', 'calculadora', 'base', 'conferencia', 'contabil', 'lancamentos'].includes(aba) ? '' : 'hidden';
   $('#lateral').classList.remove('aberta');
   history.replaceState(null, '', `#${aba}`);
   renderAba();
@@ -376,7 +377,7 @@ function irPara(aba) {
 
 function renderAba() {
   ({
-    painel: renderPainel, simulacao: renderSimulacao, premissas: renderPremissas, base: renderBase,
+    painel: renderPainel, simulacao: renderSimulacao, calculadora: renderCalculadora, premissas: renderPremissas, base: renderBase,
     conferencia: renderConferencia, contabil: renderContabil, lancamentos: renderLancamentos, solicitacoes: renderSolicitacoes, coordenadores: renderCoordenadores, historico: renderHistorico,
   })[E.aba]();
 }
@@ -595,7 +596,7 @@ const COR_ATUAL = '#2f6fa3';
 const somaRub = (ag, k) => { let s = 0; for (let m = 0; m < 12; m++) s += ag.porRubrica[k * 12 + m]; return s; };
 const sinal = v => (v > 0 ? '+' : v < 0 ? '−' : '');
 const deltaFmt = v => `${sinal(v)}${brl0.format(Math.abs(v))}`;
-const deltaPct = (d, base) => (base ? `${sinal(d)}${(Math.abs(d / base) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : '–');
+const deltaPct = (d, base) => (base ? `${sinal(d)}${(Math.abs(d / base) * 100).toLocaleString('pt-BR', { maximumFractionDigits: Math.abs(d / base) < 0.01 ? 2 : 1 })}%` : '–');
 const clsDelta = v => (v > 0.5 ? 'delta-sobe' : v < -0.5 ? 'delta-desce' : '');
 
 function desenharComparativo(box) {
@@ -1038,6 +1039,212 @@ document.addEventListener('keydown', e => {
 document.addEventListener('fullscreenchange', () => {
   if (!document.fullscreenElement && document.body.classList.contains('apresentacao')) alternarApresentacao();
 });
+
+// ---------- Calculadora de impacto ----------
+// Simula outra regra/valor para uma conta nas filiais do filtro do topo (ou na empresa toda) e mostra o impacto no ano,
+// já com os reflexos (férias, 13º, FGTS, INSS…). Não grava nada; o administrador pode aplicar às premissas.
+
+/** Regra com todos os valores multiplicados por k (valor, meses, tabela de níveis, valor por função). */
+function escalarRegra(p, k) {
+  if (!p || p.metodo === 'nao') return p;
+  const mult = o => Object.fromEntries(Object.entries(o || {}).map(([a, v]) => [a, (Number(v) || 0) * k]));
+  return { ...p, valor: (Number(p.valor) || 0) * k, ...(p.meses ? { meses: p.meses.map(v => (Number(v) || 0) * k) } : {}),
+    ...(p.niveis ? { niveis: mult(p.niveis) } : {}), ...(p.por_funcao ? { por_funcao: mult(p.por_funcao) } : {}) };
+}
+
+/** Monta e calcula o cenário da calculadora. Devolve o cálculo simulado e as regras novas por filial. */
+function cenarioCalculadora(k = 1) {
+  const c = E.calc;
+  const fils = filiaisVisiveis();
+  const premissas = JSON.parse(JSON.stringify(E.dados.premissas));
+  const regras = {};
+  for (const f of fils) {
+    const p = Motor.premissaDe(E.dados.premissas, f, E.dados.filiais[f].regional, c.rub);
+    let novo;
+    if (c.modo === 'regra' && p.metodo === 'nao' && !c.incluirSem) continue; // filial sem a conta fica como está
+    if (c.modo === 'regra') {
+      novo = regraDoTipo(c.tipo || tipoDe(p), { ...p, metodo: p.metodo === 'nao' ? metodoAoLigar(c.rub, p) : p.metodo });
+      novo.valor = Number(c.valor) || 0;
+      if (c.periodo && !String(c.tipo).startsWith('pct') && c.tipo !== 'nivel') novo.periodo = c.periodo;
+      if (novo.periodo === 'por_mes') novo.periodo = 'mensal';
+      if (String(c.tipo).startsWith('pct')) novo.inicio = Number(c.inicio) || 1;
+    } else novo = escalarRegra(p, k);
+    regras[f] = novo;
+    premissas[f] = { ...(premissas[f] || {}), [c.rub]: novo };
+  }
+  const set = new Set(fils);
+  // Valores próprios (planilha da base / ajustados à mão): na variação % e no novo total sobem junto; na regra nova,
+  // só mudam se a opção "aplicar também a quem tem valor próprio" estiver marcada.
+  const colaboradores = [...E.dados.colaboradores.map(col => {
+    const ex = col.excecoes?.[c.rub];
+    if (!ex || !set.has(col.filial)) return col;
+    if (c.modo === 'regra') {
+      if (!c.substituir) return col;
+      const { [c.rub]: _, ...resto } = col.excecoes;
+      return { ...col, excecoes: resto };
+    }
+    return { ...col, excecoes: { ...col.excecoes, [c.rub]: escalarRegra(ex, k) } };
+  }), ...lancamentosComoLinhas()];
+  const res = Motor.calcular({ colaboradores, filiais: filiaisComRascunho(), premissas, niveis: E.dados.niveis });
+  return { res, regras, fils };
+}
+
+function calcularCalculadora() {
+  const c = E.calc;
+  const k0 = IDX[c.rub];
+  const atual = totalDe(E.bruto.res);
+  const contaAtual = somaRub(atual, k0);
+  // campo vazio = ainda sem simulação: mostra o de hoje
+  const vazio = { regra: c.valor, total: c.alvo, pct: c.pct }[c.modo] === '' || { regra: c.valor, total: c.alvo, pct: c.pct }[c.modo] == null;
+  if (vazio) return { atual, sim: atual, contaAtual, contaSim: contaAtual, res: E.bruto.res, regras: {}, fils: filiaisVisiveis(), vazio: true };
+  let cen;
+  if (c.modo === 'total') {
+    // novo total no ano: ajusta a escala até bater (teto e arredondamentos deixam a relação quase linear)
+    const alvo = Number(c.alvo) || 0;
+    let k = contaAtual ? alvo / contaAtual : 1;
+    for (let it = 0; it < 4; it++) {
+      cen = cenarioCalculadora(k);
+      const obtido = somaRub(totalDe(cen.res), k0);
+      if (!obtido || Math.abs(obtido - alvo) < 0.5) break;
+      k *= alvo / obtido;
+    }
+  } else cen = cenarioCalculadora(c.modo === 'pct' ? 1 + (Number(c.pct) || 0) / 100 : 1);
+  const sim = totalDe(cen.res);
+  return { atual, sim, contaAtual, contaSim: somaRub(sim, k0), ...cen };
+}
+
+function renderCalculadora() {
+  const el = painel('calculadora');
+  if (!E.dados.colaboradores.length) { el.innerHTML = '<div class="cartao vazio"><span>📥</span>Importe a base de colaboradores primeiro.</div>'; return; }
+  const c = E.calc;
+  const rubs = RUBRICAS.filter(r => !r.fixa && !r.soLancamento);
+  if (!rubs.some(r => r.id === c.rub)) c.rub = 'promocoes';
+  const r = RUBRICAS[IDX[c.rub]];
+  const fils = filiaisVisiveis();
+  const efetivas = fils.map(f => Motor.premissaDe(E.dados.premissas, f, E.dados.filiais[f].regional, c.rub));
+  // tipo/valor sugeridos: os da regra mais comum no escopo
+  const comTem = efetivas.filter(p => p.metodo !== 'nao');
+  const comum = (() => { const m = new Map(); (comTem.length ? comTem : efetivas).forEach(p => { const k = JSON.stringify([tipoDe(p), p.valor, p.periodo]); m.set(k, (m.get(k) || 0) + 1); }); return [...m].sort((a, b) => b[1] - a[1])[0]?.[0]; })();
+  const [tipoComum, valorComum, periodoComum] = comum ? JSON.parse(comum) : ['fixo', 0, 'mensal'];
+  if (!c.tipo || c.tipo === 'nao' || c.tipo === 'nivel') c.tipo = tipoComum === 'nao' ? metodoAoLigar(c.rub, RUBRICAS[IDX[c.rub]].padrao) : tipoComum === 'nivel' ? 'multiplo' : tipoComum;
+  const valorHoje = tipoComum === 'nao' ? '' : valorComum; // sugestão no campo; vazio = sem mudança
+  if (!c.periodo) c.periodo = periodoComum === 'por_mes' ? 'mensal' : periodoComum || 'mensal';
+  if (!c.inicio) c.inicio = Math.min(...(comTem.length ? comTem : efetivas).map(p => Number(p.inicio) || 1), 12) || 1;
+  const semConta = efetivas.filter(p => p.metodo === 'nao').length;
+  const tipos = r.adicional ? { pct: TIPOS.pct, fixo: TIPOS.fixo, rateio: TIPOS.rateio } : Object.fromEntries(Object.entries(TIPOS).filter(([k]) => k !== 'nivel'));
+  const quandos = { mensal: QUANDO_ROTULO.mensal, anual_mes: QUANDO_ROTULO.anual_mes, anual_diluido: QUANDO_ROTULO.anual_diluido };
+  const proprios = E.dados.colaboradores.filter(x => fils.includes(x.filial) && noFiltro(x) && x.excecoes?.[c.rub]).length;
+  const escopo = [escopoFiltro(E.eu.admin ? 'Empresa toda' : E.eu.regionais.join(' · ')), ccFiltrado()].filter(Boolean).join(' · ');
+  el.innerHTML = `
+    <div class="cab-pagina"><div><h1 class="titulo-pagina">Calculadora de <em>impacto</em></h1>
+      <p class="subtitulo">Escolha a conta e simule outro valor: o impacto no ano aparece na hora, já com os reflexos (férias, 13º, FGTS, INSS…). Vale para o que está nos filtros do topo — sem filtro, para a empresa toda. <b>Nada é salvo.</b></p></div></div>
+    <div class="calc-grade">
+      <section class="cartao calc-entrada">
+        <small class="calc-escopo">📍 ${esc(escopo)} · ${fils.length} filial(is)</small>
+        <label class="rotulo">Conta<select class="campo" id="calc-rub">${GRUPOS.map(g => `<optgroup label="${esc(g.nome)}">${rubs.filter(x => x.grupo === g.id).map(x => `<option value="${x.id}" ${x.id === c.rub ? 'selected' : ''}>${esc(x.nome)}</option>`).join('')}</optgroup>`).join('')}</select></label>
+        <div class="calc-hoje"><span>Hoje</span><b>${esc(regraDaRubrica(c.rub, fils) || '—')}</b></div>
+        <div class="rotulo">Como simular
+          <div class="segmentos" id="calc-modo" style="margin-top:.35rem">${[['regra', 'Novo valor da regra'], ['total', 'Novo total no ano'], ['pct', 'Variação %']].map(([k, v]) => `<button data-m="${k}" class="${c.modo === k ? 'ativo' : ''}">${v}</button>`).join('')}</div></div>
+        ${c.modo === 'regra' ? `
+          <label class="rotulo">Como é calculado<select class="campo" id="calc-tipo">${Object.entries(tipos).map(([k, v]) => `<option value="${k}" ${k === c.tipo ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+          <label class="rotulo">Novo valor <small>(${esc(unidadeValor(c.tipo, c.periodo) || '')})</small><input class="campo" id="calc-valor" type="number" step="any" value="${esc(c.valor)}" placeholder="${valorHoje !== '' ? `hoje: ${fmtN(valorHoje)}` : 'digite o novo valor'}"></label>
+          ${String(c.tipo).startsWith('pct') ? `<label class="rotulo">A partir de<select class="campo" id="calc-inicio">${opcoesMes(c.inicio)}</select></label>` : ''}
+          ${semConta ? `<label class="check"><input type="checkbox" id="calc-incluir" ${c.incluirSem ? 'checked' : ''}> <span>Incluir as <b>${semConta}</b> filial(is) que hoje não têm esta conta</span></label>` : ''}
+          ${!String(c.tipo).startsWith('pct') ? `<label class="rotulo">Quando é pago<select class="campo" id="calc-periodo">${Object.entries(quandos).map(([k, v]) => `<option value="${k}" ${k === c.periodo ? 'selected' : ''}>${v}</option>`).join('')}</select></label>` : ''}
+          ${proprios ? `<label class="check"><input type="checkbox" id="calc-subst" ${c.substituir ? 'checked' : ''}> <span>Aplicar também aos <b>${num0.format(proprios)}</b> colaborador(es) com valor próprio <small>(planilha da base ou ajustado à mão; sem marcar, eles ficam com o valor deles)</small></span></label>` : ''}`
+        : c.modo === 'total' ? `
+          <label class="rotulo">Total da conta no ano (R$)<input class="campo" id="calc-alvo" type="number" step="any" value="${esc(c.alvo)}" placeholder="ex.: 500000"></label>
+          <p class="calc-nota">A regra de cada filial é ajustada na mesma proporção para chegar nesse total.</p>`
+        : `
+          <label class="rotulo">Variação sobre o valor de hoje (%)<input class="campo" id="calc-pct" type="number" step="any" value="${esc(c.pct)}" placeholder="ex.: 10 ou -5"></label>
+          <p class="calc-nota">Todos os valores da conta (regras e valores próprios) sobem ou descem nessa proporção.</p>`}
+      </section>
+      <div id="calc-resultado"></div>
+    </div>`;
+  const re = () => renderCalculadora();
+  $('#calc-rub', el).addEventListener('change', e => { Object.assign(c, { rub: e.target.value, tipo: '', valor: '', periodo: '', inicio: '', alvo: '', pct: '', substituir: false, incluirSem: false }); re(); });
+  $$('#calc-modo button', el).forEach(b => b.addEventListener('click', () => { c.modo = b.dataset.m; re(); }));
+  $('#calc-tipo', el)?.addEventListener('change', e => { c.tipo = e.target.value; re(); });
+  $('#calc-periodo', el)?.addEventListener('change', e => { c.periodo = e.target.value; re(); });
+  $('#calc-subst', el)?.addEventListener('change', e => { c.substituir = e.target.checked; desenharResultadoCalc(); });
+  $('#calc-incluir', el)?.addEventListener('change', e => { c.incluirSem = e.target.checked; desenharResultadoCalc(); });
+  $('#calc-inicio', el)?.addEventListener('change', e => { c.inicio = e.target.value; desenharResultadoCalc(); });
+  let t;
+  const digitar = (campo, id) => $(id, el)?.addEventListener('input', e => { c[campo] = e.target.value; clearTimeout(t); t = setTimeout(desenharResultadoCalc, 250); });
+  digitar('valor', '#calc-valor'); digitar('alvo', '#calc-alvo'); digitar('pct', '#calc-pct');
+  desenharResultadoCalc();
+}
+
+function desenharResultadoCalc() {
+  const box = $('#calc-resultado');
+  if (!box) return;
+  const c = E.calc;
+  const r = RUBRICAS[IDX[c.rub]];
+  const k0 = IDX[c.rub];
+  const x = calcularCalculadora();
+  const dConta = x.contaSim - x.contaAtual;
+  const dTotal = x.sim.total - x.atual.total;
+  const dReflexo = dTotal - dConta;
+  // reflexos: as outras contas que mudaram
+  const reflexos = RUBRICAS.map((rr, k) => ({ rr, d: k === k0 ? 0 : somaRub(x.sim, k) - somaRub(x.atual, k) })).filter(y => Math.abs(y.d) >= 0.5).sort((a, b) => Math.abs(b.d) - Math.abs(a.d));
+  const card = (rot, a, b, nota = '') => `<div class="calc-card"><span>${rot}</span><div><small>hoje</small><b>${brl0.format(a)}</b></div><div class="calc-seta">→</div><div><small>simulado</small><b>${brl0.format(b)}</b></div><em class="${clsDelta(b - a)}">${deltaFmt(b - a)}${a ? ` (${deltaPct(b - a, a)})` : ''}</em>${nota}</div>`;
+  const porF = new Map();
+  const ag0 = Motor.agregar(E.bruto.res, col => col.filial, noFiltro);
+  const ag1 = Motor.agregar(x.res, col => col.filial, noFiltro);
+  for (const f of new Set([...ag0.keys(), ...ag1.keys()])) {
+    const a = ag0.get(f), b = ag1.get(f);
+    const ca = a ? somaRub(a, k0) : 0, cb = b ? somaRub(b, k0) : 0;
+    const ta = a?.total || 0, tb = b?.total || 0;
+    if (Math.abs(ca) + Math.abs(cb) + Math.abs(tb - ta) >= 0.5) porF.set(f, { ca, cb, dc: cb - ca, dr: (tb - ta) - (cb - ca), dt: tb - ta, regra: x.regras[f] });
+  }
+  const linhasF = [...porF].sort((a, b) => Math.abs(b[1].dt) - Math.abs(a[1].dt));
+  box.innerHTML = `
+    ${x.vazio ? '<p class="aviso-ajuste" style="margin:0 0 1rem">👈 Digite o novo valor ao lado para ver o impacto.</p>' : ''}
+    <div class="calc-cards">
+      ${card(esc(r.nome), x.contaAtual, x.contaSim)}
+      <div class="calc-card"><span>Reflexos <small>(férias, 13º, FGTS, INSS…)</small></span><b class="${clsDelta(dReflexo)}">${deltaFmt(dReflexo)}</b><small>${reflexos.length ? reflexos.slice(0, 4).map(y => `${esc(y.rr.nome)} ${deltaFmt(y.d)}`).join(' · ') : 'esta conta não gera reflexos'}</small></div>
+      <div class="calc-card destaque"><span>Impacto total no ano</span><b class="${clsDelta(dTotal)}">${deltaFmt(dTotal)}</b><small>${deltaPct(dTotal, x.atual.total)} sobre o custo de pessoal do escopo (${brl0.format(x.atual.total)} → ${brl0.format(x.sim.total)}) · média de ${deltaFmt(dTotal / 12)} por mês</small></div>
+    </div>
+    <section class="cartao"><h3>${esc(r.nome)} mês a mês <small>· hoje × simulado</small></h3><div id="calc-graf"></div></section>
+    <section class="cartao" style="margin-top:1rem">
+      <div class="ferramentas" style="margin-bottom:.6rem"><h3 style="margin:0">Por filial</h3>
+        <span class="direita"><button class="btn btn-claro btn-sm" id="calc-excel">⬇ Excel</button>${E.eu.admin ? `<button class="btn btn-laranja btn-sm" id="calc-aplicar" ${Math.abs(dConta) >= 0.5 ? '' : 'disabled'}>Aplicar às premissas</button>` : ''}</span></div>
+      <div class="tabela-wrap"><table class="tabela tabela-ranking"><thead><tr><th>Filial</th><th>Regra simulada</th><th class="n">${esc(r.nome)} hoje</th><th class="n">Simulado</th><th class="n">Δ conta</th><th class="n">Δ reflexos</th><th class="n">Δ total</th></tr></thead>
+        <tbody>${linhasF.map(([f, v]) => `<tr><td>${esc(f)}</td><td><small>${v.regra ? esc(`${textoCurto(v.regra)} · ${resumoDetalhes(v.regra)}`) : '—'}</small></td><td class="n">${brl0.format(v.ca)}</td><td class="n">${brl0.format(v.cb)}</td><td class="n ${clsDelta(v.dc)}">${deltaFmt(v.dc)}</td><td class="n ${clsDelta(v.dr)}">${deltaFmt(v.dr)}</td><td class="n ${clsDelta(v.dt)}"><b>${deltaFmt(v.dt)}</b></td></tr>`).join('') || '<tr><td colspan="7" class="vazio">Nada para mostrar.</td></tr>'}</tbody>
+        <tfoot><tr><td>Total</td><td></td><td class="n">${brl0.format(x.contaAtual)}</td><td class="n">${brl0.format(x.contaSim)}</td><td class="n">${deltaFmt(dConta)}</td><td class="n">${deltaFmt(dReflexo)}</td><td class="n">${deltaFmt(dTotal)}</td></tr></tfoot></table></div>
+    </section>`;
+  const meses = ag => MESES.map((_, m) => ag.porRubrica[k0 * 12 + m]);
+  Graficos.colunasAgrupadas($('#calc-graf', box), { rotulos: MESES, titulo: `${r.nome} hoje × simulado`, series: [{ nome: 'Hoje', cor: '#9fb6c9', valores: meses(x.atual) }, { nome: 'Simulado', cor: '#ec6b24', valores: meses(x.sim) }] });
+  $('#calc-excel', box).addEventListener('click', () => {
+    if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
+    const r2 = v => Math.round(v * 100) / 100;
+    const resumo = [['Calculadora de impacto', r.nome], ['Escopo', escopoFiltro('Empresa toda')], ['Hoje', regraDaRubrica(c.rub)], ['Simulação', { regra: 'Novo valor da regra', total: 'Novo total no ano', pct: 'Variação %' }[c.modo]], [],
+      ['', ...MESES, 'Total ano'], [`${r.nome} hoje`, ...meses(x.atual).map(r2), r2(x.contaAtual)], [`${r.nome} simulado`, ...meses(x.sim).map(r2), r2(x.contaSim)],
+      ['Custo total hoje', ...[...x.atual.meses].map(r2), r2(x.atual.total)], ['Custo total simulado', ...[...x.sim.meses].map(r2), r2(x.sim.total)], ['Impacto total', ...MESES.map((_, m) => r2(x.sim.meses[m] - x.atual.meses[m])), r2(dTotal)]];
+    const fil = [['Filial', 'Regra simulada', `${r.nome} hoje`, 'Simulado', 'Δ conta', 'Δ reflexos', 'Δ total'], ...linhasF.map(([f, v]) => [f, v.regra ? `${textoCurto(v.regra)} · ${resumoDetalhes(v.regra)}` : '', r2(v.ca), r2(v.cb), r2(v.dc), r2(v.dr), r2(v.dt)])];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumo), 'Resumo');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(fil), 'Por filial');
+    XLSX.writeFile(wb, `Calculadora-${r.nome}-${E.dados.config.ano}.xlsx`.replace(/[^\w.-]+/g, '_'));
+  });
+  $('#calc-aplicar', box)?.addEventListener('click', async () => {
+    const itens = Object.entries(x.regras).map(([f, novo]) => {
+      const herdada = premHerdadaDe(f, E.dados.filiais[f].regional, c.rub);
+      const propria = E.dados.premissas[f]?.[c.rub];
+      if (mesmaRegra(novo, herdada)) return propria ? { escopo: f, rubricas: { [c.rub]: null } } : null;
+      return { escopo: f, rubricas: { [c.rub]: novo } };
+    }).filter(Boolean);
+    const aviso = c.modo !== 'regra' || c.substituir ? '\n\nValores próprios de colaboradores (planilha da base) não são alterados por aqui — só as regras das filiais.' : '';
+    if (!confirm(`Gravar a nova regra de ${r.nome} em ${itens.length} filial(is)? Impacto no ano: ${deltaFmt(dTotal)}.${aviso}`)) return;
+    try {
+      await api('/api/premissas/lote', { method: 'PUT', body: { itens } });
+      await carregar();
+      Object.assign(c, { tipo: '', valor: '', periodo: '', inicio: '', alvo: '', pct: '' });
+      renderCalculadora();
+      toast(`${r.nome}: regra gravada em ${itens.length} filial(is).`);
+    } catch (e) { toast(e.message, 'erro'); }
+  });
+}
 
 // ---------- Simulação ----------
 
