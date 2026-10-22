@@ -2762,7 +2762,7 @@ function quemColaboradoresHtml(rub, atual, colabs) {
     const e = c.excecoes?.[rub];
     const manual = e && e.origem !== 'base' ? (e.metodo === 'nao' ? 0 : e.valor) : '';
     const daBase = e?.origem === 'base' ? (e.metodo === 'nao' ? 'não recebe' : fmtN(e.valor)) : '';
-    return `<tr data-pessoa="${c.id}" data-busca="${esc(`${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome}`.toUpperCase())}">
+    return `<tr data-pessoa="${c.id}" data-recebe="${ano ? 1 : 0}" data-busca="${esc(`${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome}`.toUpperCase())}">
       <td>${esc(c.nome)}<span class="sub">${esc([c.funcao, rotuloCc(c)].filter(Boolean).join(' · '))}${c.vaga ? ' · vaga' : ''}</span></td>
       <td class="n">${ano ? `${brl.format(ano / (meses || 1))}<span class="sub">/mês · ${brl0.format(ano)} no ano</span>` : '<span class="sub" style="display:inline">não recebe</span>'}${daBase ? `<span class="sub" title="Valor da planilha da base">planilha: ${esc(daBase)}</span>` : ''}</td>
       <td><input type="number" step="any" class="campo valor-pessoa" value="${esc(manual)}" data-orig="${esc(manual)}" placeholder="segue a regra"></td></tr>`;
@@ -2771,6 +2771,10 @@ function quemColaboradoresHtml(rub, atual, colabs) {
     <div class="ferramentas" style="margin:0 0 .5rem"><b style="color:var(--marinho)">Colaboradores (${colabs.length})</b>
       <input class="campo" id="quem-busca" placeholder="Buscar nome, matrícula, função…" style="max-width:280px">
       <small class="sub" style="display:inline">Valor personalizado em <b>${esc(un)}</b> · vazio = segue a regra · 0 = não recebe · vale sobre a regra e sobre a planilha da base</small></div>
+    <div class="ferramentas" style="margin:0 0 .5rem">Preencher <input class="campo" id="quem-massa" type="number" step="any" placeholder="valor" style="width:110px">
+      <button type="button" class="btn btn-claro btn-sm" data-massa="recebe">em quem recebe hoje</button>
+      <button type="button" class="btn btn-claro btn-sm" data-massa="todos">em todos da lista</button>
+      <small class="sub" style="display:inline">respeita a busca · confira e clique em Aplicar</small></div>
     <div class="tabela-wrap" style="max-height:320px"><table class="tabela"><thead><tr><th>Colaborador</th><th class="n">Hoje</th><th style="width:150px">Personalizado (${esc(un)})</th></tr></thead>
       <tbody>${linhas || '<tr><td colspan="3" class="vazio">Nenhum colaborador neste escopo.</td></tr>'}</tbody></table></div></div>`;
 }
@@ -2781,6 +2785,13 @@ function ligarQuemColaboradores(d, rub, atual, colabs) {
     const b = e.target.value.trim().toUpperCase();
     $$('tr[data-pessoa]', d).forEach(tr => { tr.hidden = b && !tr.dataset.busca.includes(b); });
   });
+  $$('[data-massa]', d).forEach(btn => btn.addEventListener('click', () => {
+    const v = $('#quem-massa', d).value;
+    if (v === '') return toast('Digite o valor para preencher.', 'erro');
+    const alvo = $$('tr[data-pessoa]', d).filter(tr => !tr.hidden && (btn.dataset.massa === 'todos' || tr.dataset.recebe === '1'));
+    alvo.forEach(tr => { $('.valor-pessoa', tr).value = v; });
+    toast(`${alvo.length} colaborador(es) preenchido(s) com ${v}. Clique em Aplicar para gravar.`);
+  }));
   return async () => {
     const met = metodoProprio(atual);
     const itens = $$('tr[data-pessoa]', d).map(tr => {
