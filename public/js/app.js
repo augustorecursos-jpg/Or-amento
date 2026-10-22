@@ -1675,9 +1675,17 @@ function trocarEscopo(escopo) {
   window.scrollTo(0, 0);
 }
 
-const TIPOS = { pct: '% sobre base', fixo: 'R$ por colaborador', rateio: 'Total da filial (média por colab.)', multiplo: 'Nº de salários', nivel: 'Nº de salários por nível do cargo' };
+const TIPOS = { pct: '% sobre base', pct_folha: '% da folha (remuneração)', fixo: 'R$ por colaborador', rateio: 'Total da filial (média por colab.)', multiplo: 'Nº de salários', nivel: 'Nº de salários por nível do cargo' };
 // "Por nível do cargo" é o método nº de salários com a tabela de níveis ligada.
-const tipoDe = p => (p.metodo === 'multiplo' && p.por_nivel ? 'nivel' : p.metodo);
+// "% da folha" é o % com a base folha (salário + todo o grupo Remuneração), em destaque para PPR, bônus etc.
+const tipoDe = p => (p.metodo === 'multiplo' && p.por_nivel ? 'nivel' : p.metodo === 'pct' && p.base === 'folha' ? 'pct_folha' : p.metodo);
+/** Regra a partir do tipo escolhido na tela ("nivel" e "pct_folha" são atalhos de outros métodos). */
+function regraDoTipo(tipo, p) {
+  if (tipo === 'nivel') return { ...p, metodo: 'multiplo', por_nivel: true };
+  if (tipo === 'pct_folha') return { ...p, metodo: 'pct', base: 'folha', por_nivel: false };
+  if (tipo === 'pct') return { ...p, metodo: 'pct', por_nivel: false, base: p.base === 'folha' && p.metodo === 'pct' ? 'salario' : p.base || 'salario' };
+  return { ...p, metodo: tipo, por_nivel: false };
+}
 const fmtN = v => (Number(v) || 0).toLocaleString('pt-BR', { maximumFractionDigits: 4 });
 
 function unidadeValor(metodo, periodo) {
@@ -1685,7 +1693,7 @@ function unidadeValor(metodo, periodo) {
   if (metodo === 'rateio') return { anual_diluido: 'R$ total no ano', mensal: 'R$ total por mês', anual_mes: 'R$ no mês' }[periodo] || 'R$ total';
   if (metodo === 'fixo' && periodo === 'anual_mes') return 'R$ / colab. (1x)';
   if (metodo === 'fixo' && periodo === 'anual_diluido') return 'R$ / colab. no ano';
-  return { pct: '%', fixo: 'R$ / colab. / mês', multiplo: 'salários' }[metodo] || '';
+  return { pct: '%', pct_folha: '% da folha do mês', fixo: 'R$ / colab. / mês', multiplo: 'salários' }[metodo] || '';
 }
 
 /** Tipo de cobrança usado quando a filial passa de "Não tem" para "Tem". */
@@ -1709,7 +1717,7 @@ function resumoDetalhes(p) {
 function textoCurto(p) {
   if (p.periodo === 'por_mes' && (p.metodo === 'fixo' || p.metodo === 'rateio')) return 'por mês';
   switch (p.metodo) {
-    case 'pct': return `${fmtN(p.valor)}%`;
+    case 'pct': return `${fmtN(p.valor)}%${p.base === 'folha' ? ' folha' : ''}`;
     case 'fixo': return `R$ ${fmtN(p.valor)}`;
     case 'rateio': return `R$ ${fmtN(p.valor)} total${p.periodo === 'anual_diluido' ? '/ano' : p.periodo === 'mensal' ? '/mês' : ''}`;
     case 'multiplo': return p.por_nivel ? 'nível' : `${fmtN(p.valor)} sal`;
@@ -1749,7 +1757,7 @@ function linhaPremHtml(rub, previa) {
     <td><label class="chave" title="A filial tem este item?"><input type="checkbox" data-tem ${tem ? 'checked' : ''}><span></span><b>${tem ? 'Sim' : 'Não'}</b></label></td>
     <td class="${desab}"><select class="campo" data-campo="metodo">${Object.entries(tipos).map(([k, v]) => `<option value="${k}" ${k === tipo ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
     <td class="${desab}">${valorHtml}</td>
-    <td class="${desab}"><button class="btn-detalhe" data-detalhes title="Base, periodicidade, rateio e teto">⚙ ${esc(resumoDetalhes({ ...p, metodo: tipo }))}</button></td>
+    <td class="${desab}"><button class="btn-detalhe" data-detalhes title="Base, periodicidade, rateio e teto">⚙ ${esc(resumoDetalhes(regraDoTipo(tipo, p)))}</button></td>
     <td class="${desab}"><button class="btn-detalhe" data-quem title="Quem recebe esta rubrica">👥 ${[p.publico === 'F' ? '♀ Mulheres' : p.publico === 'M' ? '♂ Homens' : '', p.quem?.length ? `${p.quem.length} grupo(s)` : ''].filter(Boolean).join(' · ') || 'Todos'}${Object.keys(p.por_funcao || {}).length ? ' · valor por função' : ''}${p.periodo === 'por_mes' && p.publico_meses?.some(Boolean) ? ' · público por mês' : ''}</button></td>
     <td class="n" data-anual>${anual ? brl0.format(anual) : '–'}</td>
     <td><span class="acoes">${anual ? '<button class="btn-ic" data-ver title="Ver distribuição por centro de custo e colaborador">🔍</button>' : ''}${propria ? `<button class="btn-ic" data-reset title="${escopo === '*' ? 'Voltar ao padrão do sistema' : 'Remover regra própria (volta a herdar)'}">↺</button>` : ''}</span></td>
@@ -1774,7 +1782,7 @@ function desenharTabelaPrem() {
     });
     tr.querySelector('[data-campo="metodo"]').addEventListener('change', e => {
       const v = e.target.value;
-      E.prem.edits[rub] = v === 'nivel' ? { ...atual(), metodo: 'multiplo', por_nivel: true } : { ...atual(), metodo: v, por_nivel: false };
+      E.prem.edits[rub] = regraDoTipo(v, atual());
       // Total da filial costuma ser o valor do ano: passa de "todo mês" para "total do ano ÷ 12" (dá para trocar no ⚙)
       if (v === 'rateio' && E.prem.edits[rub].periodo === 'mensal') {
         E.prem.edits[rub].periodo = 'anual_diluido';
@@ -2086,7 +2094,7 @@ const mesmaRegra = (a, b) => CAMPOS_REGRA.every(k => JSON.stringify(a[k] ?? null
 
 // ----- Modelo de preenchimento das premissas (uma linha por filial e item, com listas de seleção) -----
 
-const COMO_ROTULO = { pct: '% sobre a base', fixo: 'R$ por colaborador', rateio: 'Total da filial', multiplo: 'Nº de salários', nivel: 'Nº de salários por nível do cargo' };
+const COMO_ROTULO = { pct: '% sobre a base', pct_folha: '% da folha', fixo: 'R$ por colaborador', rateio: 'Total da filial', multiplo: 'Nº de salários', nivel: 'Nº de salários por nível do cargo' };
 const QUANDO_ROTULO = { mensal: 'Todo mês', anual_mes: 'Uma vez no ano', anual_diluido: 'Anual dividido em 12', por_mes: 'Valor diferente por mês' };
 const COL_MODELO = ['Regional', 'UF', 'Filial', 'Grupo', 'Item', 'Tem?', 'Como é calculado', 'Valor', 'Quando é pago', 'Mês (se 1x no ano)', ...MESES, 'Observação', 'código'];
 
@@ -2181,7 +2189,7 @@ async function gerarModeloPremissas(filiais, grupos, comReajustes) {
       const tipo = tem ? tipoDe(p) : metodoAoLigar(rub.id, p);
       const porMes = p.periodo === 'por_mes' && (tipo === 'fixo' || tipo === 'rateio');
       linha([...id, NOME_GRUPO[rub.grupo], rub.nome, tem ? 'Sim' : 'Não', COMO_ROTULO[tipo], tipo === 'nivel' || porMes ? null : Number(p.valor) || 0,
-        tipo === 'pct' ? '' : QUANDO_ROTULO[p.periodo], tipo !== 'pct' && p.periodo === 'anual_mes' ? MESES[p.mes - 1] : '',
+        tipo.startsWith('pct') ? '' : QUANDO_ROTULO[p.periodo], !tipo.startsWith('pct') && p.periodo === 'anual_mes' ? MESES[p.mes - 1] : '',
         ...MESES.map((_, m) => (porMes ? Number(p.meses?.[m]) || 0 : null)), '', rub.id], [6, 7, 8, 9, 10, ...MESES.map((_, m) => 11 + m), 23]);
     }
   }
@@ -2262,10 +2270,11 @@ function lerModeloPremissas(linhas, h) {
       const periodo = quandoDe[chaveNome(l[ic.quando])] || undefined;
       lido = {};
       if (tipo === 'nivel') Object.assign(lido, { metodo: 'multiplo', por_nivel: true });
+      else if (tipo === 'pct_folha') Object.assign(lido, { metodo: 'pct', base: 'folha', por_nivel: false });
       else if (tipo) Object.assign(lido, { metodo: tipo, por_nivel: false });
       const v = num(l[ic.valor]);
       if (v != null && !Number.isNaN(v)) lido.valor = v;
-      if (periodo && tipo !== 'pct') lido.periodo = periodo;
+      if (periodo && !String(tipo).startsWith('pct')) lido.periodo = periodo;
       const m = mesDe(l[ic.mes]);
       if (m) lido.mes = m;
       if (periodo === 'por_mes') lido.meses = iMeses.map(i => num(l[i]) || 0);
@@ -2315,7 +2324,7 @@ function editarCelulaQuadro(filial, rub, filsQuadro) {
     $$('[data-so-tem]', f).forEach(x => { x.hidden = !sim; });
     if (!sim) return;
     const tipo = f.tipo.value;
-    $('[data-quando]', f).hidden = tipo === 'pct' || tipo === 'nivel';
+    $('[data-quando]', f).hidden = tipo.startsWith('pct') || tipo === 'nivel';
     $('[data-mes]', f).hidden = $('[data-quando]', f).hidden || f.periodo.value !== 'anual_mes';
     f.valor.closest('label').hidden = tipo === 'nivel';
     $('[data-unidade]', f).textContent = `(${unidadeValor(tipo === 'nivel' ? 'multiplo' : tipo, f.periodo.value) || ''})`;
@@ -2330,8 +2339,10 @@ function editarCelulaQuadro(filial, rub, filsQuadro) {
     if (f.tem.value !== '1') lido = { metodo: 'nao' };
     else {
       const tipo = f.tipo.value;
-      lido = tipo === 'nivel' ? { metodo: 'multiplo', por_nivel: true } : { metodo: tipo, por_nivel: false, valor: Number(f.valor.value) || 0 };
-      if (tipo !== 'pct' && tipo !== 'nivel') lido.periodo = f.periodo.value;
+      lido = tipo === 'nivel' ? { metodo: 'multiplo', por_nivel: true }
+        : tipo === 'pct_folha' ? { metodo: 'pct', base: 'folha', por_nivel: false, valor: Number(f.valor.value) || 0 }
+        : { metodo: tipo, por_nivel: false, valor: Number(f.valor.value) || 0, ...(tipo === 'pct' && p.base === 'folha' ? { base: 'salario' } : {}) };
+      if (!tipo.startsWith('pct') && tipo !== 'nivel') lido.periodo = f.periodo.value;
       if (lido.periodo === 'anual_mes') lido.mes = Number(f.mes.value);
     }
     const alvo = [filial, ...$$('input[name=outras]:checked', f).map(i => i.value)];
