@@ -2784,12 +2784,13 @@ function quemColaboradoresHtml(rub, atual, colabs) {
     const kk = v ? v.toFixed(2) : '';
     grupos.set(kk, (grupos.get(kk) || 0) + 1);
   });
-  const chips = [...grupos].sort((a, b) => Number(a[0] || 0) - Number(b[0] || 0)).map(([v, n]) => `<button type="button" class="chip chip-valor" data-valor="${v}">${v ? brl.format(Number(v)) : 'não recebe'} <b>${n}</b></button>`).join('');
+  // Muitos valores diferentes (ex.: PPR, que depende do salário): mostra só os 12 mais comuns — a busca acha o resto
+  const chips = [...grupos].sort((a, b) => b[1] - a[1]).slice(0, 12).sort((a, b) => Number(a[0] || 0) - Number(b[0] || 0)).map(([v, n]) => `<button type="button" class="chip chip-valor" data-valor="${v}">${v ? brl.format(Number(v)) : 'não recebe'} <b>${n}</b></button>`).join('');
   return `<div class="quem-pessoas">
     <div class="ferramentas" style="margin:0 0 .5rem"><b style="color:var(--marinho)">Colaboradores (${colabs.length})</b>
       <input class="campo" id="quem-busca" placeholder="Buscar nome, matrícula, função ou valor (ex.: 733)" style="max-width:300px">
       <small class="sub" style="display:inline">Valor personalizado em <b>${esc(un)}</b> · vazio = segue a regra · 0 = não recebe · vale sobre a regra e sobre a planilha da base</small></div>
-    <div class="chips-valor"><span>Valor de hoje:</span><button type="button" class="chip chip-valor ativo" data-valor="*">Todos <b>${colabs.length}</b></button>${chips}<small class="sub" style="display:inline">clique num valor para ver só quem está com ele</small></div>
+    <div class="chips-valor"><span>Valor de hoje:</span><button type="button" class="chip chip-valor ativo" data-valor="*">Todos <b>${colabs.length}</b></button>${chips}<small class="sub" style="display:inline">clique num valor para ver só quem está com ele${grupos.size > 12 ? ` · ${grupos.size - 12} outro(s) valor(es): use a busca` : ''}</small></div>
     <div class="ferramentas" style="margin:0 0 .5rem">Preencher <input class="campo" id="quem-massa" type="number" step="any" placeholder="valor" style="width:110px">
       <button type="button" class="btn btn-claro btn-sm" data-massa="recebe">em quem recebe hoje</button>
       <button type="button" class="btn btn-claro btn-sm" data-massa="todos">em todos da lista</button>
