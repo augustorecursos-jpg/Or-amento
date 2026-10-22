@@ -1955,6 +1955,9 @@ function notaReajuste(rub, tipo, p) {
   return `<small class="nota-reajuste" title="Reajuste de benefícios da filial: ${esc(textoReajuste(cfg, 'reaj_benef'))}">+${esc(textoReajuste(cfg, 'reaj_benef'))} → ${brl.format(Number(p.valor) * fim)}</small>`;
 }
 
+/** Quantos colaboradores do escopo têm valor personalizado (ajustado à mão) neste item. */
+const personalizados = rid => E.dados.colaboradores.filter(colabsDoEscopo(E.prem.escopo)).filter(c => c.excecoes?.[rid] && c.excecoes[rid].origem !== 'base').length;
+
 function linhaPremHtml(rub, previa) {
   const { escopo } = E.prem;
   const { p, propria, origem } = premEfetiva(escopo, rub.id);
@@ -1981,7 +1984,7 @@ function linhaPremHtml(rub, previa) {
     <td class="${desab}"><select class="campo" data-campo="metodo">${Object.entries(tipos).map(([k, v]) => `<option value="${k}" ${k === tipo ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
     <td class="${desab}">${valorHtml}${valeTodos}</td>
     <td class="${desab}"><button class="btn-detalhe" data-detalhes title="Base, periodicidade, rateio e teto">⚙ ${esc(resumoDetalhes(regraDoTipo(tipo, p)))}</button></td>
-    <td class="${desab}"><button class="btn-detalhe" data-quem title="Quem recebe esta rubrica">👥 ${[p.publico === 'F' ? '♀ Mulheres' : p.publico === 'M' ? '♂ Homens' : '', p.quem?.length ? `${p.quem.length} grupo(s)` : ''].filter(Boolean).join(' · ') || 'Todos'}${Object.keys(p.por_funcao || {}).length ? ' · valor por função' : ''}${p.periodo === 'por_mes' && p.publico_meses?.some(Boolean) ? ' · público por mês' : ''}</button></td>
+    <td><button class="btn-detalhe" data-quem title="Quem recebe esta rubrica e valor personalizado por colaborador">${personalizados(rub.id) ? `<b class="qtd-pessoas">${personalizados(rub.id)} personalizado(s)</b> · ` : ''}👥 ${[p.publico === 'F' ? '♀ Mulheres' : p.publico === 'M' ? '♂ Homens' : '', p.quem?.length ? `${p.quem.length} grupo(s)` : ''].filter(Boolean).join(' · ') || 'Todos'}${Object.keys(p.por_funcao || {}).length ? ' · valor por função' : ''}${p.periodo === 'por_mes' && p.publico_meses?.some(Boolean) ? ' · público por mês' : ''}</button></td>
     <td class="n" data-anual>${anual ? brl0.format(anual) : '–'}</td>
     <td><span class="acoes">${anual ? '<button class="btn-ic" data-ver title="Ver distribuição por centro de custo e colaborador">🔍</button>' : ''}${propria ? `<button class="btn-ic" data-reset title="${escopo === '*' ? 'Voltar ao padrão do sistema' : 'Remover regra própria (volta a herdar)'}">↺</button>` : ''}</span></td>
   </tr>`;

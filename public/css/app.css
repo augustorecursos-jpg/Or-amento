@@ -708,3 +708,4 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .quem-pessoas { margin-top: 1rem; border-top: 1px solid #eef2f6; padding-top: .9rem; }
 .quem-pessoas .valor-pessoa { padding: .35rem .5rem; font-size: .84rem; }
 .quem-pessoas td .sub { display: block; }
+.qtd-pessoas { color: var(--laranja); font-weight: 700; }

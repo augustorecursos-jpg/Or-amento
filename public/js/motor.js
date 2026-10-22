@@ -141,7 +141,7 @@
     // Valor vindo da planilha da base (origem 'base'): segue a periodicidade do item na premissa (todo mês, 1x no ano, anual ÷ 12).
     const daBase = exc.origem === 'base' && exc.metodo === 'fixo';
     const periodo = daBase ? (p.periodo === 'por_mes' || p.metodo === 'rateio' ? 'mensal' : p.periodo)
-      : exc.metodo === p.metodo ? p.periodo : exc.metodo === 'multiplo' ? 'anual_diluido' : 'mensal';
+      : exc.metodo === p.metodo ? (p.periodo === 'por_mes' || p.metodo === 'rateio' ? 'mensal' : p.periodo) : exc.metodo === 'multiplo' ? 'anual_diluido' : 'mensal';
     return { ...p, metodo: exc.metodo, valor: num(exc.valor), periodo, origem: daBase ? 'base' : undefined, quem: [], publico: '', publico_meses: [], por_nivel: false, por_funcao: {}, teto: exc.metodo === 'pct' ? p.teto : null };
   }
 
