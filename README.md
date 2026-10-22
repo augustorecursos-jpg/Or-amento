@@ -186,9 +186,9 @@ regra). Para a regra valer para todos — ex.: VA reajustado na premissa — mar
 para os N com valor da planilha da base" (também no quadro e na calculadora). Ajustes feitos à mão no colaborador
 continuam valendo.
 
-**HC no relatório contábil e no EPM**: a prévia mostra o HC total de cada mês (colaboradores + vagas ativos) e o arquivo
-traz uma linha de headcount por filial/centro de custo (pacote HEADCOUNT · conta "HC - HEADCOUNT"; no EPM, conta
-HEADCOUNT). A caixinha "linhas de HC" liga/desliga.
+**HC no relatório contábil e no EPM**: a prévia mostra o HC total de cada mês e o arquivo traz uma **coluna HC no fim**,
+com o HC (colaboradores + vagas) do centro de custo de cada linha — custo levado para outro CC (ex.: fretado no 25506)
+fica com HC vazio. A caixinha "coluna de HC" liga/desliga.
 
 **Quem recebe com a lista de colaboradores**: a janela "👥 Quem recebe" do item mostra também cada colaborador do
 escopo com o valor de hoje e um campo de **valor personalizado** (vazio = segue a regra · 0 = não recebe). O valor
