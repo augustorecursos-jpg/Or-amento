@@ -176,6 +176,9 @@ FGTS, INSS…), impacto total, gráfico mês a mês e tabela por filial; exporta
 **Promoções e méritos em dois meses**: no ⚙ da regra em % há "A partir de" e "2º aumento a partir de" — o mesmo % entra
 de novo no 2º mês e soma ao 1º (ex.: 0,40% da folha em abril e em outubro → abr–set 0,40%, out–dez 0,80%), ficando no
 salário dos meses seguintes, com reflexos. Também no quadro (edição manual) e na calculadora.
+Com **Provisão de aumento** marcada (no ⚙), a conta aparece **só nos meses do aumento** (ex.: 0,40% da folha em mar e set)
+e, dos meses seguintes em diante, o aumento acumulado entra no **Salário** como uma linha da filial/centro de custo
+("Promoções e méritos · aumento da filial"), sem mudar o salário de cada colaborador; férias, 13º, FGTS e INSS acompanham.
 **% da folha** em "Como é calculado" (ex.: PPR 0,40% da folha = % sobre salário + todo o grupo Remuneração do mês).
 
 **Edição manual no quadro de premissas**: em Premissas › Quadro de todas as filiais, o botão **✏️ Editar manualmente**

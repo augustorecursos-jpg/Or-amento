@@ -71,6 +71,22 @@ test('promoções e méritos: % da folha em dois meses, somando e ficando no sal
   perto(res.valor(0, Motor.IDX.fgts, 9), (10000 + 80) * 0.08); // reflexo: FGTS sobre salário + promoção
 });
 
+test('provisão de aumento: promoções só em mar e set; nos meses seguintes o aumento vai para o salário da filial', () => {
+  const premissas = { '*': { promocoes: { metodo: 'pct', valor: 0.4, base: 'folha', inicio: 3, inicio2: 9, provisao: true }, periculosidade: { metodo: 'nao' }, horas_extras: { metodo: 'nao' } } };
+  const colaboradores = [colab({ id: 1, salario: 10000 }), colab({ id: 2, salario: 5000 })];
+  const res = Motor.calcular({ colaboradores, filiais: {}, premissas, mesesSalario: 12 });
+  perto(res.valor(0, Motor.IDX.promocoes, 2), 0);              // nada no colaborador
+  perto(res.valor(0, 0, 3), 10000);                              // salário dele não muda
+  assert.strictEqual(res.n, 3);                                  // + 1 linha da filial
+  const ag = Motor.agregar(res, () => 'x').get('x');
+  const pr = m => ag.porRubrica[Motor.IDX.promocoes * 12 + m];
+  const sal = m => ag.porRubrica[m];
+  perto(pr(1), 0); perto(pr(2), 60); perto(pr(3), 0); perto(pr(8), 60); perto(pr(9), 0);  // 0,40% de 15.000 em mar e set
+  perto(sal(2), 15000); perto(sal(3), 15060); perto(sal(7), 15060); perto(sal(8), 15060); perto(sal(9), 15120);
+  perto(ag.porRubrica[Motor.IDX.fgts * 12 + 3], 15060 * 0.08); // reflexo no FGTS
+  perto(ag.hc[3], 2);                                            // a linha da filial não conta como pessoa
+});
+
 test('rateio do total da filial por headcount e só entre quem recebe', () => {
   const premissas = { CUIABA: { horas_extras: { metodo: 'rateio', valor: 900, rateio: 'hc', periodo: 'mensal', quem: ['cc:17150'] } } };
   const colaboradores = [colab({ id: 1, cc_cod: '17150' }), colab({ id: 2, cc_cod: '17150' }), colab({ id: 3, cc_cod: '22153' })];

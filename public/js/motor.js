@@ -251,6 +251,10 @@
       return (1 + num(f.reaj_benef_ant_pct) / 100) * (mes && m + 1 >= mes ? 1 + num(f.reaj_benef_pct) / 100 : 1);
     };
 
+    // Provisão de aumento (ex.: promoções e méritos 0,40% da folha em mar e set): o valor de cada filial/CC no mês do
+    // aumento, que depois vira linhas próprias (não vai para cada colaborador).
+    const provisoes = new Map(); // filial|cc → { r, filial, regional, cc_cod, cc_nome, base[12] }
+
     // Grupos de rateio: colaboradores de cada filial.
     const porFilial = new Map();
     colaboradores.forEach((c, i) => {
@@ -325,6 +329,17 @@
           let v = 0;
           switch (p.metodo) {
             case 'pct':
+              if (p.provisao) {
+                // Só nos meses do aumento; guarda o valor da filial/CC e não lança no colaborador.
+                if (m + 1 === (num(p.inicio) || 1) || (num(p.inicio2) && m + 1 === num(p.inicio2))) {
+                  const c = colaboradores[i];
+                  const k = `${r}|${c.filial}|${c.cc_cod || ''}`;
+                  if (!provisoes.has(k)) provisoes.set(k, { r, filial: c.filial, regional: c.regional, cc_cod: c.cc_cod || '', cc_nome: c.cc_nome || '', valor: new Float64Array(12) });
+                  provisoes.get(k).valor[m] += (valorDe(p, c.funcao) / 100) * base(i, rub.adicional ? 'salario' : p.base, true);
+                }
+                v = 0;
+                break;
+              }
               // "A partir de" (inicio): o % só vale desse mês em diante (ex.: budget de méritos de 2% a partir de abril).
               // inicio2: um 2º aumento do mesmo % a partir de outro mês, somado ao 1º (ex.: 0,40% da folha em abril e
               // mais 0,40% em outubro → abr–set 0,40%, out–dez 0,80%); o aumento fica no salário dos meses seguintes.
@@ -363,12 +378,38 @@
       for (let m = 0; m < 12; m++) valores[at(i, r, m)] = num(c.avulso.meses?.[m]);
     });
 
-    return {
-      n,
-      colaboradores,
-      valores,
-      valor: (i, r, m) => valores[at(i, r, m)],
-    };
+    if (!provisoes.size) return { n, colaboradores, valores, valor: (i, r, m) => valores[at(i, r, m)] };
+
+    // Linhas da provisão de aumento (uma por filial/CC): a conta (ex.: promoções e méritos) só no mês do aumento; dos meses
+    // seguintes em diante o aumento acumulado entra no salário. Provisões e encargos em % seguem as regras da filial.
+    const extras = [...provisoes.values()];
+    const N = n + extras.length;
+    const todos = new Float64Array(N * R * 12);
+    todos.set(valores);
+    const linhas = extras.map((x, k) => {
+      const i = n + k;
+      const ps = premFilial(x.filial, x.regional);
+      let acumulado = 0;
+      for (let m = 0; m < 12; m++) {
+        todos[at(i, x.r, m)] = x.valor[m];
+        todos[at(i, 0, m)] = acumulado; // aumento dos meses anteriores, já no salário
+        acumulado += x.valor[m];
+        const folha = todos[at(i, 0, m)] + x.valor[m];
+        for (let r = 1; r < R; r++) {
+          const g = RUBRICAS[r].grupo;
+          const p = ps[r];
+          if ((g !== 'provisoes' && g !== 'encargos') || !p || p.metodo !== 'pct') continue;
+          const b = p.base === 'ferias' ? todos[at(i, IDX.ferias, m)] : p.base === 'decimo' ? todos[at(i, IDX.decimo, m)] : folha;
+          todos[at(i, r, m)] = (num(p.valor) / 100) * b;
+        }
+      }
+      return {
+        id: -2000000 - k, matricula: '', nome: `${RUBRICAS[x.r].nome} · aumento da filial`, regional: x.regional, filial: x.filial,
+        situacao: 'Provisão de aumento', funcao: 'Provisão de aumento', cargo: '', cc_cod: x.cc_cod, cc_nome: x.cc_nome, salario: 0,
+        mes_inicio: 1, mes_fim: 12, vaga: false, excecoes: {}, sexo: '', gestor: '', avulso: { rubrica: RUBRICAS[x.r].id, provisao: true, meses: [] },
+      };
+    });
+    return { n: N, colaboradores: [...colaboradores, ...linhas], valores: todos, valor: (i, r, m) => todos[at(i, r, m)] };
   }
 
   /**

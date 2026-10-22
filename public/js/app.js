@@ -1287,7 +1287,7 @@ function linhasSimulacao(res = E.res) {
     const c = v === 'colaboradores' ? porId.get(k) : null;
     return {
       rotulo: c ? c.nome : k,
-      sub: c ? (c.avulso ? `Outro lançamento · ${c.filial || c.regional} · ${rotuloCc(c)}` : `${c.funcao || ''} · ${c.filial}${c.cc_nome ? ` · ${c.cc_nome}` : ''}`) : `${a.n} colaborador(es)`,
+      sub: c ? (c.avulso ? `${c.avulso.provisao ? 'Provisão de aumento (total da filial)' : 'Outro lançamento'} · ${c.filial || c.regional} · ${rotuloCc(c)}` : `${c.funcao || ''} · ${c.filial}${c.cc_nome ? ` · ${c.cc_nome}` : ''}`) : `${a.n} colaborador(es)`,
       hc: v === 'colaboradores' ? null : Math.max(...a.hc),
       meses: [...a.meses],
       vaga: c?.vaga,
@@ -1295,6 +1295,7 @@ function linhasSimulacao(res = E.res) {
       cmp: c ? chaveCmp(c) : `${v}|${k}`,
       proprias: c ? temManuais(c) : false,
       avulso: Boolean(c?.avulso),
+      provisao: Boolean(c?.avulso?.provisao),
       ag: c ? null : k,
       porRubrica: c ? null : a.porRubrica,
     };
@@ -1441,7 +1442,7 @@ function tabelaComparadaHtml() {
     return `<td class="n${v1 || v0 ? '' : ' zero'}">${v1 || v0 ? `${fmtVal(v1)}<span class="sub-ant">${fmtVal(v0)}</span>` : '–'}</td>`;
   };
   const fim = (t1, t0) => `<td class="n">${fmtVal(t0)}</td><td class="n"><b>${fmtVal(t1)}</b></td><td class="n ${clsDelta(t1 - t0)}"><b>${sinal(t1 - t0)}${fmtVal(Math.abs(t1 - t0))}</b></td><td class="n ${clsDelta(t1 - t0)}">${t0 ? deltaPct(t1 - t0, t0) : t1 ? 'novo' : '–'}</td>`;
-  const rotulo = l => `${l.grupo || l.det === 'grupo' ? `<i class="bola" style="background:${l.cor}"></i>` : ''}${esc(l.rotulo)}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.avulso ? ' <span class="etiqueta neutra">📌 lançamento</span>' : ''}${l.soAnt ? ` <span class="etiqueta neutra">só em ${ant}</span>` : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}`;
+  const rotulo = l => `${l.grupo || l.det === 'grupo' ? `<i class="bola" style="background:${l.cor}"></i>` : ''}${esc(l.rotulo)}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.avulso ? (l.provisao ? ' <span class="etiqueta azul">📈 provisão</span>' : ' <span class="etiqueta neutra">📌 lançamento</span>') : ''}${l.soAnt ? ` <span class="etiqueta neutra">só em ${ant}</span>` : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}`;
   const regra = l => { const r = (l.filho || l.det === 'rubrica') && RUBRICAS.find(x => x.nome === l.rotulo); return r ? ` title="${esc(regraDaRubrica(r.id))}"` : ` title="${esc(l.rotulo)}"`; };
   return `<table class="tabela tabela-sim-comp">
     <thead><tr><th class="fixa">${{ rubricas: 'Rubrica', filiais: 'Filial', cc: 'Centro de custo', colaboradores: 'Colaborador' }[E.sim.visao]}<span class="sub">${so ? `Δ ${ant} → ${esc(ano)} por mês` : `${esc(ano)} <span class="sub-ant" style="display:inline">· ${ant} abaixo</span>`} · ${GRUPOS_CMP_TXT}</span></th>
@@ -1480,7 +1481,7 @@ function tabelaSimulacaoHtml() {
         }
         const cls = l.grupo ? `grupo${E.sim.fechados.has(l.grupo) ? ' fechado' : ''}` : l.filho ? 'filho' : l.colab != null || l.ag != null ? `colab${l.aberto ? ' aberto' : ''}${l.vaga ? ' vaga' : ''}` : l.vaga ? 'vaga' : '';
         return `<tr class="${cls}" ${l.grupo ? `data-grupo="${l.grupo}"` : ''}${l.colab != null ? ` data-colab="${l.colab}" title="Clique para ${l.aberto ? 'fechar' : 'ver'} o detalhe"` : ''}${l.ag != null ? ` data-ag="${esc(l.ag)}" title="Clique para ${l.aberto ? 'fechar' : 'ver'} as contas por grupo"` : ''}>
-          <td class="fixa" title="${esc(l.filho ? `${l.rotulo}: ${regraDaRubrica(RUBRICAS.find(x => x.nome === l.rotulo)?.id)}` : l.rotulo)}">${l.grupo ? `<i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.avulso ? ' <span class="etiqueta neutra">📌 lançamento</span>' : ''}${l.proprias ? ' <span class="etiqueta azul">condições próprias</span>' : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}</td>
+          <td class="fixa" title="${esc(l.filho ? `${l.rotulo}: ${regraDaRubrica(RUBRICAS.find(x => x.nome === l.rotulo)?.id)}` : l.rotulo)}">${l.grupo ? `<i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.avulso ? (l.provisao ? ' <span class="etiqueta azul">📈 provisão</span>' : ' <span class="etiqueta neutra">📌 lançamento</span>') : ''}${l.proprias ? ' <span class="etiqueta azul">condições próprias</span>' : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}</td>
           ${comHc ? `<td class="n">${l.hc ?? ''}</td>` : ''}${l.meses.map(cel).join('')}<td class="n"><b>${fmtVal(t)}</b></td><td class="n">${pctFmt(t / totAno)}</td></tr>`;
       }).join('');
     })()}</tbody>
@@ -1916,7 +1917,7 @@ function metodoAoLigar(rub, p) {
 
 /** Resumo curto dos detalhes (base, periodicidade, rateio, teto). */
 function resumoDetalhes(p) {
-  if (p.metodo === 'pct') return `s/ ${BASES[p.base].toLowerCase()}${p.teto ? ` · teto ${brl0.format(p.teto)}` : ''}${p.inicio > 1 ? ` · a partir de ${MESES[p.inicio - 1]}` : ''}${p.inicio2 > 1 ? ` · + ${fmtN(p.valor)}% a partir de ${MESES[p.inicio2 - 1]}` : ''}`;
+  if (p.metodo === 'pct') return `s/ ${BASES[p.base].toLowerCase()}${p.teto ? ` · teto ${brl0.format(p.teto)}` : ''}${p.inicio > 1 ? ` · a partir de ${MESES[p.inicio - 1]}` : ''}${p.inicio2 > 1 ? ` · + ${fmtN(p.valor)}% a partir de ${MESES[p.inicio2 - 1]}` : ''}${p.provisao ? ' · provisão (depois vai para o salário)' : ''}`;
   const per = { mensal: 'todo mês', anual_mes: `1x no ano · ${MESES[p.mes - 1]}`, anual_diluido: 'anual ÷ 12', por_mes: 'valor por mês' }[p.periodo];
   if (p.metodo === 'rateio') return `${{ mensal: 'total do mês', anual_mes: `total em ${MESES[p.mes - 1]}`, anual_diluido: 'total do ano ÷ 12', por_mes: 'total de cada mês' }[p.periodo]}${p.dividir === 'escopo' ? ' · dividido entre as filiais' : ''} · ${p.rateio === 'salario' ? 'proporcional ao salário' : 'média por colaborador'}`;
   if (p.metodo === 'multiplo') return per;
@@ -2029,7 +2030,8 @@ function editarDetalhes(rub) {
         <label class="rotulo">% calculado sobre${sel('base', bases, p.base)}<small>Remuneração = salário + adicionais. Folha = remuneração + horas extras.</small></label>
         <label class="rotulo">Teto mensal (R$) <small>opcional</small><input class="campo" name="teto" type="number" step="any" value="${p.teto ?? ''}" placeholder="sem teto"></label>
         <label class="rotulo">A partir de<select class="campo" name="inicio">${opcoesMes(p.inicio || 1)}</select><small>Mês em que o % passa a valer (ex.: méritos de 2% a partir de abril). Janeiro = o ano todo.</small></label>
-        <label class="rotulo">2º aumento a partir de <small>(opcional)</small><select class="campo" name="inicio2">${opcoesMes(p.inicio2 || '', true)}</select><small>Mais o mesmo % a partir deste mês, somado ao 1º (ex.: 0,40% da folha em abril e mais 0,40% em outubro). O aumento fica no salário dos meses seguintes.</small></label>`
+        <label class="rotulo">2º aumento a partir de <small>(opcional)</small><select class="campo" name="inicio2">${opcoesMes(p.inicio2 || '', true)}</select><small>Mais o mesmo % a partir deste mês, somado ao 1º (ex.: 0,40% da folha em abril e mais 0,40% em outubro). O aumento fica no salário dos meses seguintes.</small></label>
+        <label class="check inteiro"><input type="checkbox" name="provisao" ${p.provisao ? 'checked' : ''}><span><b>Provisão de aumento</b>: o valor aparece nesta conta <b>só no(s) mês(es) do aumento</b> e, nos meses seguintes, é somado ao <b>salário da filial</b> (no total da filial/centro de custo, sem distribuir por colaborador). Férias, 13º, FGTS e INSS acompanham.</span></label>`
       : `
         <label class="rotulo">Quando é pago${sel('periodo', m === 'multiplo' ? Object.fromEntries(Object.entries(PERIODOS).filter(([k]) => k !== 'por_mes')) : PERIODOS, p.periodo)}<small>“Uma vez no ano” lança o valor inteiro no mês escolhido (ex.: PPR em fevereiro). “Valor diferente em cada mês” serve para gastos que variam (ex.: ações de endomarketing).</small></label>
         <label class="rotulo" id="box-mes">Mês do pagamento<select class="campo" name="mes">${opcoesMes(p.mes)}</select></label>
@@ -2076,6 +2078,7 @@ function editarDetalhes(rub) {
     if (f.teto) novo.teto = f.teto.value === '' ? null : Number(f.teto.value);
     if (f.inicio) novo.inicio = Number(f.inicio.value);
     if (f.inicio2) novo.inicio2 = Number(f.inicio2.value) || 0;
+    if (f.provisao) novo.provisao = f.provisao.checked;
     if (f.periodo) novo.periodo = f.periodo.value;
     if (f.mes) novo.mes = Number(f.mes.value);
     if (f.rateio) novo.rateio = f.rateio.value;
@@ -2301,9 +2304,9 @@ const mesDe = v => {
   return i >= 0 ? i + 1 : null;
 };
 
-const CAMPOS_REGRA = ['metodo', 'valor', 'base', 'periodo', 'mes', 'rateio', 'teto', 'por_nivel', 'quem', 'inicio', 'inicio2'];
+const CAMPOS_REGRA = ['metodo', 'valor', 'base', 'periodo', 'mes', 'rateio', 'teto', 'por_nivel', 'quem', 'inicio', 'inicio2', 'provisao'];
 // inicio/inicio2 vazios, 0 ou janeiro são o mesmo (vale o ano todo / sem 2º aumento)
-const normCampo = (k, v) => ((k === 'inicio' || k === 'inicio2') && (!v || Number(v) <= 1) ? null : v ?? null);
+const normCampo = (k, v) => ((k === 'inicio' || k === 'inicio2') && (!v || Number(v) <= 1) ? null : k === 'provisao' ? Boolean(v) || null : v ?? null);
 const mesmaRegra = (a, b) => CAMPOS_REGRA.every(k => JSON.stringify(normCampo(k, a[k])) === JSON.stringify(normCampo(k, b[k])));
 
 // ----- Modelo de preenchimento das premissas (uma linha por filial e item, com listas de seleção) -----
@@ -3498,7 +3501,7 @@ function descreverPremissa(p) {
     return `valor diferente por mês · ${brl.format((p.meses || []).reduce((a, b) => a + (Number(b) || 0), 0))} no ano${p.metodo === 'rateio' ? ' (total da filial)' : ' por colaborador'}`;
   }
   switch (p.metodo) {
-    case 'pct': return `${num2.format(v)}% s/ ${BASES[p.base].split(' (')[0].toLowerCase()}${p.teto ? ` · teto ${brl.format(p.teto)}` : ''}${p.inicio > 1 ? ` · a partir de ${MESES[p.inicio - 1]}` : ''}${p.inicio2 > 1 ? ` · + ${num2.format(v)}% a partir de ${MESES[p.inicio2 - 1]}` : ''}`;
+    case 'pct': return `${num2.format(v)}% s/ ${BASES[p.base].split(' (')[0].toLowerCase()}${p.teto ? ` · teto ${brl.format(p.teto)}` : ''}${p.inicio > 1 ? ` · a partir de ${MESES[p.inicio - 1]}` : ''}${p.inicio2 > 1 ? ` · + ${num2.format(v)}% a partir de ${MESES[p.inicio2 - 1]}` : ''}${p.provisao ? ` · provisão só em ${[p.inicio, p.inicio2].filter(x => x >= 1).map(x => MESES[x - 1]).join(' e ')}, depois no salário da filial` : ''}`;
     case 'fixo': return `${brl.format(v)} por colaborador${per}`;
     case 'rateio': return `${brl.format(v)} ${p.dividir === 'escopo' ? 'total único dividido entre as filiais' : 'total da filial'} · rateio ${p.rateio === 'salario' ? 'pelo salário' : 'por HC'}${per}`;
     case 'multiplo': return `${p.por_nivel ? 'pela tabela de nível' : `${num2.format(v)} salário(s)`}${per}`;
