@@ -2742,6 +2742,63 @@ function avisoSemSexo(colabs = E.dados.colaboradores.filter(colabsDoEscopo(E.pre
   return n ? `⚠ ${num0.format(n)} colaborador(es) sem sexo informado na base não entram nas ações por público — inclua a coluna SEXO na base.` : '';
 }
 
+/** Tipo do valor próprio de uma pessoa para a regra do item: % / nº de salários / R$. */
+const metodoProprio = p => (p.metodo === 'pct' ? 'pct' : p.metodo === 'multiplo' ? 'multiplo' : 'fixo');
+
+/** Lista de colaboradores do escopo na tela "Quem recebe": valor de hoje e campo para valor personalizado. */
+function quemColaboradoresHtml(rub, atual, colabs) {
+  const k = IDX[rub];
+  const res = E.bruto.res; // sem o filtro de conta do topo
+  const idx = new Map(res.colaboradores.map((c, i) => [c.id, i]));
+  const met = metodoProprio(atual);
+  const un = met === 'pct' ? '%' : met === 'multiplo' ? 'salários' : unidadeValor('fixo', atual.periodo === 'por_mes' ? 'mensal' : atual.periodo);
+  const linhas = [...colabs].sort((a, b) => a.nome.localeCompare(b.nome)).map(c => {
+    const i = idx.get(c.id);
+    let ano = 0, meses = 0;
+    if (i != null) for (let m = 0; m < 12; m++) { const v = res.valor(i, k, m); ano += v; if (v) meses++; }
+    const e = c.excecoes?.[rub];
+    const manual = e && e.origem !== 'base' ? (e.metodo === 'nao' ? 0 : e.valor) : '';
+    const daBase = e?.origem === 'base' ? (e.metodo === 'nao' ? 'não recebe' : fmtN(e.valor)) : '';
+    return `<tr data-pessoa="${c.id}" data-busca="${esc(`${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome}`.toUpperCase())}">
+      <td>${esc(c.nome)}<span class="sub">${esc([c.funcao, rotuloCc(c)].filter(Boolean).join(' · '))}${c.vaga ? ' · vaga' : ''}</span></td>
+      <td class="n">${ano ? `${brl.format(ano / (meses || 1))}<span class="sub">/mês · ${brl0.format(ano)} no ano</span>` : '<span class="sub" style="display:inline">não recebe</span>'}${daBase ? `<span class="sub" title="Valor da planilha da base">planilha: ${esc(daBase)}</span>` : ''}</td>
+      <td><input type="number" step="any" class="campo valor-pessoa" value="${esc(manual)}" data-orig="${esc(manual)}" placeholder="segue a regra"></td></tr>`;
+  }).join('');
+  return `<div class="quem-pessoas">
+    <div class="ferramentas" style="margin:0 0 .5rem"><b style="color:var(--marinho)">Colaboradores (${colabs.length})</b>
+      <input class="campo" id="quem-busca" placeholder="Buscar nome, matrícula, função…" style="max-width:280px">
+      <small class="sub" style="display:inline">Valor personalizado em <b>${esc(un)}</b> · vazio = segue a regra · 0 = não recebe · vale sobre a regra e sobre a planilha da base</small></div>
+    <div class="tabela-wrap" style="max-height:320px"><table class="tabela"><thead><tr><th>Colaborador</th><th class="n">Hoje</th><th style="width:150px">Personalizado (${esc(un)})</th></tr></thead>
+      <tbody>${linhas || '<tr><td colspan="3" class="vazio">Nenhum colaborador neste escopo.</td></tr>'}</tbody></table></div></div>`;
+}
+
+/** Liga a busca da lista e devolve a função que grava os valores personalizados alterados (true = ok). */
+function ligarQuemColaboradores(d, rub, atual, colabs) {
+  $('#quem-busca', d)?.addEventListener('input', e => {
+    const b = e.target.value.trim().toUpperCase();
+    $$('tr[data-pessoa]', d).forEach(tr => { tr.hidden = b && !tr.dataset.busca.includes(b); });
+  });
+  return async () => {
+    const met = metodoProprio(atual);
+    const itens = $$('tr[data-pessoa]', d).map(tr => {
+      const inp = $('.valor-pessoa', tr);
+      if (inp.value === inp.dataset.orig) return null;
+      const id = Number(tr.dataset.pessoa);
+      if (inp.value === '') return { id, excecao: null };
+      const v = Number(inp.value);
+      return { id, excecao: v ? { metodo: met, valor: v } : { metodo: 'nao', valor: 0 } };
+    }).filter(Boolean);
+    if (!itens.length) return true;
+    // Quem tinha só o valor da planilha e foi apagado aqui não muda (o campo começa vazio para eles).
+    try {
+      const r = await api('/api/colaboradores/excecoes', { method: 'PUT', body: { rubrica: rub, itens } });
+      await carregar();
+      toast(`${RUBRICAS[IDX[rub]].nome}: valor personalizado salvo para ${r.atualizados} colaborador(es).`);
+      return true;
+    } catch (e) { toast(e.message, 'erro'); return false; }
+  };
+}
+
 /** Filtro "quem recebe": marca centros de custo, níveis de cargo e/ou funções do escopo atual; valor próprio por função. */
 function escolherQuem(rub) {
   const atual = { ...premEfetiva(E.prem.escopo, rub).p };
@@ -2771,7 +2828,8 @@ function escolherQuem(rub) {
         ${lista('Níveis de cargo', cargos.map(c => `<label class="check"><input type="checkbox" value="cargo:${esc(c)}" ${marcados.has('cargo:' + c) ? 'checked' : ''}> ${esc(c || 'Sem nível')} <small class="sub" style="display:inline">(${contar('cargo', c)})</small></label>`).join(''))}
         ${lista('Funções', funcoes.map(f => `<div class="linha-funcao"><label class="check"><input type="checkbox" value="funcao:${esc(f)}" ${marcados.has('funcao:' + f) ? 'checked' : ''}> ${esc(f)} <small class="sub" style="display:inline">(${contar('funcao', f)})</small></label>${comValor ? `<input type="number" step="any" class="valor-funcao" data-funcao="${esc(f)}" value="${esc(valorProprio(f))}" placeholder="geral" title="Valor próprio desta função (vazio = valor geral)">` : ''}</div>`).join(''),
           comValor ? `<small class="sub" style="display:block">Valor diferente por função (${unidade}): deixe vazio para usar o valor geral (${esc(fmtN(Number(atual.valor) || 0))}). Ex.: VA do aprendiz.</small>` : '')}
-      </div>`,
+      </div>
+      ${quemColaboradoresHtml(rub, atual, colabs)}`,
     rodape: '<button class="btn btn-claro" id="quem-todos">Todos recebem</button><button class="btn btn-laranja" id="quem-ok">Aplicar</button>',
   });
   const lerProprios = () => {
@@ -2781,8 +2839,10 @@ function escolherQuem(rub) {
     $$('.valor-funcao', d).forEach(i => { if (i.value !== '') novo[i.dataset.funcao] = Number(i.value); });
     return novo;
   };
-  const aplicar = quem => {
+  const salvarPessoas = ligarQuemColaboradores(d, rub, atual, colabs);
+  const aplicar = async quem => {
     E.prem.edits[rub] = { ...atual, quem, publico: $('input[name=publico]:checked', d)?.value || '', ...(comValor ? { por_funcao: lerProprios() } : {}) };
+    if (!(await salvarPessoas())) return;
     d.close(); desenharTabelaPrem();
   };
   $('#quem-todos', d).addEventListener('click', () => { $('input[name=publico][value=""]', d).checked = true; aplicar([]); });

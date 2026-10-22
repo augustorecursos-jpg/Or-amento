@@ -705,3 +705,6 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .vale-todos { display: flex; gap: .35rem; align-items: center; margin-top: .3rem; font-size: .72rem; color: #b54d12; line-height: 1.25; max-width: 260px; cursor: pointer; }
 .vale-todos.ligado { color: var(--marinho, #164d74); }
 .vale-todos input { accent-color: var(--laranja); margin: 0; }
+.quem-pessoas { margin-top: 1rem; border-top: 1px solid #eef2f6; padding-top: .9rem; }
+.quem-pessoas .valor-pessoa { padding: .35rem .5rem; font-size: .84rem; }
+.quem-pessoas td .sub { display: block; }

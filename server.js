@@ -523,6 +523,35 @@ app.post('/api/colaboradores', exigirAdmin, (req, res) => {
   res.json({ ok: true, id: Number(r.lastInsertRowid) });
 });
 
+// Valor próprio de um item para vários colaboradores de uma vez (tela "Quem recebe"): excecao null = volta a seguir a regra.
+app.put('/api/colaboradores/excecoes', exigirAdmin, (req, res) => {
+  const rubrica = texto(req.body?.rubrica, 40);
+  if (!RUBRICAS_VALIDAS.has(rubrica)) return res.status(400).json({ erro: 'Item inválido.' });
+  const itens = Array.isArray(req.body?.itens) ? req.body.itens : [];
+  const ler = db.prepare('SELECT id, nome, excecoes FROM colaboradores WHERE id = ?');
+  const gravar = db.prepare("UPDATE colaboradores SET excecoes = ?, atualizado_em = datetime('now') WHERE id = ?");
+  let n = 0;
+  db.exec('BEGIN');
+  try {
+    for (const it of itens) {
+      const c = ler.get(Number(it.id));
+      if (!c) continue;
+      const exc = lerExcecoes(c.excecoes);
+      if (it.excecao == null) delete exc[rubrica];
+      else {
+        const nova = lerExcecoes({ [rubrica]: it.excecao })[rubrica];
+        if (!nova) continue;
+        exc[rubrica] = nova; // ajuste feito à mão (sem origem): vale sobre a regra e sobre a planilha
+      }
+      gravar.run(JSON.stringify(exc), c.id);
+      n++;
+    }
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  registrar('Administrador', 'Valores próprios por colaborador', `${rubrica} · ${n} colaborador(es)`);
+  res.json({ ok: true, atualizados: n });
+});
+
 app.put('/api/colaboradores/:id', exigirAdmin, (req, res) => {
   const atual = db.prepare('SELECT * FROM colaboradores WHERE id = ?').get(req.params.id);
   if (!atual) return res.status(404).json({ erro: 'Colaborador não encontrado.' });

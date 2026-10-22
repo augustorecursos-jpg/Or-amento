@@ -186,6 +186,10 @@ regra). Para a regra valer para todos — ex.: VA reajustado na premissa — mar
 para os N com valor da planilha da base" (também no quadro e na calculadora). Ajustes feitos à mão no colaborador
 continuam valendo.
 
+**Quem recebe com a lista de colaboradores**: a janela "👥 Quem recebe" do item mostra também cada colaborador do
+escopo com o valor de hoje e um campo de **valor personalizado** (vazio = segue a regra · 0 = não recebe). O valor
+personalizado vale sobre a regra e sobre a planilha da base, e é gravado ao clicar em Aplicar.
+
 **Edição manual no quadro de premissas**: em Premissas › Quadro de todas as filiais, o botão **✏️ Editar manualmente**
 liga a edição; clicar numa célula (filial × item) abre a regra (tem?, como é calculado, valor, quando é pago, mês) e
 permite aplicar a mesma regra em outras filiais de uma vez. Sem o botão ligado, o clique abre a filial como antes.
