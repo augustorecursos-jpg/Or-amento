@@ -709,3 +709,7 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .quem-pessoas .valor-pessoa { padding: .35rem .5rem; font-size: .84rem; }
 .quem-pessoas td .sub { display: block; }
 .qtd-pessoas { color: var(--laranja); font-weight: 700; }
+.chips-valor { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; margin: 0 0 .5rem; font-size: .8rem; }
+.chips-valor > span { font-weight: 700; color: var(--marinho, #164d74); }
+.chip-valor { cursor: pointer; border: 1px solid #dfe6ee; background: #fff; }
+.chip-valor.ativo { background: var(--marinho, #164d74); color: #fff; border-color: transparent; }

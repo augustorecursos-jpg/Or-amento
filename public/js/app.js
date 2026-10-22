@@ -2771,29 +2771,52 @@ function quemColaboradoresHtml(rub, atual, colabs) {
     const manual = e && e.origem !== 'base' ? (e.metodo === 'nao' ? 0 : e.valor) : '';
     const origem = !e ? 'regra' : excecaoEfetiva(c, rub) ? (e.origem === 'base' ? 'planilha da base' : 'personalizado') : 'regra';
     const daBase = e?.origem === 'base' ? (e.metodo === 'nao' ? 'não recebe' : fmtN(e.valor)) : '';
-    return `<tr data-pessoa="${c.id}" data-recebe="${ano ? 1 : 0}" data-busca="${esc(`${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome} ${vm.filter(Boolean).map(v => fmtN(Math.round(v * 100) / 100)).join(' ')}`.toUpperCase())}">
+    return `<tr data-pessoa="${c.id}" data-recebe="${ano ? 1 : 0}" data-v0="${ano ? v0.toFixed(2) : ''}" data-busca="${esc(`${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome} ${vm.filter(Boolean).map(v => fmtN(Math.round(v * 100) / 100)).join(' ')}`.toUpperCase())}">
       <td>${esc(c.nome)}<span class="sub">${esc([c.funcao, rotuloCc(c)].filter(Boolean).join(' · '))}${c.vaga ? ' · vaga' : ''}</span></td>
       <td class="n">${hoje}<span class="sub">origem: ${origem}${daBase && origem !== 'planilha da base' ? ` · planilha: ${esc(daBase)}` : ''}</span></td>
       <td><input type="number" step="any" class="campo valor-pessoa" value="${esc(manual)}" data-orig="${esc(manual)}" placeholder="segue a regra"></td></tr>`;
   }).join('');
+  // Grupos por valor de hoje (1º mês), para alterar só quem está com um valor (ex.: só os de R$ 700)
+  const grupos = new Map();
+  [...colabs].forEach(c => {
+    const i = idx.get(c.id);
+    const v = i == null ? 0 : (MESES.map((_, m) => res.valor(i, k, m)).find(x => x) || 0);
+    const kk = v ? v.toFixed(2) : '';
+    grupos.set(kk, (grupos.get(kk) || 0) + 1);
+  });
+  const chips = [...grupos].sort((a, b) => Number(a[0] || 0) - Number(b[0] || 0)).map(([v, n]) => `<button type="button" class="chip chip-valor" data-valor="${v}">${v ? brl.format(Number(v)) : 'não recebe'} <b>${n}</b></button>`).join('');
   return `<div class="quem-pessoas">
     <div class="ferramentas" style="margin:0 0 .5rem"><b style="color:var(--marinho)">Colaboradores (${colabs.length})</b>
       <input class="campo" id="quem-busca" placeholder="Buscar nome, matrícula, função ou valor (ex.: 733)" style="max-width:300px">
       <small class="sub" style="display:inline">Valor personalizado em <b>${esc(un)}</b> · vazio = segue a regra · 0 = não recebe · vale sobre a regra e sobre a planilha da base</small></div>
+    <div class="chips-valor"><span>Valor de hoje:</span><button type="button" class="chip chip-valor ativo" data-valor="*">Todos <b>${colabs.length}</b></button>${chips}<small class="sub" style="display:inline">clique num valor para ver só quem está com ele</small></div>
     <div class="ferramentas" style="margin:0 0 .5rem">Preencher <input class="campo" id="quem-massa" type="number" step="any" placeholder="valor" style="width:110px">
       <button type="button" class="btn btn-claro btn-sm" data-massa="recebe">em quem recebe hoje</button>
       <button type="button" class="btn btn-claro btn-sm" data-massa="todos">em todos da lista</button>
-      <small class="sub" style="display:inline">respeita a busca · confira e clique em Aplicar</small></div>
+      <small class="sub" style="display:inline">só nos que estão aparecendo (busca e valor escolhido) · confira e clique em Aplicar</small></div>
+    <small class="sub" id="quem-mostrando"></small>
     <div class="tabela-wrap" style="max-height:320px"><table class="tabela"><thead><tr><th>Colaborador</th><th class="n">Hoje</th><th style="width:150px">Personalizado (${esc(un)})</th></tr></thead>
       <tbody>${linhas || '<tr><td colspan="3" class="vazio">Nenhum colaborador neste escopo.</td></tr>'}</tbody></table></div></div>`;
 }
 
 /** Liga a busca da lista e devolve a função que grava os valores personalizados alterados (true = ok). */
 function ligarQuemColaboradores(d, rub, atual, colabs) {
-  $('#quem-busca', d)?.addEventListener('input', e => {
-    const b = e.target.value.trim().toUpperCase();
-    $$('tr[data-pessoa]', d).forEach(tr => { tr.hidden = b && !tr.dataset.busca.includes(b); });
-  });
+  let valorSel = '*';
+  const filtrar = () => {
+    const b = ($('#quem-busca', d)?.value || '').trim().toUpperCase();
+    let n = 0;
+    const linhas = $$('tr[data-pessoa]', d);
+    linhas.forEach(tr => { tr.hidden = (b && !tr.dataset.busca.includes(b)) || (valorSel !== '*' && tr.dataset.v0 !== valorSel); if (!tr.hidden) n++; });
+    const info = $('#quem-mostrando', d);
+    if (info) info.textContent = `Mostrando ${n} de ${linhas.length} colaborador(es)`;
+  };
+  $('#quem-busca', d)?.addEventListener('input', filtrar);
+  $$('.chip-valor', d).forEach(ch => ch.addEventListener('click', () => {
+    valorSel = ch.dataset.valor;
+    $$('.chip-valor', d).forEach(x => x.classList.toggle('ativo', x === ch));
+    filtrar();
+  }));
+  filtrar();
   $$('[data-massa]', d).forEach(btn => btn.addEventListener('click', () => {
     const v = $('#quem-massa', d).value;
     if (v === '') return toast('Digite o valor para preencher.', 'erro');
