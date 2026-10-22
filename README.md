@@ -169,6 +169,10 @@ o do ano entra por cima na data-base. Ex.: base 13.720,34 → jan–jul/27 14.40
 Simulador (abas Dissídio e Benefícios), premissas da filial, reajuste em lote e os Excel de premissas têm os dois; o
 Painel mostra o impacto de cada dissídio.
 
+**Edição manual no quadro de premissas**: em Premissas › Quadro de todas as filiais, o botão **✏️ Editar manualmente**
+liga a edição; clicar numa célula (filial × item) abre a regra (tem?, como é calculado, valor, quando é pago, mês) e
+permite aplicar a mesma regra em outras filiais de uma vez. Sem o botão ligado, o clique abre a filial como antes.
+
 **Filtros do topo com vários itens**: regional, estado, filial, centro de custo e conta são listas com caixinhas (busca,
 marcar todos, limpar; vale ao clicar em Aplicar ou fora da lista, Esc cancela). Nada marcado = todos.
 **Filtro de conta** (ao lado do centro de custo): grupos inteiros (caixinha do grupo) e/ou contas soltas (Salário,
@@ -220,7 +224,7 @@ Conferência e sem pedidos de ajuste (o servidor também bloqueia).
 | Remuneração | Salário, Periculosidade, Insalubridade, Penosidade, Adicionais de turno, Adicional noturno, Horas extras, Promoções e méritos |
 | Provisões | Férias (1/3), 13º salário, Rescisão |
 | Encargos | FGTS, FGTS férias, FGTS 13º, INSS, INSS férias, INSS 13º |
-| Benefícios | PPR, VA/VR, VA natal / 13º VR, Vale-transporte, Auxílio-creche, Auxílio educacional (ou educação), Material escolar, Auxílio óculos, Oftalmo, Assistência médica, Coparticipação convênio médico, Assistência odontológica, Farmácia, Seguro de vida, Previdência privada, Auxílio dependente portadores, Refeitório, Fretado, Fretado (overall), Cesta natalina |
+| Benefícios | PPR, VA/VR, VA natal / 13º VR, Vale mobilidade (antigo vale-transporte), Auxílio-creche, Auxílio educacional (ou educação), Material escolar, Auxílio óculos, Oftalmo, Assistência médica, Coparticipação convênio médico, Assistência odontológica, Farmácia, Seguro de vida, Previdência privada, Auxílio dependente portadores, Refeitório, Fretado, Fretado (overall), Cesta natalina |
 | Demais | Saúde ocupacional, Endomarketing, Treinamento, Viagens, Confraternizações, Serviços / Terceiros |
 
 Padrões do sistema (regra do ADM de pessoal, ajustáveis em Premissas): periculosidade 30% do salário. Férias, 13º,

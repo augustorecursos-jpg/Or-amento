@@ -675,3 +675,6 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .sim-todas { flex-wrap: wrap; }
 .sim-filial .campo, .sim-todas .campo { min-width: 0; }
 .sim-filial .campo { width: 100%; }
+.quadro td.editavel { cursor: pointer; position: relative; }
+.quadro td.editavel:hover { outline: 2px solid var(--laranja); outline-offset: -2px; background: var(--laranja-suave); }
+.quadro td.editavel:hover::after { content: '✏️'; position: absolute; right: 3px; top: 2px; font-size: .65rem; }

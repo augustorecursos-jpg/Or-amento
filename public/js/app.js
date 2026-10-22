@@ -1973,6 +1973,7 @@ function renderQuadro() {
       <label class="check"><input type="checkbox" id="q-ocultar" ${E.prem.ocultarVazios ? 'checked' : ''}> Ocultar itens que nenhuma filial tem</label>
       <span class="legenda-quadro"><span class="propria">desta filial</span><span>herdado (regional/geral)</span><span class="nao">não tem</span></span>
       <span class="direita">
+        <button class="btn btn-sm ${E.prem.quadroEditar ? 'btn-marinho' : 'btn-claro'}" id="q-editar" title="Clique numa célula do quadro para mudar a regra da filial ali mesmo">✏️ ${E.prem.quadroEditar ? 'Editando — clique numa célula' : 'Editar manualmente'}</button>
         <button class="btn btn-laranja btn-sm" id="q-modelo">📝 Modelo para preenchimento</button>
         <button class="btn btn-claro btn-sm" id="q-exportar">⬇ Exportar quadro (Excel)</button>
         <label class="btn btn-marinho btn-sm" style="cursor:pointer">⬆ Importar quadro<input type="file" id="q-importar" accept=".xlsx,.xls" hidden></label>
@@ -1987,12 +1988,17 @@ function renderQuadro() {
         ${visiveis.map(r => {
           const p = efet(f, r);
           const propria = Boolean(E.dados.premissas[f.filial]?.[r.id]);
-          return `<td class="${p.metodo === 'nao' ? 'nao' : ''}${propria ? ' propria' : ''}" data-ir="${esc(f.filial)}" title="${esc(r.nome)} · ${esc(f.filial)}${p.metodo !== 'nao' ? ` · ${esc(resumoDetalhes(p))}` : ''}">${p.metodo === 'nao' ? '—' : esc(textoCurto(p))}${p.quem?.length && p.metodo !== 'nao' ? ' 👥' : ''}</td>`;
+          return `<td class="${p.metodo === 'nao' ? 'nao' : ''}${propria ? ' propria' : ''}${E.prem.quadroEditar ? ' editavel' : ''}" data-ir="${esc(f.filial)}" data-rub="${r.id}" title="${esc(r.nome)} · ${esc(f.filial)}${p.metodo !== 'nao' ? ` · ${esc(resumoDetalhes(p))}` : ''}">${p.metodo === 'nao' ? '—' : esc(textoCurto(p))}${p.quem?.length && p.metodo !== 'nao' ? ' 👥' : ''}</td>`;
         }).join('')}</tr>`).join('')}</tbody></table></div>` : '<div class="cartao vazio"><span>📥</span>Importe a base de colaboradores para listar as filiais.</div>'}`;
   $('#q-reg', el).addEventListener('change', e => { E.prem.quadroReg = e.target.value; renderQuadro(); });
   $('#q-uf', el).addEventListener('change', e => { E.prem.uf = e.target.value; renderQuadro(); });
   $('#q-ocultar', el).addEventListener('change', e => { E.prem.ocultarVazios = e.target.checked; renderQuadro(); });
-  $$('[data-ir]', el).forEach(c => c.addEventListener('click', () => { E.prem.visao = 'filial'; trocarEscopo(c.dataset.ir); }));
+  $$('[data-ir]', el).forEach(c => c.addEventListener('click', () => {
+    if (E.prem.quadroEditar && c.dataset.rub) return editarCelulaQuadro(c.dataset.ir, c.dataset.rub, fils.map(f => f.filial));
+    E.prem.visao = 'filial';
+    trocarEscopo(c.dataset.ir);
+  }));
+  $('#q-editar', el).addEventListener('click', () => { E.prem.quadroEditar = !E.prem.quadroEditar; renderQuadro(); });
   $('#q-exportar', el).addEventListener('click', exportarQuadro);
   $('#q-importar', el).addEventListener('change', e => { if (e.target.files[0]) importarQuadro(e.target.files[0]); e.target.value = ''; });
   $('#q-modelo', el).addEventListener('click', pedirModeloPremissas);
@@ -2043,7 +2049,7 @@ function exportarQuadro() {
 const chaveNome = s => normCab(s).replace(/[^A-Z0-9%]/g, '');
 // Nomes das colunas nas planilhas antigas (BZO), para aceitar também esses cabeçalhos.
 const APELIDOS = {
-  va: ['VA/VR', 'VA', 'VR'], va_natal: ['VA NATAL (DEZEMBRO)', '13° VR', '13º VR'], vt: ['VT'], assist_medica: ['ASSIST. MÉDICA', 'ASSIST. MÉDICA (EMPRESA)'],
+  va: ['VA/VR', 'VA', 'VR'], va_natal: ['VA NATAL (DEZEMBRO)', '13° VR', '13º VR'], vt: ['VT', 'VALE-TRANSPORTE', 'VALE TRANSPORTE', 'MOBILIDADE', 'VALE MOBILIDADE'], assist_medica: ['ASSIST. MÉDICA', 'ASSIST. MÉDICA (EMPRESA)'],
   assist_odonto: ['ASSIST. ODONTO', 'ASSIST. ODONTO (EMPRESA)'], aux_creche: ['AUXÍLIO CRECHÊ', 'AUXÍLIO CRECHE'], adic_turno: ['ADICIONAIS DE TURNO (INCLUSOS ADIC. INTRAJORNADA E PASSAGEM DE TURNO)'], adic_noturno: ['ADIC. NOTURNO'],
   decimo: ['13° SALÁRIO'], coparticipacao: ['COPARTICIPAÇÃO CONVÊNIO MÉDICO'], educacional: ['EDUCACIONAL', 'AUXÍLIO EDUCAÇÃO'], farmacia: ['FARMACIA'],
   previdencia: ['PREVIDÊNCIA', 'PREVIDÊNCIA PRIVADA (EMPRESA)'], aux_dependente: ['AUXÍLIO DEPENDENTE PORTADOR', 'AUXÍLIO FILHO EXCEPCIONAL'],
@@ -2274,6 +2280,75 @@ function lerModeloPremissas(linhas, h) {
     return { escopo, rubricas, filial: temFilial ? filial : null };
   });
   return { itens, mudancas, avisos, novas: [...porFilial.values()].filter(x => !x.existe).map(x => x.escopo) };
+}
+
+/** Edição manual de uma célula do quadro (filial × item), com a opção de aplicar a mesma regra em outras filiais. */
+function editarCelulaQuadro(filial, rub, filsQuadro) {
+  const r = RUBRICAS[IDX[rub]];
+  const cfg = E.dados.filiais[filial];
+  const p = Motor.premissaDe(E.dados.premissas, filial, cfg.regional, rub);
+  const tem = p.metodo !== 'nao';
+  const tipo0 = tem ? tipoDe(p) : metodoAoLigar(rub, p);
+  const tipos = r.adicional ? { pct: TIPOS.pct, fixo: TIPOS.fixo, rateio: TIPOS.rateio } : TIPOS;
+  const quandos = { mensal: QUANDO_ROTULO.mensal, anual_mes: QUANDO_ROTULO.anual_mes, anual_diluido: QUANDO_ROTULO.anual_diluido };
+  const outras = filsQuadro.filter(f => f !== filial);
+  const propria = Boolean(E.dados.premissas[filial]?.[rub]);
+  const d = abrirModal({
+    titulo: `${r.nome} · ${filial}`, sup: `PREMISSA · ${cfg.regional}`,
+    corpo: `<form class="form-grade" id="form-celula">
+      <p class="inteiro subtitulo" style="margin:0">Hoje: <b>${esc(tem ? `${textoCurto(p)} · ${resumoDetalhes(p)}` : 'não tem')}</b> · ${propria ? 'regra desta filial' : 'herdada da regional/geral'}</p>
+      <label class="rotulo">Tem?<select class="campo" name="tem"><option value="1" ${tem ? 'selected' : ''}>Sim</option><option value="0" ${tem ? '' : 'selected'}>Não</option></select></label>
+      <label class="rotulo" data-so-tem>Como é calculado<select class="campo" name="tipo">${Object.entries(tipos).map(([k, v]) => `<option value="${k}" ${k === tipo0 ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label class="rotulo" data-so-tem>Valor <small data-unidade></small><input class="campo" name="valor" type="number" step="any" value="${Number(p.valor) || 0}"></label>
+      <label class="rotulo" data-so-tem data-quando>Quando é pago<select class="campo" name="periodo">${Object.entries(quandos).map(([k, v]) => `<option value="${k}" ${k === (p.periodo === 'por_mes' ? 'mensal' : p.periodo) ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label class="rotulo" data-so-tem data-mes>Mês<select class="campo" name="mes">${opcoesMes(p.mes || 12)}</select></label>
+      ${p.periodo === 'por_mes' || (p.quem || []).length || Object.keys(p.por_funcao || {}).length ? `<p class="inteiro aviso-ajuste" style="margin:0">ℹ Esta regra tem detalhes (valor por mês, quem recebe ou valor por função) que só aparecem em <b>Editar por filial</b>; o que não mudar aqui fica como está.</p>` : ''}
+      ${outras.length ? `<div class="inteiro rotulo">Aplicar a mesma regra também em
+        <div style="display:flex;gap:.8rem;margin:.3rem 0"><button type="button" class="btn-link" data-todas>Marcar todas</button><button type="button" class="btn-link" data-nenhuma>Nenhuma</button></div>
+        <div class="regionais-check" style="max-height:180px;overflow:auto">${outras.map(f => `<label class="check"><input type="checkbox" name="outras" value="${esc(f)}"> ${esc(f)}</label>`).join('')}</div></div>` : ''}
+    </form>`,
+    rodape: `<button class="btn btn-claro" data-abrir>Abrir a filial completa</button><span style="flex:1"></span><button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="salvar-celula">Salvar</button>`,
+  });
+  const f = $('#form-celula', d);
+  const ajustar = () => {
+    const sim = f.tem.value === '1';
+    $$('[data-so-tem]', f).forEach(x => { x.hidden = !sim; });
+    if (!sim) return;
+    const tipo = f.tipo.value;
+    $('[data-quando]', f).hidden = tipo === 'pct' || tipo === 'nivel';
+    $('[data-mes]', f).hidden = $('[data-quando]', f).hidden || f.periodo.value !== 'anual_mes';
+    f.valor.closest('label').hidden = tipo === 'nivel';
+    $('[data-unidade]', f).textContent = `(${unidadeValor(tipo === 'nivel' ? 'multiplo' : tipo, f.periodo.value) || ''})`;
+  };
+  ajustar();
+  f.addEventListener('change', ajustar);
+  $('[data-todas]', f)?.addEventListener('click', () => $$('input[name=outras]', f).forEach(i => { i.checked = true; }));
+  $('[data-nenhuma]', f)?.addEventListener('click', () => $$('input[name=outras]', f).forEach(i => { i.checked = false; }));
+  $('[data-abrir]', d).addEventListener('click', () => { d.close(); E.prem.visao = 'filial'; trocarEscopo(filial); });
+  $('#salvar-celula', d).addEventListener('click', async () => {
+    let lido;
+    if (f.tem.value !== '1') lido = { metodo: 'nao' };
+    else {
+      const tipo = f.tipo.value;
+      lido = tipo === 'nivel' ? { metodo: 'multiplo', por_nivel: true } : { metodo: tipo, por_nivel: false, valor: Number(f.valor.value) || 0 };
+      if (tipo !== 'pct' && tipo !== 'nivel') lido.periodo = f.periodo.value;
+      if (lido.periodo === 'anual_mes') lido.mes = Number(f.mes.value);
+    }
+    const alvo = [filial, ...$$('input[name=outras]:checked', f).map(i => i.value)];
+    const itens = alvo.map(fil => {
+      const decisao = decidirRegra(fil, E.dados.filiais[fil].regional, rub, lido);
+      return decisao === undefined ? null : { escopo: fil, rubricas: { [rub]: decisao } };
+    }).filter(Boolean);
+    if (!itens.length) { d.close(); return toast('Nada mudou.'); }
+    try {
+      await api('/api/premissas/lote', { method: 'PUT', body: { itens } });
+      d.close();
+      await carregar();
+      renderPremissas();
+      toast(`${r.nome}: regra salva em ${itens.length} filial(is).`);
+      if (lido.por_nivel) toast('Preencha a tabela por nível em Editar por filial.', 'erro');
+    } catch (e) { toast(e.message, 'erro'); }
+  });
 }
 
 /** Compara o que veio do Excel com a regra atual: undefined = sem mudança, null = volta a herdar, objeto = regra própria. */
@@ -2769,7 +2844,7 @@ function baixarModeloBase() {
     [''],
     ['ABA "Condições próprias" (opcional)', 'Só para quem tem benefício diferente da regra da filial (ex.: sucedidos). Uma linha por colaborador e item:'],
     ['MATRÍCULA', 'A mesma da aba Base'],
-    ['ITEM', 'Nome do item como aparece na ferramenta (ex.: VA / VR, Assistência médica, Farmácia, Vale-transporte, PPR)'],
+    ['ITEM', 'Nome do item como aparece na ferramenta (ex.: VA / VR, Assistência médica, Farmácia, Vale mobilidade, PPR)'],
     ['VALOR', '1850 = R$ por mês · 20% = percentual · 3 sal = nº de salários · Não = não recebe'],
   ]);
   ajuda['!cols'] = [{ wch: 34 }, { wch: 100 }];
@@ -2777,7 +2852,7 @@ function baixarModeloBase() {
     ['MATRÍCULA', 'ITEM', 'VALOR'],
     ['10001', 'VA / VR', 1850],
     ['10001', 'Farmácia', 300],
-    ['10001', 'Vale-transporte', 'Não'],
+    ['10001', 'Vale mobilidade', 'Não'],
   ]);
   cond['!cols'] = [{ wch: 14 }, { wch: 30 }, { wch: 14 }];
   const wb = XLSX.utils.book_new();

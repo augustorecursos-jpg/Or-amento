@@ -75,7 +75,7 @@
     { id: 'ppr', nome: 'PPR', grupo: 'beneficios', padrao: P('multiplo', { valor: 2.4, periodo: 'anual_diluido' }) },
     { id: 'va', nome: 'VA / VR', grupo: 'beneficios', padrao: P('fixo') },
     { id: 'va_natal', nome: 'VA natal / 13º VR', grupo: 'beneficios', padrao: P('nao', { periodo: 'anual_mes', mes: 12 }) },
-    { id: 'vt', nome: 'Vale-transporte', grupo: 'beneficios', padrao: P('fixo') },
+    { id: 'vt', nome: 'Vale mobilidade', grupo: 'beneficios', dica: 'Antigo vale-transporte', padrao: P('fixo') },
     { id: 'aux_creche', nome: 'Auxílio-creche', grupo: 'beneficios', padrao: P('nao') },
     { id: 'educacional', nome: 'Auxílio educacional', grupo: 'beneficios', padrao: P('nao') },
     { id: 'material_escolar', nome: 'Material escolar', grupo: 'beneficios', padrao: P('nao', { periodo: 'anual_mes', mes: 1 }) },
