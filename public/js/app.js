@@ -2757,19 +2757,28 @@ function quemColaboradoresHtml(rub, atual, colabs) {
   const un = met === 'pct' ? '%' : met === 'multiplo' ? 'salários' : unidadeValor('fixo', atual.periodo === 'por_mes' ? 'mensal' : atual.periodo);
   const linhas = [...colabs].sort((a, b) => a.nome.localeCompare(b.nome)).map(c => {
     const i = idx.get(c.id);
-    let ano = 0, meses = 0;
-    if (i != null) for (let m = 0; m < 12; m++) { const v = res.valor(i, k, m); ano += v; if (v) meses++; }
+    let ano = 0;
+    const vm = MESES.map((_, m) => (i != null ? res.valor(i, k, m) : 0));
+    vm.forEach(v => { ano += v; });
+    // Valor do mês: o primeiro mês com valor e, se mudar no ano (reajuste de benefícios, dissídio), o último e o mês da mudança
+    const com = vm.map((v, m) => [v, m]).filter(([v]) => v);
+    const [v0] = com[0] || [0];
+    const [v1, m1] = com[com.length - 1] || [0, 0];
+    const mud = com.find(([v]) => Math.abs(v - v0) >= 0.01);
+    const hoje = !ano ? '<span class="sub" style="display:inline">não recebe</span>'
+      : `<b>${brl.format(v0)}</b>/mês${mud ? `<span class="sub">→ <b>${brl.format(v1)}</b> a partir de ${MESES[mud[1]]}${rub && RUBRICAS[k].grupo === 'beneficios' ? ' (reajuste)' : ''}</span>` : ''}<span class="sub">${brl0.format(ano)} no ano</span>`;
     const e = c.excecoes?.[rub];
     const manual = e && e.origem !== 'base' ? (e.metodo === 'nao' ? 0 : e.valor) : '';
+    const origem = !e ? 'regra' : excecaoEfetiva(c, rub) ? (e.origem === 'base' ? 'planilha da base' : 'personalizado') : 'regra';
     const daBase = e?.origem === 'base' ? (e.metodo === 'nao' ? 'não recebe' : fmtN(e.valor)) : '';
-    return `<tr data-pessoa="${c.id}" data-recebe="${ano ? 1 : 0}" data-busca="${esc(`${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome}`.toUpperCase())}">
+    return `<tr data-pessoa="${c.id}" data-recebe="${ano ? 1 : 0}" data-busca="${esc(`${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome} ${vm.filter(Boolean).map(v => fmtN(Math.round(v * 100) / 100)).join(' ')}`.toUpperCase())}">
       <td>${esc(c.nome)}<span class="sub">${esc([c.funcao, rotuloCc(c)].filter(Boolean).join(' · '))}${c.vaga ? ' · vaga' : ''}</span></td>
-      <td class="n">${ano ? `${brl.format(ano / (meses || 1))}<span class="sub">/mês · ${brl0.format(ano)} no ano</span>` : '<span class="sub" style="display:inline">não recebe</span>'}${daBase ? `<span class="sub" title="Valor da planilha da base">planilha: ${esc(daBase)}</span>` : ''}</td>
+      <td class="n">${hoje}<span class="sub">origem: ${origem}${daBase && origem !== 'planilha da base' ? ` · planilha: ${esc(daBase)}` : ''}</span></td>
       <td><input type="number" step="any" class="campo valor-pessoa" value="${esc(manual)}" data-orig="${esc(manual)}" placeholder="segue a regra"></td></tr>`;
   }).join('');
   return `<div class="quem-pessoas">
     <div class="ferramentas" style="margin:0 0 .5rem"><b style="color:var(--marinho)">Colaboradores (${colabs.length})</b>
-      <input class="campo" id="quem-busca" placeholder="Buscar nome, matrícula, função…" style="max-width:280px">
+      <input class="campo" id="quem-busca" placeholder="Buscar nome, matrícula, função ou valor (ex.: 733)" style="max-width:300px">
       <small class="sub" style="display:inline">Valor personalizado em <b>${esc(un)}</b> · vazio = segue a regra · 0 = não recebe · vale sobre a regra e sobre a planilha da base</small></div>
     <div class="ferramentas" style="margin:0 0 .5rem">Preencher <input class="campo" id="quem-massa" type="number" step="any" placeholder="valor" style="width:110px">
       <button type="button" class="btn btn-claro btn-sm" data-massa="recebe">em quem recebe hoje</button>
