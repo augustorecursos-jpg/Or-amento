@@ -78,7 +78,8 @@ function recalcular() {
     const semReaj = {};
     for (const [f, cfg] of Object.entries(filiaisComRascunho())) {
       semReaj[f] = { ...cfg, dissidio_ant_pct: 0, reaj_benef_ant_pct: 0,
-        dissidio_pct: Number(cfg.dissidio_ant_pct) || 0, dissidio_mes: cfg.dissidio_ant_mes || cfg.dissidio_mes, reaj_benef_pct: Number(cfg.reaj_benef_ant_pct) || 0, reaj_benef_mes: cfg.reaj_benef_ant_mes || cfg.reaj_benef_mes };
+        dissidio_pct: cfg.dissidio_ant_pago ? 0 : Number(cfg.dissidio_ant_pct) || 0, dissidio_mes: cfg.dissidio_ant_mes || cfg.dissidio_mes, // já pago: o histórico já tem
+        reaj_benef_pct: Number(cfg.reaj_benef_ant_pct) || 0, reaj_benef_mes: cfg.reaj_benef_ant_mes || cfg.reaj_benef_mes };
     }
     b.resAnt = soGruposComparados(Motor.calcular({ colaboradores: ant, filiais: semReaj, premissas, niveis }));
     b.resCmp = soGruposComparados(b.res);
@@ -158,18 +159,33 @@ function mesesDeDissidio(cfgs) {
 function textoReajuste(f, pre = 'dissidio') {
   if (!f) return '';
   const partes = [];
-  if (Number(f[`${pre}_ant_pct`])) partes.push(`${num2.format(f[`${pre}_ant_pct`])}% (data-base ${MESES[(f[`${pre}_ant_mes`] || 1) - 1]}/${String(anoAnt()).slice(-2)})`);
+  if (Number(f[`${pre}_ant_pct`])) partes.push(`${num2.format(f[`${pre}_ant_pct`])}% (data-base ${MESES[(f[`${pre}_ant_mes`] || 1) - 1]}/${String(anoAnt()).slice(-2)}${pre === 'dissidio' && f.dissidio_ant_pago ? ', já pago' : ''})`);
   if (Number(f[`${pre}_pct`])) partes.push(`${num2.format(f[`${pre}_pct`])}% (data-base ${MESES[(f[`${pre}_mes`] || 1) - 1]}/${String(E.dados.config.ano).slice(-2)})`);
   return partes.join(' + ') || (pre === 'dissidio' ? 'sem dissídio' : 'sem reajuste');
 }
 const textoDissidio = f => textoReajuste(f, 'dissidio');
+
+/** Dissídio do ano anterior que aparece no histórico da filial: o mês em que a maioria teve aumento e a mediana do %. */
+function dissidioNoHistorico(filial) {
+  const linhas = (E.dados.anterior || []).filter(a => a.filial === filial);
+  if (linhas.length < 3) return null;
+  const reais = mesesReaisAnt();
+  let melhor = null;
+  for (let m = 1; m < reais; m++) {
+    const q = linhas.map(a => [Number(a.salarios[m - 1]), Number(a.salarios[m])]).filter(([x, y]) => x > 0 && y > 0);
+    const subiu = q.map(([x, y]) => y / x).filter(r => r > 1.005 && r < 1.15).sort((a, b) => a - b);
+    if (!melhor || subiu.length > melhor.n) melhor = { mes: m + 1, n: subiu.length, ativos: q.length, pct: subiu.length ? (subiu[Math.floor(subiu.length / 2)] - 1) * 100 : 0 };
+  }
+  // dissídio = a maior parte da filial com aumento no mesmo mês
+  return melhor && melhor.n >= 3 && melhor.n >= melhor.ativos * 0.5 ? { ...melhor, pct: Math.round(melhor.pct * 100) / 100 } : null;
+}
 /** Fator do reajuste de benefícios no mês (0–11): ano anterior × ano. */
 const fatorBenefDe = (f, m) => (1 + (Number(f.reaj_benef_ant_pct) || 0) / 100)
   * (m + 1 >= (Number(f.reaj_benef_mes) || 1) ? 1 + (Number(f.reaj_benef_pct) || 0) / 100 : 1);
 /** Nota do comparativo quando há dissídio/reajuste do ano anterior lançado (entra no lado do ano anterior como provisão). */
 function notaProvisaoAnt() {
   const fils = filiaisVisiveis().map(f => filiaisComRascunho()[f]).filter(Boolean);
-  const d = fils.some(f => Number(f.dissidio_ant_pct)), b = fils.some(f => Number(f.reaj_benef_ant_pct));
+  const d = fils.some(f => Number(f.dissidio_ant_pct) && !f.dissidio_ant_pago), b = fils.some(f => Number(f.reaj_benef_ant_pct));
   if (!d && !b) return '';
   return `${anoAnt()}: salário pago${d ? ` + dissídio ${anoAnt()}` : ''}${b ? ` + reajuste de benefícios ${anoAnt()}` : ''} a partir da data-base de ${anoAnt()} (provisão); em ${E.dados.config.ano} ele vale o ano todo`;
 }
@@ -1837,6 +1853,8 @@ function renderPremissas() {
         <div class="reajustes">
           <div class="reajuste"><h4>📈 Reajuste salarial (dissídio)</h4>
             <div class="linha-campos"><b style="width:44px">${anoAnt()}</b><input class="campo" type="number" step="0.01" data-fcampo="dissidio_ant_pct" value="${cfgF.dissidio_ant_pct || 0}"> % data-base <select class="campo" data-fcampo="dissidio_ant_mes">${opcoesMes(cfgF.dissidio_ant_mes || 1)}</select></div>
+            <label class="check" style="margin:.3rem 0 0 50px;font-size:.78rem"><input type="checkbox" data-fcheck="dissidio_ant_pago" ${cfgF.dissidio_ant_pago ? 'checked' : ''}> <span>já pago na folha de ${anoAnt()} (o histórico já tem — no comparativo não soma de novo)</span></label>
+            ${(() => { const h = dissidioNoHistorico(escopo); return h ? `<p class="aviso-ajuste" style="margin:.4rem 0 0">📊 No histórico de ${anoAnt()}, <b>${h.n} de ${h.ativos}</b> colaboradores tiveram aumento em <b>${MESES[h.mes - 1]}/${String(anoAnt()).slice(-2)}</b> (mediana <b>${num2.format(h.pct)}%</b>). Se é o dissídio de ${anoAnt()} e a base de ${esc(E.dados.config.ano)} ainda não tem, use-o acima. <button type="button" class="btn-link" data-usar-hist="${h.pct}|${h.mes}">Usar ${num2.format(h.pct)}% · ${MESES[h.mes - 1]} · já pago</button></p>` : ''; })()}
             <div class="linha-campos" style="margin-top:.4rem"><b style="width:44px">${esc(E.dados.config.ano)}</b><input class="campo" type="number" step="0.01" data-fcampo="dissidio_pct" value="${cfgF.dissidio_pct}"> % data-base <select class="campo" data-fcampo="dissidio_mes">${opcoesMes(cfgF.dissidio_mes)}</select></div>
             <p><b>${anoAnt()}</b>: dissídio que o salário da base ainda não tem — entra na data-base de ${anoAnt()} e vale o ano todo de ${esc(E.dados.config.ano)}. <b>${esc(E.dados.config.ano)}</b>: entra na data-base de ${esc(E.dados.config.ano)}, por cima do primeiro. Ex.: 5% (ago/${String(anoAnt()).slice(-2)}) e 4,22% (ago/${String(E.dados.config.ano).slice(-2)}): jan–jul × 1,05; ago–dez × 1,05 × 1,0422. Adicionais, provisões e encargos acompanham.</p></div>
           <div class="reajuste"><h4>🎁 Reajuste de benefícios</h4>
@@ -1863,6 +1881,16 @@ function renderPremissas() {
   $('#prem-uf', el)?.addEventListener('change', e => { E.prem.uf = e.target.value; renderPremissas(); });
   $('#prem-estados', el).addEventListener('click', editarEstados);
   $$('[data-fcampo]', el).forEach(i => i.addEventListener('input', () => { E.prem.filial[i.dataset.fcampo] = Number(i.value) || 0; atualizarPrevia(); }));
+  $$('[data-fcheck]', el).forEach(i => i.addEventListener('change', () => { E.prem.filial[i.dataset.fcheck] = i.checked ? 1 : 0; atualizarPrevia(); }));
+  $('[data-usar-hist]', el)?.addEventListener('click', e => {
+    const [pct, mes] = e.target.dataset.usarHist.split('|');
+    $('[data-fcampo="dissidio_ant_pct"]', el).value = pct;
+    $('[data-fcampo="dissidio_ant_mes"]', el).value = mes;
+    $('[data-fcheck="dissidio_ant_pago"]', el).checked = true;
+    Object.assign(E.prem.filial, { dissidio_ant_pct: Number(pct), dissidio_ant_mes: Number(mes), dissidio_ant_pago: 1 });
+    atualizarPrevia();
+    toast('Dissídio do histórico preenchido. Confira e clique em Salvar premissas.');
+  });
   $('#prem-salvar', el).addEventListener('click', salvarPremissas);
   $('#prem-descartar', el).addEventListener('click', () => { E.prem.edits = {}; E.prem.filial = {}; E.prem.propagar = {}; renderPremissas(); });
   $('#prem-copiar', el)?.addEventListener('click', copiarPremissas);
@@ -3319,15 +3347,64 @@ function desenharAnoAnterior(box) {
     <p class="subtitulo" style="margin:0 0 .8rem">Uma linha por colaborador com o salário de cada mês de ${a}. A ferramenta aplica as regras das premissas (adicionais, férias + 1/3, 13º, FGTS, INSS, benefícios, PPR…) <b>sem o dissídio e sem o reajuste de benefícios de ${E.dados.config.ano}</b> (o dissídio e o reajuste de ${a} lançados nas filiais entram a partir da data-base, como provisão) e monta o custo de ${a} para o comparativo no Painel e na Simulação. Mês vazio ou 0 = a pessoa não estava na empresa naquele mês. Aceita também <b>uma linha por mês</b> (colunas Mês/Ano e Salário). Se o ano ainda não fechou, os meses que faltam são projetados com o salário do último mês de quem estava ativo nele.</p>
     <div style="display:flex;gap:.6rem;flex-wrap:wrap;align-items:center">
       <button class="btn btn-claro btn-sm" id="ant-modelo">⬇ Modelo do histórico</button>
+      ${ant.length ? `<button class="btn btn-marinho btn-sm" id="ant-dissidio">📊 Dissídio ${a} pelo histórico</button>` : ''}
       <label class="btn btn-marinho btn-sm" style="cursor:pointer">⬆ Importar histórico ${a}<input type="file" id="ant-arquivo" accept=".xlsx,.xls,.csv" hidden></label>
       ${ant.length ? `<button class="btn btn-claro btn-sm" id="ant-apagar" style="color:var(--vermelho)">Apagar histórico</button>
         <span class="chip ok">✓ ${num0.format(ant.length)} colaborador(es) · ${new Set(ant.map(x => x.filial)).size} filiais · folha ${a} ${brl0.format(folha)} · HC jan ${hcMes[0]} → dez ${hcMes[11]}</span>${notaProjecao() ? `<span class="chip">* ${esc(notaProjecao())}</span>` : ''}` : '<span class="chip falta">Sem histórico carregado</span>'}
     </div>`;
   $('#ant-modelo', box).addEventListener('click', baixarModeloAnterior);
+  $('#ant-dissidio', box)?.addEventListener('click', conferirDissidioHistorico);
   $('#ant-arquivo', box).addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importarAnoAnterior(f); });
   $('#ant-apagar', box)?.addEventListener('click', async () => {
     if (!confirm(`Apagar o histórico de ${a}? O comparativo deixa de aparecer.`)) return;
     try { await api('/api/ano-anterior', { method: 'DELETE' }); toast('Histórico apagado.'); await recarregarTudo(); } catch (e) { toast(e.message, 'erro'); }
+  });
+}
+
+/** Dissídio do ano anterior que aparece no histórico de cada filial × o que está lançado; aplica nas marcadas. */
+function conferirDissidioHistorico() {
+  const a = anoAnt();
+  const fils = Object.values(E.dados.filiais).sort((x, y) => x.regional.localeCompare(y.regional) || x.filial.localeCompare(y.filial));
+  // A base de hoje já tem esse dissídio? Compara o salário da base com o último salário pago (mesma pessoa).
+  const porChave = new Map(E.dados.colaboradores.filter(c => c.matricula && !c.vaga).map(c => [`${c.matricula}|${normCab(c.nome)}|${c.filial}`, c]));
+  const reais = mesesReaisAnt();
+  const baseTem = (filial, h) => {
+    const r = (E.dados.anterior || []).filter(x => x.filial === filial).map(x => {
+      const c = porChave.get(`${x.matricula}|${normCab(x.nome)}|${x.filial}`);
+      const ult = Number(x.salarios[reais - 1]);
+      return c && ult > 0 && Number(c.salario) > 0 ? Number(c.salario) / ult : null;
+    }).filter(Boolean).sort((p, q) => p - q);
+    if (r.length < 3) return null;
+    const med = r[Math.floor(r.length / 2)];
+    const sem = 1 / (1 + h.pct / 100);
+    return Math.abs(med - 1) <= Math.abs(med - sem) ? 'tem' : 'nao';
+  };
+  const linhas = fils.map(f => ({ f, h: dissidioNoHistorico(f.filial) })).filter(x => x.h).map(x => ({ ...x, base: baseTem(x.f.filial, x.h) }));
+  const igual = x => Math.abs((Number(x.f.dissidio_ant_pct) || 0) - x.h.pct) < 0.01 && Number(x.f.dissidio_ant_mes) === x.h.mes && x.f.dissidio_ant_pago;
+  const d = abrirModal({
+    titulo: `Dissídio ${a} encontrado no histórico`, sup: 'HISTÓRICO', largo: true,
+    corpo: `<p class="subtitulo" style="margin:0">Filiais em que a maior parte dos colaboradores teve aumento no mesmo mês de ${a}. Se a base de ${esc(E.dados.config.ano)} veio com o salário <b>sem</b> esse dissídio, marque e aplique: ele entra o ano todo de ${esc(E.dados.config.ano)} e fica como <b>já pago</b> (o histórico já tem, então o comparativo não soma de novo). Se a base já tem o dissídio, deixe desmarcado.</p>
+      <div class="tabela-wrap" style="max-height:420px"><table class="tabela"><thead><tr><th><input type="checkbox" id="dh-todas"></th><th>Regional</th><th>Filial</th><th>No histórico</th><th class="n">Colab. com aumento</th><th>Salário da base ${esc(E.dados.config.ano)}</th><th>Lançado hoje (dissídio ${a})</th></tr></thead>
+      <tbody>${linhas.map((x, k) => `<tr><td><input type="checkbox" data-dh="${k}" data-sugerida="${x.base === 'nao' && !igual(x) ? 1 : 0}" ${igual(x) ? 'disabled' : ''}></td><td>${esc(x.f.regional)}</td><td><b>${esc(x.f.filial)}</b></td>
+        <td><b>${num2.format(x.h.pct)}%</b> em ${MESES[x.h.mes - 1]}/${String(a).slice(-2)}</td><td class="n">${x.h.n} de ${x.h.ativos}</td>
+        <td>${x.base === 'nao' ? '<span class="etiqueta pend">sem o dissídio</span>' : x.base === 'tem' ? '<span class="etiqueta ok">já tem</span>' : '<span class="sub" style="display:inline">não deu para comparar</span>'}</td>
+        <td>${igual(x) ? '<span class="etiqueta ok">✓ igual</span>' : esc(Number(x.f.dissidio_ant_pct) ? textoDissidio({ dissidio_ant_pct: x.f.dissidio_ant_pct, dissidio_ant_mes: x.f.dissidio_ant_mes, dissidio_ant_pago: x.f.dissidio_ant_pago }) : 'sem dissídio')}</td></tr>`).join('')
+        || '<tr><td colspan="7" class="vazio">Nenhum dissídio encontrado no histórico.</td></tr>'}</tbody></table></div>
+      <p class="subtitulo" style="margin:0"><b>Salário da base</b>: compara o salário de cada pessoa na base de hoje com o último salário pago no histórico. <b>Sem o dissídio</b> = a base ainda não tem (aplique); <b>já tem</b> = não aplique. <button type="button" class="btn-link" id="dh-sugeridas">Marcar só as "sem o dissídio"</button></p>`,
+    rodape: '<button class="btn btn-claro" data-fechar>Fechar</button><button class="btn btn-laranja" id="dh-aplicar">Aplicar nas marcadas</button>',
+  });
+  $('#dh-todas', d)?.addEventListener('change', e => $$('[data-dh]:not(:disabled)', d).forEach(i => { i.checked = e.target.checked; }));
+  $('#dh-sugeridas', d)?.addEventListener('click', () => $$('[data-dh]:not(:disabled)', d).forEach(i => { i.checked = i.dataset.sugerida === '1'; }));
+  $('#dh-aplicar', d).addEventListener('click', async () => {
+    const alvo = $$('[data-dh]:checked', d).map(i => linhas[Number(i.dataset.dh)]);
+    if (!alvo.length) return toast('Marque ao menos uma filial.', 'erro');
+    try {
+      await api('/api/filiais', { method: 'PUT', body: { filiais: alvo.map(x => ({ filial: x.f.filial, dissidio_ant_pct: x.h.pct, dissidio_ant_mes: x.h.mes, dissidio_ant_pago: 1 })) } });
+      d.close();
+      await carregar();
+      renderAba();
+      toast(`Dissídio ${a} aplicado em ${alvo.length} filial(is).`);
+    } catch (e) { toast(e.message, 'erro'); }
   });
 }
 

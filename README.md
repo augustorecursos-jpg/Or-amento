@@ -169,6 +169,11 @@ o do ano entra por cima na data-base. Ex.: base 13.720,34 → jan–jul/27 14.40
 Simulador (abas Dissídio e Benefícios), premissas da filial, reajuste em lote e os Excel de premissas têm os dois; o
 Painel mostra o impacto de cada dissídio.
 
+**Dissídio do ano anterior já pago**: quando a folha de 2026 (histórico) já tem o dissídio de 2026 mas a base de 2027
+veio sem ele (ex.: Araucária, 4,58% em out/26), lance-o como dissídio 2026 e marque "já pago na folha de 2026": entra o
+ano todo de 2027 e não soma de novo no lado 2026 do comparativo. Em Base › Histórico, **📊 Dissídio 2026 pelo
+histórico** mostra o % e o mês encontrados em cada filial, se o salário da base já tem ou não, e aplica nas marcadas.
+
 **Calculadora de impacto** (menu): escolha a conta e simule um novo valor da regra, um novo total no ano ou uma variação
 %, para o que está nos filtros do topo (sem filtro = empresa toda). Mostra conta hoje × simulada, reflexos (férias, 13º,
 FGTS, INSS…), impacto total, gráfico mês a mês e tabela por filial; exporta Excel. Nada é salvo — o administrador pode

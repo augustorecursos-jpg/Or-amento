@@ -152,6 +152,8 @@ if (!colFiliais.includes('uf')) db.exec('ALTER TABLE filiais ADD COLUMN uf TEXT'
 if (!colFiliais.includes('dissidio_ant_pct')) db.exec('ALTER TABLE filiais ADD COLUMN dissidio_ant_pct REAL NOT NULL DEFAULT 0');
 if (!colFiliais.includes('dissidio_ant_mes')) db.exec('ALTER TABLE filiais ADD COLUMN dissidio_ant_mes INTEGER NOT NULL DEFAULT 1');
 // O mesmo para o reajuste de benefícios: o do ano anterior (que os valores lançados ainda não têm) e o do ano, por cima.
+// Dissídio do ano anterior já pago na folha daquele ano (está no histórico): no comparativo não soma de novo.
+if (!colFiliais.includes('dissidio_ant_pago')) db.exec('ALTER TABLE filiais ADD COLUMN dissidio_ant_pago INTEGER NOT NULL DEFAULT 0');
 if (!colFiliais.includes('reaj_benef_ant_pct')) db.exec('ALTER TABLE filiais ADD COLUMN reaj_benef_ant_pct REAL NOT NULL DEFAULT 0');
 if (!colFiliais.includes('reaj_benef_ant_mes')) db.exec('ALTER TABLE filiais ADD COLUMN reaj_benef_ant_mes INTEGER NOT NULL DEFAULT 1');
 // Perfil do acesso: 'coordenador' (confere e pede ajustes) ou 'leitura' (só visualiza, ex.: gerente)
@@ -293,7 +295,7 @@ function ufSugerida(filial, regional) {
   return achado ? achado[1] : UF_POR_REGIONAL[String(regional || '').toUpperCase()] || null;
 }
 
-const CAMPOS_REAJUSTE = ['dissidio_ant_pct', 'dissidio_ant_mes', 'dissidio_pct', 'dissidio_mes', 'reaj_benef_ant_pct', 'reaj_benef_ant_mes', 'reaj_benef_pct', 'reaj_benef_mes'];
+const CAMPOS_REAJUSTE = ['dissidio_ant_pct', 'dissidio_ant_mes', 'dissidio_ant_pago', 'dissidio_pct', 'dissidio_mes', 'reaj_benef_ant_pct', 'reaj_benef_ant_mes', 'reaj_benef_pct', 'reaj_benef_mes'];
 
 function sincronizarFiliais() {
   const antes = new Set(db.prepare('SELECT filial FROM filiais').all().map(f => f.filial));
