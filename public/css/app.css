@@ -714,3 +714,6 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .chip-valor { cursor: pointer; border: 1px solid #dfe6ee; background: #fff; }
 .chip-valor.ativo { background: var(--marinho, #164d74); color: #fff; border-color: transparent; }
 .tabela-contabil .col-hc { background: #eef5fb; font-weight: 700; color: var(--marinho, #164d74); }
+.meses-grade { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: .4rem; }
+.meses-grade .rotulo { font-size: .74rem; }
+.meses-grade .campo { padding: .35rem .45rem; font-size: .82rem; }

@@ -201,7 +201,8 @@ personalizado vale sobre a regra e sobre a planilha da base, e é gravado ao cli
 
 **Edição manual no quadro de premissas**: em Premissas › Quadro de todas as filiais, o botão **✏️ Editar manualmente**
 liga a edição; clicar numa célula (filial × item) abre a regra (tem?, como é calculado, valor, quando é pago, mês) e
-permite aplicar a mesma regra em outras filiais de uma vez. Sem o botão ligado, o clique abre a filial como antes.
+permite aplicar a mesma regra em outras filiais de uma vez. Aceita "Valor diferente por mês" e, em "Total da filial", a opção **dividir o total entre
+as filiais marcadas pelo HC** (ex.: R$ 150 mil de material escolar para o AM em fev, mar, jul e ago). Sem o botão ligado, o clique abre a filial como antes.
 
 **Filtros do topo com vários itens**: regional, estado, filial, centro de custo e conta são listas com caixinhas (busca,
 marcar todos, limpar; vale ao clicar em Aplicar ou fora da lista, Esc cancela). Nada marcado = todos.

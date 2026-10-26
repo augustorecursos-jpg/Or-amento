@@ -2351,7 +2351,8 @@ const mesDe = v => {
 const CAMPOS_REGRA = ['metodo', 'valor', 'base', 'periodo', 'mes', 'rateio', 'teto', 'por_nivel', 'quem', 'inicio', 'inicio2', 'provisao', 'vale_todos'];
 // inicio/inicio2 vazios, 0 ou janeiro são o mesmo (vale o ano todo / sem 2º aumento)
 const normCampo = (k, v) => ((k === 'inicio' || k === 'inicio2') && (!v || Number(v) <= 1) ? null : k === 'provisao' || k === 'vale_todos' ? Boolean(v) || null : v ?? null);
-const mesmaRegra = (a, b) => CAMPOS_REGRA.every(k => JSON.stringify(normCampo(k, a[k])) === JSON.stringify(normCampo(k, b[k])));
+const mesmaRegra = (a, b) => CAMPOS_REGRA.every(k => JSON.stringify(normCampo(k, a[k])) === JSON.stringify(normCampo(k, b[k])))
+  && (a.periodo !== 'por_mes' || JSON.stringify((a.meses || []).map(Number)) === JSON.stringify((b.meses || []).map(Number)));
 
 // ----- Modelo de preenchimento das premissas (uma linha por filial e item, com listas de seleção) -----
 
@@ -2560,7 +2561,7 @@ function editarCelulaQuadro(filial, rub, filsQuadro) {
   const tem = p.metodo !== 'nao';
   const tipo0 = tem ? tipoDe(p) : metodoAoLigar(rub, p);
   const tipos = r.adicional ? { pct: TIPOS.pct, fixo: TIPOS.fixo, rateio: TIPOS.rateio } : TIPOS;
-  const quandos = { mensal: QUANDO_ROTULO.mensal, anual_mes: QUANDO_ROTULO.anual_mes, anual_diluido: QUANDO_ROTULO.anual_diluido };
+  const quandos = { mensal: QUANDO_ROTULO.mensal, anual_mes: QUANDO_ROTULO.anual_mes, anual_diluido: QUANDO_ROTULO.anual_diluido, por_mes: QUANDO_ROTULO.por_mes };
   const outras = filsQuadro.filter(f => f !== filial);
   const propria = Boolean(E.dados.premissas[filial]?.[rub]);
   const d = abrirModal({
@@ -2570,13 +2571,15 @@ function editarCelulaQuadro(filial, rub, filsQuadro) {
       <label class="rotulo">Tem?<select class="campo" name="tem"><option value="1" ${tem ? 'selected' : ''}>Sim</option><option value="0" ${tem ? '' : 'selected'}>Não</option></select></label>
       <label class="rotulo" data-so-tem>Como é calculado<select class="campo" name="tipo">${Object.entries(tipos).map(([k, v]) => `<option value="${k}" ${k === tipo0 ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       <label class="rotulo" data-so-tem>Valor <small data-unidade></small><input class="campo" name="valor" type="number" step="any" value="${Number(p.valor) || 0}"></label>
-      <label class="rotulo" data-so-tem data-quando>Quando é pago<select class="campo" name="periodo">${Object.entries(quandos).map(([k, v]) => `<option value="${k}" ${k === (p.periodo === 'por_mes' ? 'mensal' : p.periodo) ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label class="rotulo" data-so-tem data-quando>Quando é pago<select class="campo" name="periodo">${Object.entries(quandos).map(([k, v]) => `<option value="${k}" ${k === p.periodo ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       <label class="rotulo" data-so-tem data-mes>Mês<select class="campo" name="mes">${opcoesMes(p.mes || 12)}</select></label>
+      <div class="inteiro meses-grade" data-so-tem data-meses>${MESES.map((m, i) => `<label class="rotulo">${m}<input class="campo" type="number" step="any" data-mesv="${i}" value="${p.periodo === 'por_mes' ? Number(p.meses?.[i]) || '' : ''}" placeholder="0"></label>`).join('')}</div>
       <label class="rotulo" data-so-tem data-sopct>A partir de<select class="campo" name="inicio">${opcoesMes(p.inicio || 1)}</select></label>
       <label class="rotulo" data-so-tem data-sopct>2º aumento a partir de <small>(opcional)</small><select class="campo" name="inicio2">${opcoesMes(p.inicio2 || '', true)}</select></label>
       <label class="check inteiro" data-so-tem><input type="checkbox" name="vale_todos" ${p.vale_todos ? 'checked' : ''}> <span>Usar também para quem tem valor deste item na <b>planilha da base</b> (sem marcar, essas pessoas ficam com o valor delas)</span></label>
-      ${p.periodo === 'por_mes' || (p.quem || []).length || Object.keys(p.por_funcao || {}).length ? `<p class="inteiro aviso-ajuste" style="margin:0">ℹ Esta regra tem detalhes (valor por mês, quem recebe ou valor por função) que só aparecem em <b>Editar por filial</b>; o que não mudar aqui fica como está.</p>` : ''}
-      ${outras.length ? `<div class="inteiro rotulo">Aplicar a mesma regra também em
+      ${(p.quem || []).length || Object.keys(p.por_funcao || {}).length ? `<p class="inteiro aviso-ajuste" style="margin:0">ℹ Esta regra tem detalhes (quem recebe ou valor por função) que só aparecem em <b>Editar por filial</b>; o que não mudar aqui fica como está.</p>` : ''}
+      ${outras.length ? `<label class="check inteiro" data-so-tem data-dividir><input type="checkbox" name="dividir_total"> <span>O valor é o <b>total de todas as filiais marcadas</b> (ex.: R$ 150 mil para o estado): dividir entre elas pelo <b>HC</b> de cada uma</span></label>
+      <div class="inteiro rotulo">Aplicar a mesma regra também em
         <div style="display:flex;gap:.8rem;margin:.3rem 0"><button type="button" class="btn-link" data-todas>Marcar todas</button><button type="button" class="btn-link" data-nenhuma>Nenhuma</button></div>
         <div class="regionais-check" style="max-height:180px;overflow:auto">${outras.map(f => `<label class="check"><input type="checkbox" name="outras" value="${esc(f)}"> ${esc(f)}</label>`).join('')}</div></div>` : ''}
     </form>`,
@@ -2590,8 +2593,11 @@ function editarCelulaQuadro(filial, rub, filsQuadro) {
     const tipo = f.tipo.value;
     $('[data-quando]', f).hidden = tipo.startsWith('pct') || tipo === 'nivel';
     $('[data-mes]', f).hidden = $('[data-quando]', f).hidden || f.periodo.value !== 'anual_mes';
+    const porMes = !$('[data-quando]', f).hidden && f.periodo.value === 'por_mes';
+    $('[data-meses]', f).hidden = !porMes;
+    if ($('[data-dividir]', f)) $('[data-dividir]', f).hidden = tipo !== 'rateio';
     $$('[data-sopct]', f).forEach(x => { x.hidden = !tipo.startsWith('pct'); });
-    f.valor.closest('label').hidden = tipo === 'nivel';
+    f.valor.closest('label').hidden = tipo === 'nivel' || porMes;
     $('[data-unidade]', f).textContent = `(${unidadeValor(tipo === 'nivel' ? 'multiplo' : tipo, f.periodo.value) || ''})`;
   };
   ajustar();
@@ -2609,12 +2615,15 @@ function editarCelulaQuadro(filial, rub, filsQuadro) {
         : { metodo: tipo, por_nivel: false, valor: Number(f.valor.value) || 0, ...(tipo === 'pct' && p.base === 'folha' ? { base: 'salario' } : {}) };
       if (!tipo.startsWith('pct') && tipo !== 'nivel') lido.periodo = f.periodo.value;
       if (lido.periodo === 'anual_mes') lido.mes = Number(f.mes.value);
+      if (lido.periodo === 'por_mes') { lido.meses = $$('[data-mesv]', f).map(i => Number(i.value) || 0); lido.valor = 0; }
       if (tipo.startsWith('pct')) { lido.inicio = Number(f.inicio.value) || 1; lido.inicio2 = Number(f.inicio2.value) || 0; }
       lido.vale_todos = f.vale_todos.checked;
     }
     const alvo = [filial, ...$$('input[name=outras]:checked', f).map(i => i.value)];
+    // Total de todas as filiais marcadas: cada uma fica com a parte do seu HC (no mês, quando é valor por mês)
+    const partes = f.dividir_total?.checked && lido.metodo === 'rateio' && alvo.length > 1 ? dividirPeloHc(alvo, lido) : null;
     const itens = alvo.map(fil => {
-      const decisao = decidirRegra(fil, E.dados.filiais[fil].regional, rub, lido);
+      const decisao = decidirRegra(fil, E.dados.filiais[fil].regional, rub, partes ? partes[fil] : lido);
       return decisao === undefined ? null : { escopo: fil, rubricas: { [rub]: decisao } };
     }).filter(Boolean);
     if (!itens.length) { d.close(); return toast('Nada mudou.'); }
@@ -2627,6 +2636,29 @@ function editarCelulaQuadro(filial, rub, filsQuadro) {
       if (lido.por_nivel) toast('Preencha a tabela por nível em Editar por filial.', 'erro');
     } catch (e) { toast(e.message, 'erro'); }
   });
+}
+
+/** Divide um total (valor ou valor de cada mês) entre filiais pelo HC (colaboradores + vagas ativos). Fecha o centavo na última. */
+function dividirPeloHc(fils, lido) {
+  const hc = Object.fromEntries(fils.map(f => [f, MESES.map((_, m) => E.dados.colaboradores.filter(c => c.filial === f && m + 1 >= (Number(c.mes_inicio) || 1) && m + 1 <= (Number(c.mes_fim) || 12)).length)]));
+  const tot = MESES.map((_, m) => fils.reduce((a, f) => a + hc[f][m], 0));
+  const r2 = v => Math.round(v * 100) / 100;
+  const out = {};
+  const reparte = (total, peso) => {
+    const somaP = fils.reduce((a, f) => a + peso(f), 0) || 1;
+    const v = fils.map(f => r2((total * peso(f)) / somaP));
+    v[v.length - 1] = r2(total - v.slice(0, -1).reduce((a, b) => a + b, 0));
+    return Object.fromEntries(fils.map((f, i) => [f, v[i]]));
+  };
+  if (lido.periodo === 'por_mes') {
+    const porMes = lido.meses.map((t, m) => reparte(t, f => (tot[m] ? hc[f][m] : 1)));
+    fils.forEach(f => { out[f] = { ...lido, meses: porMes.map(x => x[f]) }; });
+  } else {
+    const peso = lido.periodo === 'anual_mes' ? f => hc[f][(lido.mes || 12) - 1] : f => hc[f].reduce((a, b) => a + b, 0);
+    const v = reparte(Number(lido.valor) || 0, peso);
+    fils.forEach(f => { out[f] = { ...lido, valor: v[f] }; });
+  }
+  return out;
 }
 
 /** Compara o que veio do Excel com a regra atual: undefined = sem mudança, null = volta a herdar, objeto = regra própria. */
