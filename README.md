@@ -175,8 +175,8 @@ ano todo de 2027 e não soma de novo no lado 2026 do comparativo. Em Base › Hi
 histórico** mostra o % e o mês encontrados em cada filial, se o salário da base já tem ou não, e aplica nas marcadas.
 
 **Promoção projetada de um colaborador**: em Base de colaboradores › editar (✎), bloco "📈 Promoção projetada": mês e
-novo salário (sem dissídio). O salário muda a partir desse mês, os dissídios entram por cima e adicionais, férias, 13º,
-FGTS, INSS e PPR acompanham. Fica guardada ao reimportar a base (mesma matrícula e nome).
+novo salário (sem dissídio) e, opcional, novo nível do cargo. O salário (e o nível) mudam a partir desse mês, os dissídios entram por cima e adicionais, férias, 13º,
+FGTS, INSS e PPR acompanham (a PPR usa o salário e o nível do fim do ano). Fica guardada ao reimportar a base (mesma matrícula e nome).
 
 **Calculadora de impacto** (menu): escolha a conta e simule um novo valor da regra, um novo total no ano ou uma variação
 %, para o que está nos filtros do topo (sem filtro = empresa toda). Mostra conta hoje × simulada, reflexos (férias, 13º,

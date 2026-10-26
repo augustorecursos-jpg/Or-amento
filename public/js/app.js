@@ -1385,7 +1385,7 @@ function contaDoItem(c, rub) {
   // Com 11 meses de salário, a remuneração do mês entra em 11/12 (o 12º mês é pago como férias + 1/3).
   const onze = Motor.MESES_SALARIO < 12 ? `${Motor.MESES_SALARIO}/12` : '';
   const notaMeses = onze ? `mês cheio × ${onze} · 1 mês do ano é pago como férias + 1/3` : '';
-  if (rub.fixa && Number(c.promo_mes) && Number(c.promo_salario) > 0) return `promoção: ${brl.format(c.salario)} → ${brl.format(c.promo_salario)} a partir de ${MESES[c.promo_mes - 1]} (sem dissídio; o dissídio entra por cima)${notaMeses ? ` · ${notaMeses}` : ''}`;
+  if (rub.fixa && Number(c.promo_mes) && Number(c.promo_salario) > 0) return `promoção: ${brl.format(c.salario)} → ${brl.format(c.promo_salario)}${c.promo_cargo ? ` · ${c.cargo || 'sem nível'} → ${c.promo_cargo}` : ''} a partir de ${MESES[c.promo_mes - 1]} (sem dissídio; o dissídio entra por cima)${notaMeses ? ` · ${notaMeses}` : ''}`;
   if (rub.fixa || (rub.grupo === 'remuneracao' && rub.adicional)) return notaMeses;
   if (rub.id === 'horas_extras') {
     const p = Motor.aplicarExcecao(Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rub.id), excecaoEfetiva(c, rub.id));
@@ -1408,12 +1408,13 @@ function contaDoItem(c, rub) {
     return `${brl.format(v)}${deFuncao} + ${reaj} = ${brl.format(v * fim)} em Dez`;
   }
   if (p.metodo !== 'multiplo') return '';
-  const mult = Motor.multiploDe(p, c.cargo, E.dados.niveis, c.funcao);
+  const cargoFim = Number(c.promo_mes) && c.promo_cargo ? c.promo_cargo : c.cargo; // promoção: nível novo
+  const mult = Motor.multiploDe(p, cargoFim, E.dados.niveis, c.funcao);
   const quando = p.periodo === 'anual_mes' ? `pago em ${MESES[p.mes - 1]}` : p.periodo === 'anual_diluido' ? 'diluído em 12 meses' : 'todo mês';
-  const alvo = `${fmtN(mult)} salário${mult === 1 ? '' : 's'}${p.por_nivel && c.cargo ? ` (${c.cargo})` : ''}`;
+  const alvo = `${fmtN(mult)} salário${mult === 1 ? '' : 's'}${p.por_nivel && cargoFim ? ` (${cargoFim})` : ''}`;
   const f = filiaisComRascunho()[c.filial] || {};
   const fator = p.sem_dissidio ? 1 : (1 + (Number(f.dissidio_ant_pct) || 0) / 100) * (1 + (Number(f.dissidio_pct) || 0) / 100);
-  const sal = c.salario * fator;
+  const sal = (Number(c.promo_mes) && Number(c.promo_salario) > 0 ? Number(c.promo_salario) : c.salario) * fator;
   const base = fator !== 1 ? `${brl.format(sal)} (salário com dissídio de ${textoDissidio(f)})` : brl.format(sal);
   return `${base} × ${alvo} = ${brl.format(sal * mult)} no ano · ${quando}`;
 }
@@ -3643,10 +3644,11 @@ function editarColaborador(id, padrao = {}) {
       <label class="rotulo">Mês de saída <small>(desligamento previsto)</small><select class="campo" name="mes_fim">${opcoesMes(c.mes_fim)}</select></label>
       <label class="check inteiro"><input type="checkbox" name="vaga" ${c.vaga ? 'checked' : ''}> É uma vaga prevista (ainda não preenchida)</label>
       <div class="inteiro proprias">
-        <h4>📈 Promoção projetada <small>· novo salário a partir de um mês (o dissídio continua entrando por cima)</small></h4>
+        <h4>📈 Promoção projetada <small>· novo salário e nível a partir de um mês (o dissídio continua entrando por cima; a PPR usa o salário e o nível novos)</small></h4>
         <div class="form-grade">
           <label class="rotulo">A partir de<select class="campo" name="promo_mes">${opcoesMes(c.promo_mes || '', true)}</select></label>
           <label class="rotulo">Novo salário (sem dissídio)<input class="campo" name="promo_salario" type="number" step="0.01" min="0" value="${c.promo_mes ? esc(c.promo_salario) : ''}" placeholder="ex.: 5500,00"></label>
+          <label class="rotulo">Novo nível do cargo <small>(opcional · muda a PPR por nível)</small><input class="campo" name="promo_cargo" list="dl-cargo" value="${c.promo_mes ? esc(c.promo_cargo || '') : ''}" placeholder="${esc(c.cargo || 'mesmo nível')}"></label>
         </div>
       </div>
       <div class="inteiro proprias">
@@ -3667,8 +3669,8 @@ function editarColaborador(id, padrao = {}) {
     body.excecoes = lerProprias(d);
     if (body.excecoes === null) return;
     if (Number(body.mes_fim) < Number(body.mes_inicio)) return toast('O mês de saída deve ser depois do início.', 'erro');
-    if (body.promo_mes && !(Number(body.promo_salario) > 0)) return toast('Informe o novo salário da promoção.', 'erro');
-    if (!body.promo_mes) { body.promo_mes = 0; body.promo_salario = 0; }
+    if (body.promo_mes && !(Number(body.promo_salario) > 0) && !body.promo_cargo) return toast('Informe o novo salário e/ou o novo nível do cargo da promoção.', 'erro');
+    if (!body.promo_mes) { body.promo_mes = 0; body.promo_salario = 0; body.promo_cargo = ''; }
     try {
       await api(id ? `/api/colaboradores/${id}` : '/api/colaboradores', { method: id ? 'PUT' : 'POST', body });
       d.close();

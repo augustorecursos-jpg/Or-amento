@@ -106,6 +106,15 @@ test('promoção projetada: novo salário a partir do mês, com o dissídio por 
   perto(res.valor(0, Motor.IDX.fgts, 3), 480);
 });
 
+test('promoção com novo nível do cargo: PPR por nível usa o nível e o salário novos', () => {
+  const premissas = { '*': { ppr: { metodo: 'multiplo', por_nivel: true, niveis: { 'ANALISTA JR': 2, 'ANALISTA PL': 3 }, periodo: 'anual_mes', mes: 2 }, periculosidade: { metodo: 'nao' } } };
+  const c = colab({ salario: 5000, cargo: 'ANALISTA JR', promo_mes: 6, promo_salario: 6000, promo_cargo: 'ANALISTA PL' });
+  const res = Motor.calcular({ colaboradores: [c], filiais: {}, premissas, mesesSalario: 12 });
+  perto(res.valor(0, Motor.IDX.ppr, 1), 18000); // 6.000 × 3 salários (nível novo)
+  const sem = Motor.calcular({ colaboradores: [{ ...c, promo_mes: 0 }], filiais: {}, premissas, mesesSalario: 12 });
+  perto(sem.valor(0, Motor.IDX.ppr, 1), 10000);
+});
+
 test('rateio do total da filial por headcount e só entre quem recebe', () => {
   const premissas = { CUIABA: { horas_extras: { metodo: 'rateio', valor: 900, rateio: 'hc', periodo: 'mensal', quem: ['cc:17150'] } } };
   const colaboradores = [colab({ id: 1, cc_cod: '17150' }), colab({ id: 2, cc_cod: '17150' }), colab({ id: 3, cc_cod: '22153' })];

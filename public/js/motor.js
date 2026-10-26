@@ -242,6 +242,9 @@
       const c = colaboradores[i];
       return num(c.promo_mes) && m + 1 >= num(c.promo_mes) && num(c.promo_salario) > 0 ? num(c.promo_salario) : num(c.salario);
     };
+    // Com promoção que muda o nível do cargo: a partir do mês vale o novo nível ("quem recebe" por cargo, PPR por nível).
+    const comCargoNovo = colaboradores.map(c => (num(c.promo_mes) && c.promo_cargo ? { ...c, cargo: c.promo_cargo } : null));
+    const colabNoMes = (i, m) => (comCargoNovo[i] && m + 1 >= num(colaboradores[i].promo_mes) ? comCargoNovo[i] : colaboradores[i]);
     const salario = (i, m) => (colaboradores[i].salarios ? num(colaboradores[i].salarios[m]) : salarioBase(i, m)) * fatorDissidio(i, m);
     const salarioPpr = (i, p) => {
       const sh = colaboradores[i].salarios;
@@ -320,7 +323,7 @@
           if (p.periodo === 'anual_mes') total = m + 1 === num(p.mes) ? total : 0;
           else if (p.periodo === 'anual_diluido') total = total / 12;
           if (!total) continue;
-          const elegiveis = idxs.filter(i => ativos[i] && !temExcecao(i, r) && elegivel(p, colaboradores[i], m));
+          const elegiveis = idxs.filter(i => ativos[i] && !temExcecao(i, r) && elegivel(p, colabNoMes(i, m), m));
           const pesos = elegiveis.map(i => (p.rateio === 'salario' ? sal[i] : 1));
           const soma = pesos.reduce((a, b) => a + b, 0);
           if (!soma) continue;
@@ -331,7 +334,7 @@
         for (let i = 0; i < n; i++) {
           if (!ativos[i] || rateados.has(i)) continue;
           const p = prems[i][r];
-          if (p.metodo === 'nao' || !elegivel(p, colaboradores[i], m)) continue;
+          if (p.metodo === 'nao' || !elegivel(p, colabNoMes(i, m), m)) continue;
           let v = 0;
           switch (p.metodo) {
             case 'pct':
@@ -363,7 +366,7 @@
             case 'multiplo': {
               // PPR = salário × target. Com dissídio na filial, usa o salário reajustado (o novo salário) no ano todo;
               // sem_dissidio força o salário da base.
-              v = multiploDe(p, colaboradores[i].cargo, niveis, colaboradores[i].funcao) * salarioPpr(i, p);
+              v = multiploDe(p, colabNoMes(i, 11).cargo, niveis, colaboradores[i].funcao) * salarioPpr(i, p); // nível e salário do fim do ano
               if (p.periodo === 'anual_mes') v = m + 1 === num(p.mes) ? v : 0;
               else if (p.periodo === 'anual_diluido' || p.periodo === 'por_mes') v = v / 12;
               break;

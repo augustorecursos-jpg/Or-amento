@@ -146,6 +146,7 @@ if (!colunas.includes('gestor')) db.exec("ALTER TABLE colaboradores ADD COLUMN g
 // Promoção projetada: novo salário (na mesma base da planilha, sem o dissídio do ano) a partir de um mês.
 if (!colunas.includes('promo_mes')) db.exec('ALTER TABLE colaboradores ADD COLUMN promo_mes INTEGER NOT NULL DEFAULT 0');
 if (!colunas.includes('promo_salario')) db.exec('ALTER TABLE colaboradores ADD COLUMN promo_salario REAL NOT NULL DEFAULT 0');
+if (!colunas.includes('promo_cargo')) db.exec("ALTER TABLE colaboradores ADD COLUMN promo_cargo TEXT NOT NULL DEFAULT ''"); // novo nível do cargo na promoção
 const colLanc = db.prepare('PRAGMA table_info(lancamentos)').all().map(c => c.name);
 if (!colLanc.includes('dividir')) db.exec("ALTER TABLE lancamentos ADD COLUMN dividir TEXT NOT NULL DEFAULT ''");
 const colFiliais = db.prepare('PRAGMA table_info(filiais)').all().map(c => c.name);
