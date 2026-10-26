@@ -1385,6 +1385,7 @@ function contaDoItem(c, rub) {
   // Com 11 meses de salário, a remuneração do mês entra em 11/12 (o 12º mês é pago como férias + 1/3).
   const onze = Motor.MESES_SALARIO < 12 ? `${Motor.MESES_SALARIO}/12` : '';
   const notaMeses = onze ? `mês cheio × ${onze} · 1 mês do ano é pago como férias + 1/3` : '';
+  if (rub.fixa && Number(c.promo_mes) && Number(c.promo_salario) > 0) return `promoção: ${brl.format(c.salario)} → ${brl.format(c.promo_salario)} a partir de ${MESES[c.promo_mes - 1]} (sem dissídio; o dissídio entra por cima)${notaMeses ? ` · ${notaMeses}` : ''}`;
   if (rub.fixa || (rub.grupo === 'remuneracao' && rub.adicional)) return notaMeses;
   if (rub.id === 'horas_extras') {
     const p = Motor.aplicarExcecao(Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rub.id), excecaoEfetiva(c, rub.id));
@@ -3642,6 +3643,13 @@ function editarColaborador(id, padrao = {}) {
       <label class="rotulo">Mês de saída <small>(desligamento previsto)</small><select class="campo" name="mes_fim">${opcoesMes(c.mes_fim)}</select></label>
       <label class="check inteiro"><input type="checkbox" name="vaga" ${c.vaga ? 'checked' : ''}> É uma vaga prevista (ainda não preenchida)</label>
       <div class="inteiro proprias">
+        <h4>📈 Promoção projetada <small>· novo salário a partir de um mês (o dissídio continua entrando por cima)</small></h4>
+        <div class="form-grade">
+          <label class="rotulo">A partir de<select class="campo" name="promo_mes">${opcoesMes(c.promo_mes || '', true)}</select></label>
+          <label class="rotulo">Novo salário (sem dissídio)<input class="campo" name="promo_salario" type="number" step="0.01" min="0" value="${c.promo_mes ? esc(c.promo_salario) : ''}" placeholder="ex.: 5500,00"></label>
+        </div>
+      </div>
+      <div class="inteiro proprias">
         <h4>Condições próprias deste colaborador <small>· ex.: sucedidos com benefício diferente da regra da filial</small></h4>
         <div id="lista-proprias"></div>
         <button type="button" class="btn btn-claro btn-sm" id="add-propria">+ Adicionar item com valor próprio</button>
@@ -3659,6 +3667,8 @@ function editarColaborador(id, padrao = {}) {
     body.excecoes = lerProprias(d);
     if (body.excecoes === null) return;
     if (Number(body.mes_fim) < Number(body.mes_inicio)) return toast('O mês de saída deve ser depois do início.', 'erro');
+    if (body.promo_mes && !(Number(body.promo_salario) > 0)) return toast('Informe o novo salário da promoção.', 'erro');
+    if (!body.promo_mes) { body.promo_mes = 0; body.promo_salario = 0; }
     try {
       await api(id ? `/api/colaboradores/${id}` : '/api/colaboradores', { method: id ? 'PUT' : 'POST', body });
       d.close();

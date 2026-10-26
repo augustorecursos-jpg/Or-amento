@@ -424,6 +424,8 @@ function lerColaborador(b) {
     excecoes: JSON.stringify(lerExcecoes(b.excecoes)),
     sexo: lerSexo(b.sexo),
     gestor: texto(b.gestor, 160),
+    promo_mes: b.promo_mes ? mes(b.promo_mes, 0) : 0,
+    promo_salario: b.promo_mes ? numero(b.promo_salario) : 0,
   };
 }
 
@@ -464,7 +466,7 @@ function juntarExcecoes(velhas, novas, colunasBase) {
   return out;
 }
 
-const CAMPOS_COLAB = ['matricula', 'nome', 'regional', 'filial', 'situacao', 'funcao', 'cargo', 'cc_cod', 'cc_nome', 'salario', 'mes_inicio', 'mes_fim', 'vaga', 'excecoes', 'sexo', 'gestor'];
+const CAMPOS_COLAB = ['matricula', 'nome', 'regional', 'filial', 'situacao', 'funcao', 'cargo', 'cc_cod', 'cc_nome', 'salario', 'mes_inicio', 'mes_fim', 'vaga', 'excecoes', 'sexo', 'gestor', 'promo_mes', 'promo_salario'];
 
 app.post('/api/colaboradores/importar', exigirAdmin, (req, res) => {
   const linhas = Array.isArray(req.body?.linhas) ? req.body.linhas : [];
@@ -488,14 +490,18 @@ app.post('/api/colaboradores/importar', exigirAdmin, (req, res) => {
     if (modo !== 'adicionar') {
       // Guarda as condições próprias (sucedidos) já cadastradas, para não perdê-las ao reimportar a base.
       const antigas = modo === 'tudo'
-        ? db.prepare("SELECT matricula, nome, excecoes FROM colaboradores WHERE matricula <> '' AND excecoes <> '{}'").all()
-        : db.prepare(`SELECT matricula, nome, excecoes FROM colaboradores WHERE matricula <> '' AND excecoes <> '{}' AND regional IN (${regionais.map(() => '?').join(',')})`).all(...regionais);
+        ? db.prepare("SELECT matricula, nome, excecoes, promo_mes, promo_salario FROM colaboradores WHERE matricula <> '' AND (excecoes <> '{}' OR promo_mes > 0)").all()
+        : db.prepare(`SELECT matricula, nome, excecoes, promo_mes, promo_salario FROM colaboradores WHERE matricula <> '' AND (excecoes <> '{}' OR promo_mes > 0) AND regional IN (${regionais.map(() => '?').join(',')})`).all(...regionais);
       // Mesma matrícula pode existir em empresas diferentes: casa por matrícula + nome.
       const chave = c => `${c.matricula}|${String(c.nome).trim().toUpperCase()}`;
       const porMatricula = new Map(antigas.map(a => [chave(a), lerExcecoes(a.excecoes)]));
+      const promoPorMatricula = new Map(antigas.filter(a => a.promo_mes > 0).map(a => [chave(a), { promo_mes: a.promo_mes, promo_salario: a.promo_salario }]));
       for (const c of validos) {
         const velhas = porMatricula.get(chave(c));
         if (velhas) c.excecoes = JSON.stringify(juntarExcecoes(velhas, lerExcecoes(c.excecoes), c.colunas_base));
+        // promoção projetada à mão continua valendo ao reimportar a base
+        const promo = promoPorMatricula.get(chave(c));
+        if (promo && !c.promo_mes) Object.assign(c, promo);
       }
       if (modo === 'tudo') db.exec('DELETE FROM colaboradores');
       else {

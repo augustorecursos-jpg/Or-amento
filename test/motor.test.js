@@ -97,6 +97,15 @@ test('valor da planilha da base vale no lugar da regra, a não ser que a regra s
   perto(Motor.calcular({ colaboradores: [manual], filiais: {}, premissas: { CUIABA: { va: { metodo: 'fixo', valor: 1602.96, vale_todos: true } } } }).valor(0, Motor.IDX.va, 0), 900);
 });
 
+test('promoção projetada: novo salário a partir do mês, com o dissídio por cima', () => {
+  const c = colab({ salario: 5000, promo_mes: 4, promo_salario: 6000 });
+  const res = Motor.calcular({ colaboradores: [c], filiais: { CUIABA: { dissidio_pct: 5, dissidio_mes: 8 } }, premissas: { '*': { periculosidade: { metodo: 'nao' } } }, mesesSalario: 12 });
+  perto(res.valor(0, 0, 2), 5000);   // mar
+  perto(res.valor(0, 0, 3), 6000);   // abr: promoção
+  perto(res.valor(0, 0, 7), 6300);   // ago: + dissídio de 5%
+  perto(res.valor(0, Motor.IDX.fgts, 3), 480);
+});
+
 test('rateio do total da filial por headcount e só entre quem recebe', () => {
   const premissas = { CUIABA: { horas_extras: { metodo: 'rateio', valor: 900, rateio: 'hc', periodo: 'mensal', quem: ['cc:17150'] } } };
   const colaboradores = [colab({ id: 1, cc_cod: '17150' }), colab({ id: 2, cc_cod: '17150' }), colab({ id: 3, cc_cod: '22153' })];

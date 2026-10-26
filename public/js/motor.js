@@ -237,13 +237,18 @@
     };
     // Histórico do ano anterior (salarios[12]): o salário pago em cada mês. O dissídio daquele ano que a folha ainda não
     // tinha (provisão/retroativo) vem como dissidio_pct a partir da data-base; sem ele, o fator é 1.
-    const salario = (i, m) => (colaboradores[i].salarios ? num(colaboradores[i].salarios[m]) : num(colaboradores[i].salario)) * fatorDissidio(i, m);
+    // Promoção projetada (promo_mes/promo_salario): novo salário-base a partir do mês, com os dissídios por cima.
+    const salarioBase = (i, m) => {
+      const c = colaboradores[i];
+      return num(c.promo_mes) && m + 1 >= num(c.promo_mes) && num(c.promo_salario) > 0 ? num(c.promo_salario) : num(c.salario);
+    };
+    const salario = (i, m) => (colaboradores[i].salarios ? num(colaboradores[i].salarios[m]) : salarioBase(i, m)) * fatorDissidio(i, m);
     const salarioPpr = (i, p) => {
       const sh = colaboradores[i].salarios;
       if (sh) { for (let m = 11; m >= 0; m--) if (num(sh[m]) > 0) return num(sh[m]) * (p.sem_dissidio ? 1 : fatorDissidio(i, m)); return 0; } // último salário do ano
       const f = cfg[i];
       const reaj = p.sem_dissidio ? 1 : (1 + num(f.dissidio_ant_pct) / 100) * (num(f.dissidio_pct) && num(f.dissidio_mes) ? 1 + num(f.dissidio_pct) / 100 : 1);
-      return num(colaboradores[i].salario) * reaj;
+      return salarioBase(i, 11) * reaj; // com promoção no ano, o salário novo
     };
     const fatorBenef = (i, m) => {
       const f = cfg[i];
