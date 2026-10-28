@@ -256,7 +256,7 @@ Conferência e sem pedidos de ajuste (o servidor também bloqueia).
 
 | Grupo | Rubricas |
 |---|---|
-| Remuneração | Salário, Periculosidade, Insalubridade, Penosidade, Adicionais de turno, Adicional noturno, Horas extras, Promoções e méritos |
+| Remuneração | Salário, Periculosidade, Insalubridade, Penosidade, Adicionais de turno, Adicional noturno, Horas extras, Banco de horas, Promoções e méritos |
 | Provisões | Férias (1/3), 13º salário, Rescisão |
 | Encargos | FGTS, FGTS férias, FGTS 13º, INSS, INSS férias, INSS 13º |
 | Benefícios | PPR, VA/VR, VA natal / 13º VR, Vale mobilidade (antigo vale-transporte), Auxílio-creche, Auxílio educacional (ou educação), Material escolar, Auxílio óculos, Oftalmo, Assistência médica, Coparticipação convênio médico, Assistência odontológica, Farmácia, Seguro de vida, Previdência privada, Auxílio dependente portadores, Refeitório, Fretado, Fretado (overall), Cesta natalina |

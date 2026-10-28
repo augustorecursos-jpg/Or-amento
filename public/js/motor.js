@@ -57,6 +57,7 @@
     { id: 'adic_turno', nome: 'Adicionais de turno', grupo: 'remuneracao', adicional: true, dica: 'Inclui adicional intrajornada e passagem de turno', padrao: P('nao') },
     { id: 'adic_noturno', nome: 'Adicional noturno', grupo: 'remuneracao', adicional: true, padrao: P('nao') },
     { id: 'horas_extras', nome: 'Horas extras', grupo: 'remuneracao', dica: 'Custo total do ano da filial; vira média mensal por colaborador', padrao: P('rateio', { periodo: 'anual_diluido' }) },
+    { id: 'banco_horas', nome: 'Banco de horas', grupo: 'remuneracao', dica: 'Pagamento de saldo de banco de horas: total da filial, R$ por colaborador ou % — entra na base de férias, 13º, FGTS e INSS', padrao: P('nao', { periodo: 'anual_diluido' }) },
     { id: 'promocoes', nome: 'Promoções e méritos', grupo: 'remuneracao', dica: 'Budget de aumentos por promoção e mérito: % sobre o salário a partir de um mês, ou total da filial', padrao: P('nao', { base: 'salario' }) },
 
     // Férias, 13º, FGTS e INSS sobre salário + adicionais (periculosidade, insalubridade…) + horas extras (regra do ADM de pessoal).
