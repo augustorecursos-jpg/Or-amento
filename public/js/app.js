@@ -1815,7 +1815,7 @@ function renderPremissas() {
         ${regAtual === '*' ? '<option>— escolha uma regional —</option>' : `<option value="R:${esc(regAtual)}" ${escopo === 'R:' + regAtual ? 'selected' : ''}>Toda a regional ${esc(regAtual)}${marca('R:' + regAtual)}</option>
         ${filiaisDa(regAtual).filter(f => bateUf(f, E.prem.uf) || f === escopo).map(f => `<option value="${esc(f)}" ${escopo === f ? 'selected' : ''}>${esc(f)}${ufDe(f) ? ` (${ufDe(f)})` : ''}${marca(f)}</option>`).join('')}`}
       </select></label>
-      <p>● = tem regras próprias. A filial herda da regional, que herda da regra geral.<br><button class="btn-link" id="prem-estados">🗺 Estado de cada filial</button></p>
+      <p>● = tem regras próprias. A filial herda da regional, que herda da regra geral.<br><button class="btn-link" id="prem-estados">🗺 Estado de cada filial</button> · <button class="btn-link" id="prem-nova-filial">+ Nova filial</button></p>
     </div>`;
 
   const ehFilial = Boolean(E.dados.filiais[escopo]);
@@ -1848,7 +1848,7 @@ function renderPremissas() {
         <div class="prem-cab">
           <div><small>${escopo === '*' ? 'TODAS AS FILIAIS' : escopo.startsWith('R:') ? 'REGIONAL' : `FILIAL · ${esc(cfgF.regional)} · ${esc(cfgF.uf || 'ESTADO A DEFINIR')}`}</small>
             <h2>${esc(nomeEscopo)}</h2>
-            <p>${colabs.length} colaborador(es) · custo anual <b id="prem-total"></b></p></div>
+            <p>${colabs.length} colaborador(es) · custo anual <b id="prem-total"></b>${ehFilial && !colabs.length && !E.dados.colaboradores.some(c => c.filial === escopo) ? ` · <span class="etiqueta neutra">filial cadastrada, ainda sem colaboradores</span> <button class="btn-link" id="prem-remover-filial">remover filial</button>` : ''}</p></div>
           ${escopo === '*' ? `<label class="rotulo" style="width:150px">Ano do orçamento<input class="campo" id="cfg-ano" type="number" value="${esc(E.dados.config.ano)}"></label>` : ''}
         </div>
         ${ehFilial ? `
@@ -1882,6 +1882,12 @@ function renderPremissas() {
   $('#prem-fil', el).addEventListener('change', e => trocarEscopo(e.target.value));
   $('#prem-uf', el)?.addEventListener('change', e => { E.prem.uf = e.target.value; renderPremissas(); });
   $('#prem-estados', el).addEventListener('click', editarEstados);
+  $('#prem-nova-filial', el).addEventListener('click', novaFilial);
+  $('#prem-remover-filial', el)?.addEventListener('click', async () => {
+    if (!confirm(`Remover a filial ${escopo}? Ela não tem colaboradores nem vagas; as regras próprias dela também saem.`)) return;
+    const reg = E.dados.filiais[escopo]?.regional;
+    try { await api(`/api/filiais/${encodeURIComponent(escopo)}`, { method: 'DELETE' }); await carregar(); trocarEscopo(`R:${reg}`); toast('Filial removida.'); } catch (e) { toast(e.message, 'erro'); }
+  });
   $$('[data-fcampo]', el).forEach(i => i.addEventListener('input', () => { E.prem.filial[i.dataset.fcampo] = Number(i.value) || 0; atualizarPrevia(); }));
   $$('[data-fcheck]', el).forEach(i => i.addEventListener('change', () => { E.prem.filial[i.dataset.fcheck] = i.checked ? 1 : 0; atualizarPrevia(); }));
   $('[data-usar-hist]', el)?.addEventListener('click', e => {
@@ -2143,6 +2149,37 @@ function editarDetalhes(rub) {
 }
 
 /** Estado (UF) de cada filial: sugerido pelo nome da unidade; aqui o admin confirma ou corrige. */
+/** Cadastra uma filial que ainda não tem colaboradores nem vagas (para receber pessoas depois). */
+function novaFilial() {
+  const regs = regionais();
+  const regAtual = E.prem.escopo.startsWith('R:') ? E.prem.escopo.slice(2) : E.dados.filiais[E.prem.escopo]?.regional || '';
+  const d = abrirModal({
+    titulo: 'Nova filial', sup: 'PREMISSAS',
+    corpo: `<form class="form-grade" id="form-filial">
+      <label class="rotulo inteiro">Nome da filial<input class="campo" name="filial" required placeholder="ex.: PCH NOVA ESPERANÇA"></label>
+      <label class="rotulo">Regional<input class="campo" name="regional" list="dl-nf-reg" value="${esc(regAtual)}" required></label>
+      <label class="rotulo">Estado (UF)<select class="campo" name="uf"><option value="">A definir</option>${UFS_BR.map(u => `<option>${u}</option>`).join('')}</select></label>
+      <p class="inteiro subtitulo" style="margin:0">A filial começa com as regras da regional (benefícios, PPR…) e com o dissídio e o reajuste de benefícios mais comuns dela — depois é só ajustar. Quando entrarem colaboradores ou vagas com esse nome de filial (pela tela ou pela planilha), eles já caem nela.</p>
+      <datalist id="dl-nf-reg">${regs.map(r => `<option value="${esc(r)}">`).join('')}</datalist>
+    </form>`,
+    rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="salvar-filial">Cadastrar</button>',
+  });
+  $('#salvar-filial', d).addEventListener('click', async () => {
+    const f = $('#form-filial', d);
+    if (!f.reportValidity()) return;
+    const nome = f.filial.value.trim().toUpperCase();
+    if (E.dados.filiais[nome]) return toast('Já existe uma filial com esse nome.', 'erro');
+    try {
+      await api('/api/filiais', { method: 'POST', body: { filial: nome, regional: f.regional.value.trim().toUpperCase(), uf: f.uf.value } });
+      d.close();
+      await carregar();
+      E.prem.visao = 'filial';
+      trocarEscopo(nome);
+      toast(`Filial ${nome} cadastrada.`);
+    } catch (e) { toast(e.message, 'erro'); }
+  });
+}
+
 function editarEstados() {
   const fils = Object.values(E.dados.filiais).sort((a, b) => a.regional.localeCompare(b.regional) || a.filial.localeCompare(b.filial));
   const semUf = fils.filter(f => !f.uf).length;

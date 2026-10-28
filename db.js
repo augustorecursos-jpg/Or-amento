@@ -151,6 +151,8 @@ const colLanc = db.prepare('PRAGMA table_info(lancamentos)').all().map(c => c.na
 if (!colLanc.includes('dividir')) db.exec("ALTER TABLE lancamentos ADD COLUMN dividir TEXT NOT NULL DEFAULT ''");
 const colFiliais = db.prepare('PRAGMA table_info(filiais)').all().map(c => c.name);
 if (!colFiliais.includes('uf')) db.exec('ALTER TABLE filiais ADD COLUMN uf TEXT');
+// Filial cadastrada à mão (ainda sem colaboradores nem vagas): aparece na ferramenta mesmo vazia.
+if (!colFiliais.includes('cadastrada')) db.exec('ALTER TABLE filiais ADD COLUMN cadastrada INTEGER NOT NULL DEFAULT 0');
 // Dissídio do ano anterior (ex.: data-base 2026), que o salário da base ainda não tem: vale a partir do mês (padrão janeiro).
 // O dissídio_pct/dissidio_mes continua sendo o do ano do orçamento (data-base 2027), aplicado por cima.
 if (!colFiliais.includes('dissidio_ant_pct')) db.exec('ALTER TABLE filiais ADD COLUMN dissidio_ant_pct REAL NOT NULL DEFAULT 0');
@@ -317,19 +319,21 @@ function sincronizarFiliais() {
   // comuns das outras filiais da mesma regional — depois dá para ajustar na tela.
   if (!antes.size) return;
   const novas = db.prepare('SELECT filial, regional FROM filiais').all().filter(f => !antes.has(f.filial));
-  const copiar = db.prepare(`UPDATE filiais SET ${CAMPOS_REAJUSTE.map(k => `${k} = ?`).join(', ')} WHERE filial = ?`);
-  for (const f of novas) {
-    const irmas = db.prepare(`SELECT filial, ${CAMPOS_REAJUSTE.join(', ')} FROM filiais WHERE regional = ? AND filial <> ?`).all(f.regional, f.filial)
-      .filter(x => !novas.some(n => n.filial === x.filial));
-    if (!irmas.length) continue;
-    const cont = new Map();
-    irmas.forEach(x => { const k = JSON.stringify(CAMPOS_REAJUSTE.map(c => x[c])); cont.set(k, (cont.get(k) || 0) + 1); });
-    const [maisComum] = [...cont].sort((a, b) => b[1] - a[1])[0];
-    copiar.run(...JSON.parse(maisComum), f.filial);
-  }
+  for (const f of novas) reajustesDaRegional(f.filial, f.regional, novas.map(n => n.filial));
 }
 
-module.exports = { db, DATA_DIR, registrar, sincronizarFiliais, ufSugerida, PPR_HOLDING };
+/** Copia para a filial o dissídio e o reajuste de benefícios mais comuns das outras filiais da regional. */
+function reajustesDaRegional(filial, regional, ignorar = []) {
+  const irmas = db.prepare(`SELECT filial, ${CAMPOS_REAJUSTE.join(', ')} FROM filiais WHERE regional = ? AND filial <> ?`).all(regional, filial)
+    .filter(x => !ignorar.includes(x.filial));
+  if (!irmas.length) return;
+  const cont = new Map();
+  irmas.forEach(x => { const k = JSON.stringify(CAMPOS_REAJUSTE.map(c => x[c])); cont.set(k, (cont.get(k) || 0) + 1); });
+  const [maisComum] = [...cont].sort((a, b) => b[1] - a[1])[0];
+  db.prepare(`UPDATE filiais SET ${CAMPOS_REAJUSTE.map(k => `${k} = ?`).join(', ')} WHERE filial = ?`).run(...JSON.parse(maisComum), filial);
+}
+
+module.exports = { db, DATA_DIR, registrar, sincronizarFiliais, reajustesDaRegional, ufSugerida, PPR_HOLDING };
 
 // Bancos que já existiam antes da coluna de estado: preenche a sugestão uma vez.
 sincronizarFiliais();

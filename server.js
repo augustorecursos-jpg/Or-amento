@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const express = require('express');
-const { db, DATA_DIR, registrar, sincronizarFiliais } = require('./db');
+const { db, DATA_DIR, registrar, sincronizarFiliais, reajustesDaRegional } = require('./db');
 const Motor = require('./public/js/motor');
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -250,7 +250,7 @@ app.get('/api/dados', exigirLogin, (req, res) => {
     .map(c => ({ ...c, vaga: Boolean(c.vaga), excecoes: lerExcecoes(c.excecoes) }));
   const filiais = {};
   const comGente = new Set(colaboradores.map(c => c.filial));
-  for (const f of db.prepare(`SELECT * FROM filiais ${filtro} ORDER BY regional, filial`).all(...params)) if (comGente.has(f.filial)) filiais[f.filial] = f;
+  for (const f of db.prepare(`SELECT * FROM filiais ${filtro} ORDER BY regional, filial`).all(...params)) if (comGente.has(f.filial) || f.cadastrada) filiais[f.filial] = f;
   const premissas = {};
   for (const p of db.prepare('SELECT * FROM premissas').all()) {
     const visivel = u.admin || p.escopo === '*' || (p.escopo.startsWith('R:') ? u.regionais.includes(p.escopo.slice(2)) : filiais[p.escopo]);
@@ -628,6 +628,34 @@ app.put('/api/filiais', exigirAdmin, (req, res) => {
   db.exec('COMMIT');
   registrar('Administrador', 'Alterou dissídio/reajuste', `${n} filial(is): ${lista.map(f => `${f.filial}${f.dissidio_ant_pct != null ? ` ant. ${f.dissidio_ant_pct}%` : ''} ${f.dissidio_pct ?? ''}%`).join(', ').slice(0, 400)}`);
   res.json({ ok: true, atualizadas: n });
+});
+
+// Nova filial sem colaboradores ainda (ex.: unidade que vai abrir): começa com os reajustes mais comuns da regional.
+app.post('/api/filiais', exigirAdmin, (req, res) => {
+  const filial = texto(req.body?.filial, 120).toUpperCase();
+  const regional = texto(req.body?.regional, 80).toUpperCase();
+  const uf = String(req.body?.uf || '').toUpperCase();
+  if (!filial || !regional) return res.status(400).json({ erro: 'Informe o nome da filial e a regional.' });
+  if (db.prepare('SELECT 1 FROM filiais WHERE filial = ?').get(filial)) {
+    // já existia (ex.: ficou sem pessoas depois de uma importação): volta a aparecer
+    db.prepare('UPDATE filiais SET cadastrada = 1, regional = ? WHERE filial = ?').run(regional, filial);
+  } else {
+    db.prepare('INSERT INTO filiais (filial, regional, cadastrada) VALUES (?, ?, 1)').run(filial, regional);
+    reajustesDaRegional(filial, regional);
+  }
+  if (UFS.includes(uf)) db.prepare('UPDATE filiais SET uf = ? WHERE filial = ?').run(uf, filial);
+  registrar('Administrador', 'Cadastrou filial', `${filial} · ${regional}${uf ? ` · ${uf}` : ''}`);
+  res.json({ ok: true, filial });
+});
+
+// Remove uma filial cadastrada à mão que não tem ninguém (as premissas próprias dela também saem).
+app.delete('/api/filiais/:filial', exigirAdmin, (req, res) => {
+  const filial = req.params.filial;
+  if (db.prepare('SELECT 1 FROM colaboradores WHERE filial = ?').get(filial)) return res.status(400).json({ erro: 'A filial tem colaboradores ou vagas; remova-os antes.' });
+  db.prepare('DELETE FROM premissas WHERE escopo = ?').run(filial);
+  db.prepare('DELETE FROM filiais WHERE filial = ?').run(filial);
+  registrar('Administrador', 'Removeu filial', filial);
+  res.json({ ok: true });
 });
 
 app.put('/api/filiais/:filial/conferencia', exigirLogin, (req, res) => {
