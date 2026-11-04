@@ -398,9 +398,9 @@ function renderAba() {
   })[E.aba]();
 }
 
-function abrirModal({ titulo, sup = '', corpo, rodape = '', largo = false }) {
+function abrirModal({ titulo, sup = '', corpo, rodape = '', largo = false, extra = false }) {
   const d = $('#modal');
-  d.className = `modal${largo ? ' largo' : ''}`;
+  d.className = `modal${largo ? ' largo' : ''}${extra ? ' extra-largo' : ''}`;
   d.innerHTML = `
     <header><div>${sup ? `<small>${esc(sup)}</small>` : ''}<h3>${esc(titulo)}</h3></div><button class="btn-ic" data-fechar aria-label="Fechar">✕</button></header>
     <div class="modal-corpo">${corpo}</div>
@@ -813,14 +813,14 @@ function porQueMudou(k) {
   const linha = (rot, v0, v1, fmt = brl0.format) => `<tr><td>${rot}</td><td class="n">${fmt(v0)}</td><td class="n">${fmt(v1)}</td></tr>`;
   const texto = textoPorQueMudou(x);
   const d = abrirModal({
-    titulo: `Por que ${r.nome} mudou?`, sup: `${x.ant} × ${x.ano} · ${escopoFiltro('Empresa toda')}`, largo: true,
-    corpo: `<div class="calc-cards" style="grid-template-columns:repeat(4,minmax(0,1fr))">
-        <div class="calc-card destaque"><span>Variação</span><b class="${clsDelta(x.delta)}">${deltaFmt(x.delta)}</b><small>${deltaPct(x.delta, x.a.total)} · ${brl0.format(x.a.total)} → ${brl0.format(x.b.total)}</small></div>
-        ${passos.map(p => `<div class="calc-card"><span>${p.nome}</span><b class="${clsDelta(p.valor)}">${deltaFmt(p.valor)}</b><small>${deltaPct(p.valor, x.a.total)} sobre ${x.ant}</small></div>`).join('')}
+    titulo: `Por que ${r.nome} mudou?`, sup: `${x.ant} × ${x.ano} · ${escopoFiltro('Empresa toda')}`, largo: true, extra: true,
+    corpo: `<div class="pq-cards">
+        <div class="pq-card destaque"><span>Variação no ano</span><b>${deltaFmt(x.delta)}</b><small>${deltaPct(x.delta, x.a.total)} · ${brl0.format(x.a.total)} → ${brl0.format(x.b.total)}</small></div>
+        ${passos.map(p => `<div class="pq-card"><span>${p.nome}</span><b class="${clsDelta(p.valor)}">${deltaFmt(p.valor)}</b><small>${deltaPct(p.valor, x.a.total)} sobre ${x.ant} · ${x.delta ? pctFmt(p.valor / x.delta) : '–'} da variação</small></div>`).join('')}
       </div>
       <div id="pq-ponte"></div>
-      <div class="grade-2" style="align-items:start;margin-top:.8rem">
-        <div><h4>Números de apoio</h4><table class="tabela"><thead><tr><th></th><th class="n">${x.ant}</th><th class="n">${esc(x.ano)}</th></tr></thead><tbody>
+      <div class="pq-grade">
+        <div><h4>Números de apoio</h4><table class="tabela pq-tabela"><thead><tr><th></th><th class="n">${x.ant}</th><th class="n">${esc(x.ano)}</th></tr></thead><tbody>
           ${linha('Colaboradores-mês (HC × meses)', x.a.pm, x.b.pm, num0.format)}
           ${linha('HC médio', x.a.pm / 12, x.b.pm / 12, num0.format)}
           ${linha('Custo médio por colaborador-mês', x.med0, x.med1, brl.format)}
@@ -829,8 +829,8 @@ function porQueMudou(k) {
           <tr><td>Só em ${esc(x.ano)} (admissões e vagas)</td><td></td><td class="n">${num0.format(x.so27.n)} · ${brl0.format(x.so27.v)}</td></tr>
           <tr><td>Só em ${x.ant} (desligados)</td><td class="n">${num0.format(x.so26.n)} · ${brl0.format(x.so26.v)}</td><td></td></tr>
         </tbody></table></div>
-        <div><h4>Filiais que mais explicam</h4><div class="tabela-wrap" style="max-height:300px"><table class="tabela"><thead><tr><th>Filial</th><th class="n">${x.ant}</th><th class="n">${esc(x.ano)}</th><th class="n">Δ</th></tr></thead><tbody>
-          ${x.filiais.slice(0, 15).map(f => `<tr><td>${esc(f.f)}</td><td class="n">${brl0.format(f.v0)}</td><td class="n">${brl0.format(f.v1)}</td><td class="n ${clsDelta(f.d)}"><b>${deltaFmt(f.d)}</b></td></tr>`).join('') || '<tr><td colspan="4" class="vazio">—</td></tr>'}
+        <div><h4>Filiais que mais explicam <small>(${x.filiais.length})</small></h4><div class="tabela-wrap pq-filiais"><table class="tabela pq-tabela"><thead><tr><th>Filial</th><th class="n">${x.ant}</th><th class="n">${esc(x.ano)}</th><th class="n">Δ R$</th><th class="n">Δ %</th><th style="width:110px">Peso</th></tr></thead><tbody>
+          ${(() => { const maxF = Math.max(...x.filiais.map(f => Math.abs(f.d)), 1); return x.filiais.map(f => `<tr><td title="${esc(f.f)}">${esc(f.f)}</td><td class="n">${brl0.format(f.v0)}</td><td class="n">${brl0.format(f.v1)}</td><td class="n ${clsDelta(f.d)}"><b>${deltaFmt(f.d)}</b></td><td class="n ${clsDelta(f.d)}">${f.v0 ? deltaPct(f.d, f.v0) : 'novo'}</td><td><div class="comp-barra"><i class="${f.d >= 0 ? 'sobe' : 'desce'}" style="width:${(Math.abs(f.d) / maxF) * 100}%"></i></div></td></tr>`).join('') || '<tr><td colspan="6" class="vazio">—</td></tr>'; })()}
         </tbody></table></div></div>
       </div>
       <h4 style="margin-top:.8rem">Texto para explicar</h4>

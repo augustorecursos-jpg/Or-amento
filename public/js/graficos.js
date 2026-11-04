@@ -300,7 +300,7 @@ const Graficos = (() => {
       svg += `<rect x="${cx - bw / 2}" y="${y1}" width="${bw}" height="${Math.max(2, y0 - y1)}" rx="3" fill="${cor}"/>`;
       if (k < cols.length - 1) { const yl = c.total ? y1 : y(acum); svg += `<line x1="${cx + bw / 2}" x2="${cx + larg - bw / 2}" y1="${yl}" y2="${yl}" class="ponte-liga"/>`; }
       svg += `<text x="${cx}" y="${y1 - 7}" text-anchor="middle" class="rot-total">${c.total ? curto(c.valor) : `${c.valor >= 0 ? '+' : ''}${curto(c.valor)}`}</text>`;
-      const nome = c.nome.length > 13 ? `${c.nome.slice(0, 12)}…` : c.nome;
+      const nome = c.nome.length > 18 ? `${c.nome.slice(0, 17)}…` : c.nome;
       svg += `<text x="${cx}" y="${A - mb + 18}" text-anchor="middle" class="ponte-nome" style="font-size:11px">${esc(nome)}</text>`;
       svg += `<rect class="alvo" data-dica="${k}" x="${me + larg * k}" y="${mt}" width="${larg}" height="${A - mt - mb}"/>`;
     });
