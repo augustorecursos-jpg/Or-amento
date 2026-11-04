@@ -169,6 +169,10 @@ o do ano entra por cima na data-base. Ex.: base 13.720,34 → jan–jul/27 14.40
 Simulador (abas Dissídio e Benefícios), premissas da filial, reajuste em lote e os Excel de premissas têm os dois; o
 Painel mostra o impacto de cada dissídio.
 
+**Atualizar dados em lote**: em Base de colaboradores, "👥 Atualizar dados em lote" lê uma planilha com MATRÍCULA (e NOME)
+e as colunas SEXO, GESTOR e/ou centro de custo e atualiza só esses dados (célula vazia não apaga), com resumo de
+encontrados e não encontrados antes de gravar.
+
 **Benefícios realizados do ano anterior**: em Base › Histórico, "⬆ Benefícios realizados 2026" lê a planilha da folha
 (filial · evento · meses), sugere a ligação de cada filial e evento (com conferência antes de gravar) e, no comparativo,
 substitui o valor calculado desses benefícios em 2026 nas filiais da planilha (conta sem linha = zero; filiais fora da

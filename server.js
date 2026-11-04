@@ -563,6 +563,26 @@ app.post('/api/colaboradores', exigirAdmin, (req, res) => {
   res.json({ ok: true, id: Number(r.lastInsertRowid) });
 });
 
+// Atualiza só alguns dados (sexo, gestor, centro de custo) de vários colaboradores, sem mexer no resto.
+app.put('/api/colaboradores/lote', exigirAdmin, (req, res) => {
+  const itens = Array.isArray(req.body?.itens) ? req.body.itens : [];
+  const campos = { sexo: v => lerSexo(v), gestor: v => texto(v, 160), cc_cod: v => texto(v, 40), cc_nome: v => texto(v, 160) };
+  let n = 0;
+  db.exec('BEGIN');
+  try {
+    for (const it of itens) {
+      const sets = Object.keys(campos).filter(k => it[k] != null && String(it[k]).trim() !== '');
+      if (!sets.length) continue;
+      const r = db.prepare(`UPDATE colaboradores SET ${sets.map(k => `${k} = ?`).join(', ')}, atualizado_em = datetime('now') WHERE id = ?`)
+        .run(...sets.map(k => campos[k](it[k])), Number(it.id));
+      n += r.changes;
+    }
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  registrar('Administrador', 'Atualizou dados da base em lote', `${n} colaborador(es)`);
+  res.json({ ok: true, atualizados: n });
+});
+
 // Valor próprio de um item para vários colaboradores de uma vez (tela "Quem recebe"): excecao null = volta a seguir a regra.
 app.put('/api/colaboradores/excecoes', exigirAdmin, (req, res) => {
   const rubrica = texto(req.body?.rubrica, 40);

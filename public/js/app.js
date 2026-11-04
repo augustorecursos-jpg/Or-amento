@@ -3195,7 +3195,7 @@ function renderBase() {
   el.innerHTML = `
     <div class="cab-pagina"><div><h1 class="titulo-pagina">Base de <em>colaboradores</em></h1>
       <p class="subtitulo">Suba os dados cadastrais e o <b>salário</b> (sem dissídio) de cada colaborador. Adicionais, rescisão e benefícios podem vir com o <b>valor de cada colaborador</b> em colunas opcionais (0 = não recebe; vazio = segue a regra da filial). Horas extras (total do ano de cada filial), PPR, cesta natalina, o grupo Demais, férias, 13º e encargos seguem as premissas.</p></div>
-      <div style="display:flex;gap:.5rem;flex-wrap:wrap"><button class="btn btn-claro" id="nova-vaga">+ Nova vaga</button><button class="btn btn-claro" id="novo-colab">+ Colaborador</button></div></div>
+      <div style="display:flex;gap:.5rem;flex-wrap:wrap"><label class="btn btn-claro" style="cursor:pointer" title="Planilha com MATRÍCULA (e NOME) e as colunas SEXO, GESTOR e/ou centro de custo: atualiza só esses dados">👥 Atualizar dados em lote<input type="file" id="base-lote" accept=".xlsx,.xls,.csv" hidden></label><button class="btn btn-claro" id="nova-vaga">+ Nova vaga</button><button class="btn btn-claro" id="novo-colab">+ Colaborador</button></div></div>
     <section class="cartao importar">
       <h3>Importar base <small>· .xlsx ou .csv · pode ser uma planilha por regional ou todas juntas</small></h3>
       <div class="passos-modelo">
@@ -3232,6 +3232,7 @@ function renderBase() {
   desenharAnoAnterior($('#base-anterior', el));
   if (E.base.fila.length) previaImportacao(E.base.fila);
   $('#nova-vaga', el).addEventListener('click', () => editarColaborador(null, { vaga: true }));
+  $('#base-lote', el).addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) atualizarBaseEmLote(f); });
   $('#novo-colab', el).addEventListener('click', () => editarColaborador(null, {}));
   desenharBase();
 }
@@ -3736,6 +3737,63 @@ async function importarAnoAnterior(arquivo) {
     const r = await api('/api/ano-anterior/importar', { method: 'POST', body: { linhas: lido, meses_reais: mesesReais } });
     toast(`Histórico de ${anoAnt()} carregado: ${r.importados} colaborador(es)${proj ? ` · ${MESES[ultimo + 1]}–Dez projetados` : ''}.`);
     await recarregarTudo();
+  } catch (e) { toast(e.message || 'Não consegui ler o arquivo.', 'erro'); }
+}
+
+/** Atualiza sexo, gestor e/ou centro de custo de vários colaboradores por planilha (casa pela matrícula + nome). */
+async function atualizarBaseEmLote(arquivo) {
+  try {
+    const wb = XLSX.read(await arquivo.arrayBuffer(), { type: 'array' });
+    let lido = null;
+    for (const aba of wb.SheetNames) {
+      const l = XLSX.utils.sheet_to_json(wb.Sheets[aba], { header: 1, raw: false, defval: null });
+      for (let h = 0; h < Math.min(l.length, 30) && !lido; h++) {
+        const cab = (l[h] || []).map(normCab);
+        const achar = k => { for (const al of ALIASES[k]) { const i = cab.indexOf(al); if (i >= 0) return i; } return -1; };
+        const col = Object.fromEntries(['matricula', 'nome', 'sexo', 'gestor', 'cc_cod', 'cc_nome', 'filial'].map(k => [k, achar(k)]));
+        const dados = ['sexo', 'gestor', 'cc_cod', 'cc_nome'].filter(k => col[k] >= 0);
+        if ((col.matricula < 0 && col.nome < 0) || !dados.length) continue;
+        lido = { col, dados, linhas: l.slice(h + 1).filter(r => r && (r[col.matricula] || r[col.nome])) };
+      }
+      if (lido) break;
+    }
+    if (!lido) return toast('Não encontrei MATRÍCULA (ou NOME) e as colunas SEXO, GESTOR ou centro de custo.', 'erro');
+    const { col, dados, linhas } = lido;
+    const v = (r, k) => (col[k] >= 0 ? String(r[col[k]] ?? '').trim() : '');
+    // casa pela matrícula + nome; sem nome, pela matrícula (se for de uma pessoa só) ou matrícula + filial
+    const porMatNome = new Map(), porMat = new Map(), porNome = new Map();
+    E.dados.colaboradores.filter(c => !c.vaga).forEach(c => {
+      porMatNome.set(`${c.matricula}|${normCab(c.nome)}`, c);
+      porMat.set(String(c.matricula), [...(porMat.get(String(c.matricula)) || []), c]);
+      porNome.set(normCab(c.nome), [...(porNome.get(normCab(c.nome)) || []), c]);
+    });
+    const achados = [], faltam = [];
+    for (const r of linhas) {
+      const mat = v(r, 'matricula'), nome = v(r, 'nome'), fil = normCab(v(r, 'filial'));
+      let c = mat && nome ? porMatNome.get(`${mat}|${normCab(nome)}`) : null;
+      if (!c && mat) { const xs = (porMat.get(mat) || []).filter(x => !fil || normCab(x.filial) === fil); if (xs.length === 1) [c] = xs; }
+      if (!c && nome && !mat) { const xs = porNome.get(normCab(nome)) || []; if (xs.length === 1) [c] = xs; }
+      if (c) achados.push({ c, novo: Object.fromEntries(dados.map(k => [k, v(r, k)])) });
+      else faltam.push(`${mat} ${nome}`.trim());
+    }
+    const nomeCampo = { sexo: 'Sexo', gestor: 'Gestor', cc_cod: 'Cód. centro de custo', cc_nome: 'Centro de custo' };
+    const muda = achados.filter(x => dados.some(k => x.novo[k] && (k === 'sexo' ? (/^F/i.test(x.novo[k]) ? 'F' : /^M/i.test(x.novo[k]) ? 'M' : '') !== x.c.sexo : x.novo[k] !== String(x.c[k] || ''))));
+    const d = abrirModal({
+      titulo: 'Atualizar dados em lote', sup: 'BASE DE COLABORADORES',
+      corpo: `<p class="subtitulo" style="margin:0">Colunas encontradas: <b>${dados.map(k => nomeCampo[k]).join(', ')}</b>. Só esses dados mudam; salário, benefícios e o resto ficam como estão. Célula vazia não apaga nada.</p>
+        <div class="chips"><span class="chip ok">✓ ${num0.format(achados.length)} encontrado(s)</span><span class="chip">${num0.format(muda.length)} com mudança</span>${faltam.length ? `<span class="chip falta">${num0.format(faltam.length)} não encontrado(s)</span>` : ''}</div>
+        ${faltam.length ? `<details><summary>Ver os não encontrados</summary><p class="sub" style="max-height:160px;overflow:auto">${faltam.slice(0, 300).map(esc).join('<br>')}</p></details>` : ''}`,
+      rodape: `<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="lote-ok" ${muda.length ? '' : 'disabled'}>Atualizar ${num0.format(muda.length)}</button>`,
+    });
+    $('#lote-ok', d).addEventListener('click', async () => {
+      try {
+        const r = await api('/api/colaboradores/lote', { method: 'PUT', body: { itens: muda.map(x => ({ id: x.c.id, ...x.novo })) } });
+        d.close();
+        await carregar();
+        renderBase();
+        toast(`${r.atualizados} colaborador(es) atualizado(s).`);
+      } catch (e) { toast(e.message, 'erro'); }
+    });
   } catch (e) { toast(e.message || 'Não consegui ler o arquivo.', 'erro'); }
 }
 
