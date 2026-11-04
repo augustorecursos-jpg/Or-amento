@@ -789,6 +789,48 @@ function decomporConta(k) {
     so26: { n: so26.length, v: so26.reduce((x, y) => x + y.t, 0) } };
 }
 
+/** Valor por extenso curto: "R$ 7,7 milhões", "R$ 34 mil", "R$ 950". */
+function valorFalado(v) {
+  const a = Math.abs(v);
+  if (a >= 1e6) return `R$ ${(a / 1e6).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} ${a >= 2e6 ? 'milhões' : 'milhão'}`;
+  if (a >= 1e3) return `R$ ${Math.round(a / 1e3).toLocaleString('pt-BR')} mil`;
+  return `R$ ${Math.round(a).toLocaleString('pt-BR')}`;
+}
+
+/** Explicação em linguagem simples, para quem não é da área (uma frase por motivo). */
+function textoSimplesPorQueMudou(x) {
+  const r = RUBRICAS[x.k];
+  const benef = r.grupo === 'beneficios';
+  const sobe = x.delta >= 0;
+  const pct = deltaPct(x.delta, x.a.total).replace(/^[+−]/, '');
+  const linhas = [`${r.nome}: ${valorFalado(x.a.total)} em ${x.ant} → ${valorFalado(x.b.total)} em ${x.ano}. ${sobe ? 'Aumento' : 'Redução'} de ${valorFalado(x.delta)} (${pct}).`, '', 'Por quê?'];
+  // só os motivos que pesam (o resto vai em "outros")
+  const pesa = v => Math.abs(v) >= Math.max(1000, Math.abs(x.delta) * 0.03);
+  const h0 = Math.round(x.a.pm / 12), h1 = Math.round(x.b.pm / 12);
+  let outros = 0;
+  if (pesa(x.volume)) {
+    const vagas = x.so27.vagas ? `, contando ${x.so27.vagas} vaga(s) nova(s)` : '';
+    linhas.push(x.volume >= 0
+      ? `• Mais pessoas: a equipe passa de ${num0.format(h0)} para ${num0.format(h1)} pessoas em média${vagas}. Isso soma ${valorFalado(x.volume)}.`
+      : `• Menos pessoas: a equipe passa de ${num0.format(h0)} para ${num0.format(h1)} pessoas em média. Isso reduz ${valorFalado(x.volume)}.`);
+  } else outros += x.volume;
+  if (pesa(x.reajuste)) linhas.push(`• ${benef ? 'Reajuste dos benefícios' : 'Dissídio'} de ${x.ano}: soma ${valorFalado(x.reajuste)}.`);
+  else outros += x.reajuste;
+  if (pesa(x.valor)) {
+    const motivo = benef ? 'mudanças no valor do benefício e em quem recebe' : 'promoções, mudanças de cargo e o perfil de quem entrou e saiu';
+    linhas.push(x.valor >= 0
+      ? `• Custo maior por pessoa: em média cada um passa de ${brl0.format(x.med0)} para ${brl0.format(x.med1s)} por mês (${motivo}). Isso soma ${valorFalado(x.valor)}.`
+      : `• Custo menor por pessoa: em média cada um passa de ${brl0.format(x.med0)} para ${brl0.format(x.med1s)} por mês (${motivo}). Isso reduz ${valorFalado(x.valor)}.`);
+  } else outros += x.valor;
+  outros += x.lanc;
+  if (Math.abs(outros) >= 1000) linhas.push(`• Outros ajustes menores: ${outros >= 0 ? 'somam' : 'reduzem'} ${valorFalado(outros)}.`);
+  if (x.filiais.length > 1) {
+    const top = x.filiais.slice(0, 3).map(f => `${f.f} (${f.d >= 0 ? '+' : '−'}${valorFalado(f.d)})`);
+    linhas.push('', `Onde mais pesa: ${top.length > 1 ? `${top.slice(0, -1).join(', ')} e ${top[top.length - 1]}` : top[0]}.`);
+  }
+  return linhas.join('\n');
+}
+
 function textoPorQueMudou(x) {
   const r = RUBRICAS[x.k];
   const p = v => (x.a.total ? `${sinal(v)}${(Math.abs(v / x.a.total) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : '');
@@ -811,7 +853,7 @@ function porQueMudou(k) {
     { nome: 'Lançamentos', valor: x.lanc },
   ].filter(p => Math.abs(p.valor) >= 0.5);
   const linha = (rot, v0, v1, fmt = brl0.format) => `<tr><td>${rot}</td><td class="n">${fmt(v0)}</td><td class="n">${fmt(v1)}</td></tr>`;
-  const texto = textoPorQueMudou(x);
+  const textos = { simples: textoSimplesPorQueMudou(x), detalhado: textoPorQueMudou(x) };
   const d = abrirModal({
     titulo: `Por que ${r.nome} mudou?`, sup: `${x.ant} × ${x.ano} · ${escopoFiltro('Empresa toda')}`, largo: true, extra: true,
     corpo: `<div class="pq-cards">
@@ -833,11 +875,17 @@ function porQueMudou(k) {
           ${(() => { const maxF = Math.max(...x.filiais.map(f => Math.abs(f.d)), 1); return x.filiais.map(f => `<tr><td title="${esc(f.f)}">${esc(f.f)}</td><td class="n">${brl0.format(f.v0)}</td><td class="n">${brl0.format(f.v1)}</td><td class="n ${clsDelta(f.d)}"><b>${deltaFmt(f.d)}</b></td><td class="n ${clsDelta(f.d)}">${f.v0 ? deltaPct(f.d, f.v0) : 'novo'}</td><td><div class="comp-barra"><i class="${f.d >= 0 ? 'sobe' : 'desce'}" style="width:${(Math.abs(f.d) / maxF) * 100}%"></i></div></td></tr>`).join('') || '<tr><td colspan="6" class="vazio">—</td></tr>'; })()}
         </tbody></table></div></div>
       </div>
-      <h4 style="margin-top:.8rem">Texto para explicar</h4>
-      <textarea class="campo" id="pq-texto" rows="5" style="width:100%">${esc(texto)}</textarea>
+      <div class="ferramentas" style="margin:.8rem 0 .4rem"><h4 style="margin:0">Texto para explicar</h4>
+        <div class="segmentos" id="pq-modo"><button data-t="simples" class="ativo">Simples</button><button data-t="detalhado">Detalhado</button></div></div>
+      <textarea class="campo" id="pq-texto" rows="9" style="width:100%">${esc(textos.simples)}</textarea>
       <p class="sub" style="margin:.3rem 0 0">Pessoas e meses = diferença de colaboradores-mês (HC × meses ativos) × custo médio por colaborador-mês de ${x.ant}. Reajustes = ${esc(x.ano)} com e sem os dissídios e o reajuste de benefícios. Valor por pessoa = o que sobra (valores e regras, quem recebe, promoções, realizado × orçado). Lançamentos = outros lançamentos e provisões fora das pessoas.</p>`,
     rodape: '<button class="btn btn-claro" id="pq-copiar">📋 Copiar texto</button><button class="btn btn-claro" id="pq-excel">⬇ Excel</button><span style="flex:1"></span><button class="btn btn-laranja" data-fechar>Fechar</button>',
   });
+  $$('#pq-modo button', d).forEach(bt => bt.addEventListener('click', () => {
+    $$('#pq-modo button', d).forEach(o => o.classList.toggle('ativo', o === bt));
+    $('#pq-texto', d).value = textos[bt.dataset.t];
+    $('#pq-texto', d).rows = bt.dataset.t === 'simples' ? 9 : 5;
+  }));
   Graficos.ponteVariacao($('#pq-ponte', d), { inicio: x.a.total, fim: x.b.total, nomeInicio: String(x.ant), nomeFim: String(x.ano), passos });
   $('#pq-copiar', d).addEventListener('click', async () => {
     try { await navigator.clipboard.writeText($('#pq-texto', d).value); toast('Texto copiado.'); } catch { $('#pq-texto', d).select(); toast('Selecione e copie o texto (Ctrl+C).'); }
@@ -849,7 +897,7 @@ function porQueMudou(k) {
       ['Total', r2(x.a.total), r2(x.b.total), r2(x.delta)], [], ['Componente', 'Valor', '% sobre ' + x.ant],
       ...passos.map(p => [p.nome, r2(p.valor), x.a.total ? r2((p.valor / x.a.total) * 100) : '']), [],
       ['Colaboradores-mês', x.a.pm, x.b.pm], ['HC médio', r2(x.a.pm / 12), r2(x.b.pm / 12)], ['Custo médio por colaborador-mês', r2(x.med0), r2(x.med1)],
-      ['Valor médio sem reajustes', r2(x.med0), r2(x.med1s)], ['Lançamentos fora das pessoas', r2(x.a.lanc), r2(x.b.lanc)], [], ['Texto', textoPorQueMudou(x)], [],
+      ['Valor médio sem reajustes', r2(x.med0), r2(x.med1s)], ['Lançamentos fora das pessoas', r2(x.a.lanc), r2(x.b.lanc)], [], ['Texto simples', textos.simples], ['Texto detalhado', textos.detalhado], [],
       ['Filial', String(x.ant), String(x.ano), 'Δ'], ...x.filiais.map(f => [f.f, r2(f.v0), r2(f.v1), r2(f.d)])];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Por que mudou');
