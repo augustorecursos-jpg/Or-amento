@@ -129,6 +129,15 @@ CREATE TABLE IF NOT EXISTS ano_anterior (
   salarios  TEXT NOT NULL DEFAULT '[]'
 );
 
+-- Ano anterior: valores realizados de algumas contas por filial e mês (ex.: auxílios da folha de 2026). No comparativo,
+-- substituem o valor calculado dessas contas nas filiais que aparecem aqui.
+CREATE TABLE IF NOT EXISTS ano_anterior_contas (
+  filial  TEXT NOT NULL,
+  rubrica TEXT NOT NULL,
+  meses   TEXT NOT NULL DEFAULT '[]',
+  PRIMARY KEY (filial, rubrica)
+);
+
 CREATE TABLE IF NOT EXISTS historico (
   id      INTEGER PRIMARY KEY AUTOINCREMENT,
   quando  TEXT NOT NULL DEFAULT (datetime('now')),

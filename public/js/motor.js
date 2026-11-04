@@ -89,6 +89,8 @@
     { id: 'seguro_vida', nome: 'Seguro de vida', grupo: 'beneficios', padrao: P('fixo') },
     { id: 'previdencia', nome: 'Previdência privada', grupo: 'beneficios', padrao: P('nao') },
     { id: 'aux_dependente', nome: 'Auxílio dependente portadores', grupo: 'beneficios', dica: 'Auxílio a dependente portador de deficiência (filho excepcional)', padrao: P('nao') },
+    { id: 'aux_matrimonio', nome: 'Auxílio matrimônio', grupo: 'beneficios', padrao: P('nao') },
+    { id: 'aux_nascituro', nome: 'Auxílio nascituro', grupo: 'beneficios', padrao: P('nao') },
     { id: 'refeitorio', nome: 'Refeitório', grupo: 'beneficios', padrao: P('nao') },
     { id: 'fretado', nome: 'Fretado', grupo: 'beneficios', padrao: P('nao') },
     { id: 'fretado_overall', nome: 'Fretado (overall)', grupo: 'beneficios', padrao: P('nao') },

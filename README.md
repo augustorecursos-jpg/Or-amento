@@ -169,6 +169,12 @@ o do ano entra por cima na data-base. Ex.: base 13.720,34 → jan–jul/27 14.40
 Simulador (abas Dissídio e Benefícios), premissas da filial, reajuste em lote e os Excel de premissas têm os dois; o
 Painel mostra o impacto de cada dissídio.
 
+**Benefícios realizados do ano anterior**: em Base › Histórico, "⬆ Benefícios realizados 2026" lê a planilha da folha
+(filial · evento · meses), sugere a ligação de cada filial e evento (com conferência antes de gravar) e, no comparativo,
+substitui o valor calculado desses benefícios em 2026 nas filiais da planilha (conta sem linha = zero; filiais fora da
+planilha continuam calculadas). Meses que a planilha não traz recebem a média mensal. Contas novas: Auxílio matrimônio
+e Auxílio nascituro.
+
 **Dissídio do ano anterior já pago**: quando a folha de 2026 (histórico) já tem o dissídio de 2026 mas a base de 2027
 veio sem ele (ex.: Araucária, 4,58% em out/26), lance-o como dissídio 2026 e marque "já pago na folha de 2026": entra o
 ano todo de 2027 e não soma de novo no lado 2026 do comparativo. Em Base › Histórico, **📊 Dissídio 2026 pelo

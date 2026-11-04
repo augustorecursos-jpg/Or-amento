@@ -81,7 +81,7 @@ function recalcular() {
         dissidio_pct: cfg.dissidio_ant_pago ? 0 : Number(cfg.dissidio_ant_pct) || 0, dissidio_mes: cfg.dissidio_ant_mes || cfg.dissidio_mes, // já pago: o histórico já tem
         reaj_benef_pct: Number(cfg.reaj_benef_ant_pct) || 0, reaj_benef_mes: cfg.reaj_benef_ant_mes || cfg.reaj_benef_mes };
     }
-    b.resAnt = soGruposComparados(Motor.calcular({ colaboradores: ant, filiais: semReaj, premissas, niveis }));
+    b.resAnt = soGruposComparados(aplicarRealizadoAnt(Motor.calcular({ colaboradores: ant, filiais: semReaj, premissas, niveis })));
     b.resCmp = soGruposComparados(b.res);
   } else b.resAnt = b.resCmp = null;
   if (!b.resAnt) E.comparar = false;
@@ -646,7 +646,7 @@ function desenharComparativo(box) {
       <div class="pontilhado"></div>
       <div class="hero2-num">
         <small>CUSTO ANUAL DE PESSOAL · ${ant} × ${esc(ano)}</small>
-        <p class="comp-escopo">Remuneração, provisões, encargos e benefícios · o grupo Demais (treinamento, viagens, serviços…) fica fora do comparativo${notaProjecao() ? `<br>${notaProjecao()}` : ''}${notaProvisaoAnt() ? `<br>${notaProvisaoAnt()}` : ''}</p>
+        <p class="comp-escopo">Remuneração, provisões, encargos e benefícios · o grupo Demais (treinamento, viagens, serviços…) fica fora do comparativo${notaProjecao() ? `<br>${notaProjecao()}` : ''}${notaProvisaoAnt() ? `<br>${notaProvisaoAnt()}` : ''}${notaRealizadoAnt() ? `<br>${esc(notaRealizadoAnt())}` : ''}</p>
         <div class="comp-totais">
           <div><span style="--c:${COR_ANT}">${ant} · realizado</span><b>${brl0.format(a0.total)}</b></div>
           <div class="comp-seta">→</div>
@@ -797,7 +797,7 @@ function legendaPremissasHtml() {
   return `<details class="cartao legenda-premissas" id="legenda-premissas"${E.legendaAberta ? ' open' : ''}>
     <summary><h3 style="display:inline">📖 Legenda das premissas <small>· como cada conta é calculada${E.comparar && E.resAnt ? ` em ${esc(E.dados.config.ano)} e em ${anoAnt()}` : ''}</small></h3></summary>
     <p class="subtitulo" style="margin:.4rem 0 .8rem">${dissAnt.some(Boolean) ? `Dissídio ${anoAnt()} ${lista(dissAnt)} · ` : ''}Dissídio ${esc(E.dados.config.ano)} ${lista(diss)} · ${reajAnt.some(Boolean) ? `reajuste de benefícios ${anoAnt()} ${lista(reajAnt)} · ` : ''}reajuste de benefícios ${esc(E.dados.config.ano)} ${lista(reaj)}.
-      ${E.resAnt ? `<br>${anoAnt()}: salário realmente pago em cada mês (histórico carregado${notaProjecao() ? `; ${notaProjecao().replace(/^\d+: /, '')}` : ''}) com as mesmas regras abaixo, <b>sem</b> o dissídio e o reajuste de benefícios de ${esc(E.dados.config.ano)}; o dissídio e o reajuste de benefícios de ${anoAnt()} lançados nas filiais entram a partir da data-base (provisão). Outros lançamentos só entram em ${esc(E.dados.config.ano)}. O comparativo considera ${GRUPOS_CMP_TXT}; o grupo Demais fica fora.` : ''}</p>
+      ${E.resAnt ? `<br>${anoAnt()}: salário realmente pago em cada mês (histórico carregado${notaProjecao() ? `; ${notaProjecao().replace(/^\d+: /, '')}` : ''}) com as mesmas regras abaixo, <b>sem</b> o dissídio e o reajuste de benefícios de ${esc(E.dados.config.ano)}; o dissídio e o reajuste de benefícios de ${anoAnt()} lançados nas filiais entram a partir da data-base (provisão). Outros lançamentos só entram em ${esc(E.dados.config.ano)}.${notaRealizadoAnt() ? ` ${esc(notaRealizadoAnt())}.` : ''} O comparativo considera ${GRUPOS_CMP_TXT}; o grupo Demais fica fora.` : ''}</p>
     <table class="tabela tabela-legenda"><thead><tr><th>Conta</th><th>Grupo</th><th>Premissa</th></tr></thead><tbody>
       ${linhas.map(({ r }) => `<tr><td><b>${esc(r.nome)}</b></td><td><i class="bola" style="background:${COR_GRUPO[r.grupo]}"></i>${esc(NOME_GRUPO[r.grupo])}</td>
         <td>${esc(regraDaRubrica(r.id, fils))}${NOTAS_LEGENDA[r.id] ? `<span class="sub">${esc(NOTAS_LEGENDA[r.id])}</span>` : ''}${r.dica ? `<span class="sub">${esc(r.dica)}</span>` : ''}</td></tr>`).join('')}
@@ -1304,7 +1304,7 @@ function linhasSimulacao(res = E.res) {
     const c = v === 'colaboradores' ? porId.get(k) : null;
     return {
       rotulo: c ? c.nome : k,
-      sub: c ? (c.avulso ? `${c.avulso.provisao ? 'Provisão de aumento (total da filial)' : 'Outro lançamento'} · ${c.filial || c.regional} · ${rotuloCc(c)}` : `${c.funcao || ''} · ${c.filial}${c.cc_nome ? ` · ${c.cc_nome}` : ''}`) : `${a.n} colaborador(es)`,
+      sub: c ? (c.avulso ? `${c.avulso.provisao ? 'Provisão de aumento (total da filial)' : c.avulso.realizado ? 'Realizado (planilha)' : 'Outro lançamento'} · ${c.filial || c.regional} · ${rotuloCc(c)}` : `${c.funcao || ''} · ${c.filial}${c.cc_nome ? ` · ${c.cc_nome}` : ''}`) : `${a.n} colaborador(es)`,
       hc: v === 'colaboradores' ? null : Math.max(...a.hc),
       meses: [...a.meses],
       vaga: c?.vaga,
@@ -3408,6 +3408,153 @@ async function previaImportacao(arquivos) {
 
 const MESES_LONGOS = ['JANEIRO', 'FEVEREIRO', 'MARCO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];
 
+// ----- Contas realizadas do ano anterior (ex.: auxílios da folha de 2026), por filial e mês -----
+
+/** Contas que a planilha de realizados cobre: nas filiais dela, o valor calculado dessas contas dá lugar ao realizado. */
+function contasCobertasAnt() {
+  let c = [];
+  try { c = JSON.parse(E.dados.config.anterior_contas_cobertas || '[]'); } catch { c = []; }
+  return c.length ? c : [...new Set((E.dados.anteriorContas || []).map(l => l.rubrica))];
+}
+
+/** Troca, no cálculo do ano anterior, as contas cobertas pelo realizado das filiais da planilha (uma linha por filial). */
+function aplicarRealizadoAnt(res) {
+  const linhas = (E.dados.anteriorContas || []).filter(l => IDX[l.rubrica] != null);
+  if (!linhas.length) return res;
+  const ks = contasCobertasAnt().map(r => IDX[r]).filter(k => k != null);
+  const porFilial = new Map();
+  linhas.forEach(l => { if (!porFilial.has(l.filial)) porFilial.set(l.filial, []); porFilial.get(l.filial).push(l); });
+  const extras = [...porFilial.keys()].filter(f => E.dados.filiais[f]);
+  const N = res.n + extras.length;
+  const at = (i, r, m) => (i * RN + r) * 12 + m;
+  const valores = new Float64Array(N * RN * 12);
+  valores.set(res.valores);
+  for (let i = 0; i < res.n; i++) if (porFilial.has(res.colaboradores[i].filial)) for (const k of ks) valores.fill(0, at(i, k, 0), at(i, k, 12));
+  const novas = extras.map((f, j) => {
+    const i = res.n + j;
+    porFilial.get(f).forEach(l => { for (let m = 0; m < 12; m++) valores[at(i, IDX[l.rubrica], m)] = Number(l.meses[m]) || 0; });
+    return { id: -3000000 - j, matricula: '', nome: `Realizado ${anoAnt()} · ${f}`, regional: E.dados.filiais[f].regional, filial: f, situacao: 'Realizado', funcao: 'Realizado (planilha)', cargo: '',
+      cc_cod: '', cc_nome: '', salario: 0, mes_inicio: 1, mes_fim: 12, vaga: false, excecoes: {}, sexo: '', gestor: '', avulso: { rubrica: porFilial.get(f)[0].rubrica, realizado: true, meses: [] } };
+  });
+  return { n: N, colaboradores: [...res.colaboradores, ...novas], valores, valor: (i, r, m) => valores[at(i, r, m)] };
+}
+
+/** Nota do comparativo quando há contas realizadas carregadas. */
+function notaRealizadoAnt() {
+  const l = E.dados.anteriorContas || [];
+  if (!l.length) return '';
+  const nomes = contasCobertasAnt().map(r => RUBRICAS[IDX[r]]?.nome).filter(Boolean);
+  return `${anoAnt()}: ${nomes.join(', ')} realizados (planilha) em ${new Set(l.map(x => x.filial)).size} filial(is)`;
+}
+
+const STOP_FILIAL = new Set(['UTE', 'PIE', 'J&F', 'JF', 'SA', 'S.A.', 'S/A', 'AMBAR', 'FILIAL', 'LTDA', 'MATRIZ', 'UEG', 'UNJ', 'MACAE', 'DO', 'DA', 'DE', 'DOS', 'DAS', 'E', '-', '&']);
+const APELIDOS_FILIAL = { 'AMBAR NORTE': 'HOLDING NORTE' };
+const tokensFilial = nome => normCab(nome).replace(/[()\-–,./]/g, ' ').split(/\s+/).map(t => (t === '2' ? 'II' : t === '3' ? 'III' : t)).filter(t => t && !STOP_FILIAL.has(t));
+
+/** Filial da ferramenta mais parecida com um nome de outra planilha ('' se nenhuma). */
+function filialParecida(nome) {
+  const ap = APELIDOS_FILIAL[normCab(nome)];
+  if (ap && E.dados.filiais[ap]) return ap;
+  const exato = Object.keys(E.dados.filiais).find(f => normCab(f) === normCab(nome));
+  if (exato) return exato;
+  const t = new Set(tokensFilial(nome));
+  let melhor = '', nota = 0;
+  for (const f of Object.keys(E.dados.filiais)) {
+    const tf = tokensFilial(f);
+    if (!tf.length) continue;
+    const bate = tf.filter(x => t.has(x)).length;
+    const n = bate ? bate * 10 + bate / tf.length : 0;
+    if (n > nota) { nota = n; melhor = f; }
+  }
+  return melhor;
+}
+
+/** Conta de benefício de um evento da folha (ex.: "[AMBAR] - AUXILIO CRECHE" → Auxílio-creche). */
+function contaDoEvento(ev) {
+  const t = normCab(ev);
+  const regras = [[/MOBILIDADE|TRANSPORTE|\bVT\b/, 'vt'], [/EDUCAC/, 'educacional'], [/CRECHE/, 'aux_creche'], [/OCULOS/, 'aux_oculos'], [/FARMACIA/, 'farmacia'],
+    [/EXCEPCIONAL|DEPENDENTE|PORTADOR/, 'aux_dependente'], [/MATRIMONIO|CASAMENTO/, 'aux_matrimonio'], [/NASCITURO|NATALIDADE/, 'aux_nascituro'],
+    [/ODONTO/, 'assist_odonto'], [/MEDIC|SAUDE/, 'assist_medica'], [/SEGURO/, 'seguro_vida'], [/PREVIDENCIA/, 'previdencia'], [/ALIMENTA|REFEICAO|\bVA\b|\bVR\b/, 'va']];
+  return (regras.find(([re]) => re.test(t)) || [])[1] || '';
+}
+
+/** Lê a planilha de realizados (filial · evento · meses) e abre a conferência das ligações antes de gravar. */
+async function importarRealizadoAnt(arquivo) {
+  try {
+    const wb = XLSX.read(await arquivo.arrayBuffer(), { type: 'array' });
+    let lido = null;
+    for (const aba of wb.SheetNames) {
+      const l = XLSX.utils.sheet_to_json(wb.Sheets[aba], { header: 1, raw: true, defval: null });
+      for (let h = 0; h < Math.min(l.length, 30) && !lido; h++) {
+        const cab = (l[h] || []).map(normCab);
+        const iFil = ['DESCRICAO FILIAL', 'DESCRICAO DA FILIAL', 'NOME FILIAL', 'FILIAL'].map(x => cab.indexOf(x)).find(i => i >= 0);
+        const iEv = ['DESC_EVENTO', 'DESCRICAO EVENTO', 'DESCRICAO DO EVENTO', 'EVENTO', 'VERBA', 'CONTA', 'BENEFICIO'].map(x => cab.indexOf(x)).find(i => i >= 0);
+        if (iFil == null || iEv == null) continue;
+        const colMes = Array(12).fill(-1);
+        cab.forEach((c, i) => { if (/TOTAL/.test(c)) return; const m = mesDaCompetencia(c); if (m >= 0 && colMes[m] < 0) colMes[m] = i; });
+        const presentes = colMes.map((c, m) => (c >= 0 ? m : -1)).filter(m => m >= 0);
+        if (!presentes.length) continue;
+        const num = v => (typeof v === 'number' ? v : Number(String(v ?? '').replace(/[R$\s]/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.')) || 0);
+        lido = { presentes, linhas: l.slice(h + 1).filter(r => r && r[iFil] && r[iEv]).map(r => {
+          const meses = colMes.map(c => (c >= 0 ? num(r[c]) : null));
+          // meses que a planilha não traz (ex.: nov e dez): a média mensal dos meses que ela traz
+          const media = presentes.reduce((a, m) => a + meses[m], 0) / presentes.length;
+          return { filialPlan: String(r[iFil]).trim(), evento: String(r[iEv]).trim(), meses: meses.map(v => (v == null ? media : v)) };
+        }) };
+      }
+      if (lido) break;
+    }
+    if (!lido || !lido.linhas.length) return toast('Não encontrei as colunas de filial (DESCRIÇÃO FILIAL), evento (DESC_EVENTO) e os meses.', 'erro');
+    conferirRealizadoAnt(lido);
+  } catch (e) { toast(e.message || 'Não consegui ler o arquivo.', 'erro'); }
+}
+
+function conferirRealizadoAnt({ presentes, linhas }) {
+  const a = anoAnt();
+  let mapa = {};
+  try { mapa = JSON.parse(E.dados.config.anterior_contas_mapa || '{}'); } catch { mapa = {}; }
+  const filsPlan = [...new Map(linhas.map(l => [l.filialPlan, 0])).keys()];
+  const evs = [...new Map(linhas.map(l => [l.evento, 0])).keys()];
+  const totF = f => linhas.filter(l => l.filialPlan === f).reduce((s, l) => s + l.meses.reduce((x, y) => x + y, 0), 0);
+  const totE = e => linhas.filter(l => l.evento === e).reduce((s, l) => s + l.meses.reduce((x, y) => x + y, 0), 0);
+  const sugF = f => (mapa.filiais && f in mapa.filiais ? mapa.filiais[f] : filialParecida(f));
+  const sugE = e => (mapa.eventos && e in mapa.eventos ? mapa.eventos[e] : contaDoEvento(e));
+  const optsF = sel => `<option value="">— ignorar —</option>${Object.keys(E.dados.filiais).sort().map(f => `<option ${f === sel ? 'selected' : ''}>${esc(f)}</option>`).join('')}`;
+  const optsE = sel => `<option value="">— ignorar —</option>${RUBRICAS.filter(r => r.grupo === 'beneficios').map(r => `<option value="${r.id}" ${r.id === sel ? 'selected' : ''}>${esc(r.nome)}</option>`).join('')}`;
+  const faltam = MESES.map((m, i) => (presentes.includes(i) ? '' : m)).filter(Boolean);
+  const d = abrirModal({
+    titulo: `Benefícios realizados ${a}`, sup: 'HISTÓRICO', largo: true,
+    corpo: `<p class="subtitulo" style="margin:0">Confira a ligação de cada filial e de cada evento da planilha. Nas filiais ligadas, as contas da planilha substituem o valor calculado de ${a} no comparativo (conta sem linha na filial = zero); filiais que não estão na planilha continuam calculadas. ${faltam.length ? `<b>${faltam.join(', ')}</b> não estão na planilha: entra a média mensal dos meses que ela traz.` : ''} O orçamento de ${esc(E.dados.config.ano)} não muda.</p>
+      <div class="grade-2" style="align-items:start">
+        <div><h4>Filiais (${filsPlan.length})</h4><div class="tabela-wrap" style="max-height:380px"><table class="tabela"><thead><tr><th>Na planilha</th><th class="n">Total</th><th>Na ferramenta</th></tr></thead>
+          <tbody>${filsPlan.map((f, i) => `<tr><td>${esc(f)}</td><td class="n">${brl0.format(totF(f))}</td><td><select class="campo" data-rf="${i}">${optsF(sugF(f))}</select></td></tr>`).join('')}</tbody></table></div></div>
+        <div><h4>Eventos (${evs.length})</h4><div class="tabela-wrap" style="max-height:380px"><table class="tabela"><thead><tr><th>Na planilha</th><th class="n">Total</th><th>Conta</th></tr></thead>
+          <tbody>${evs.map((e, i) => `<tr><td>${esc(e)}</td><td class="n">${brl0.format(totE(e))}</td><td><select class="campo" data-re="${i}">${optsE(sugE(e))}</select></td></tr>`).join('')}</tbody></table></div></div>
+      </div>`,
+    rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="rz-gravar">Gravar</button>',
+  });
+  $('#rz-gravar', d).addEventListener('click', async () => {
+    const mf = Object.fromEntries(filsPlan.map((f, i) => [f, $(`[data-rf="${i}"]`, d).value]));
+    const me = Object.fromEntries(evs.map((e, i) => [e, $(`[data-re="${i}"]`, d).value]));
+    const soma = new Map();
+    for (const l of linhas) {
+      const filial = mf[l.filialPlan], rubrica = me[l.evento];
+      if (!filial || !rubrica) continue;
+      const k = `${filial}|${rubrica}`;
+      if (!soma.has(k)) soma.set(k, { filial, rubrica, meses: Array(12).fill(0) });
+      l.meses.forEach((v, m) => { soma.get(k).meses[m] += v; });
+    }
+    if (!soma.size) return toast('Nenhuma linha ligada a filial e conta.', 'erro');
+    const cobertas = [...new Set(Object.values(me).filter(Boolean))];
+    try {
+      await api('/api/ano-anterior/contas', { method: 'POST', body: { linhas: [...soma.values()], cobertas, mapa: { filiais: mf, eventos: me } } });
+      d.close();
+      toast(`Realizado de ${a} gravado: ${new Set([...soma.values()].map(x => x.filial)).size} filial(is), ${cobertas.length} conta(s).`);
+      await recarregarTudo();
+    } catch (e) { toast(e.message, 'erro'); }
+  });
+}
+
 function desenharAnoAnterior(box) {
   const ant = E.dados.anterior || [];
   const a = anoAnt();
@@ -3420,11 +3567,18 @@ function desenharAnoAnterior(box) {
       <button class="btn btn-claro btn-sm" id="ant-modelo">⬇ Modelo do histórico</button>
       ${ant.length ? `<button class="btn btn-marinho btn-sm" id="ant-dissidio">📊 Dissídio ${a} pelo histórico</button>` : ''}
       <label class="btn btn-marinho btn-sm" style="cursor:pointer">⬆ Importar histórico ${a}<input type="file" id="ant-arquivo" accept=".xlsx,.xls,.csv" hidden></label>
+      <label class="btn btn-marinho btn-sm" style="cursor:pointer" title="Planilha da folha com filial, evento (auxílio) e os meses: substitui no comparativo o valor calculado desses benefícios">⬆ Benefícios realizados ${a}<input type="file" id="ant-realizado" accept=".xlsx,.xls" hidden></label>
+      ${(E.dados.anteriorContas || []).length ? `<span class="chip ok" title="${esc(notaRealizadoAnt())}">✓ realizado: ${new Set(E.dados.anteriorContas.map(x => x.filial)).size} filiais · ${brl0.format(E.dados.anteriorContas.reduce((s, x) => s + x.meses.reduce((p, v) => p + (Number(v) || 0), 0), 0))}</span><button class="btn btn-claro btn-sm" id="ant-realizado-apagar" style="color:var(--vermelho)">Apagar realizado</button>` : ''}
       ${ant.length ? `<button class="btn btn-claro btn-sm" id="ant-apagar" style="color:var(--vermelho)">Apagar histórico</button>
         <span class="chip ok">✓ ${num0.format(ant.length)} colaborador(es) · ${new Set(ant.map(x => x.filial)).size} filiais · folha ${a} ${brl0.format(folha)} · HC jan ${hcMes[0]} → dez ${hcMes[11]}</span>${notaProjecao() ? `<span class="chip">* ${esc(notaProjecao())}</span>` : ''}` : '<span class="chip falta">Sem histórico carregado</span>'}
     </div>`;
   $('#ant-modelo', box).addEventListener('click', baixarModeloAnterior);
   $('#ant-dissidio', box)?.addEventListener('click', conferirDissidioHistorico);
+  $('#ant-realizado', box).addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importarRealizadoAnt(f); });
+  $('#ant-realizado-apagar', box)?.addEventListener('click', async () => {
+    if (!confirm(`Apagar os benefícios realizados de ${a}? O comparativo volta a calcular esses benefícios.`)) return;
+    try { await api('/api/ano-anterior/contas', { method: 'DELETE' }); toast('Realizado apagado.'); await recarregarTudo(); } catch (e) { toast(e.message, 'erro'); }
+  });
   $('#ant-arquivo', box).addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importarAnoAnterior(f); });
   $('#ant-apagar', box)?.addEventListener('click', async () => {
     if (!confirm(`Apagar o histórico de ${a}? O comparativo deixa de aparecer.`)) return;

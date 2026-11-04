@@ -267,7 +267,10 @@ app.get('/api/dados', exigirLogin, (req, res) => {
   const linhasLanc = expandirLancamentos(todosLanc).filter(l => visivel(l.regional) || (u.admin && l.regional === '*'));
   const anterior = db.prepare(`SELECT * FROM ano_anterior ${filtro} ORDER BY regional, filial, nome`).all(...params)
     .map(a => ({ ...a, salarios: (() => { try { return JSON.parse(a.salarios); } catch { return []; } })() }));
-  res.json({ config, colaboradores, filiais, premissas, niveis, lancamentos, linhasLanc, anterior });
+  const anteriorContas = db.prepare('SELECT * FROM ano_anterior_contas ORDER BY filial, rubrica').all()
+    .filter(a => u.admin || filiais[a.filial])
+    .map(a => ({ ...a, meses: (() => { try { return JSON.parse(a.meses); } catch { return []; } })() }));
+  res.json({ config, colaboradores, filiais, premissas, niveis, lancamentos, linhasLanc, anterior, anteriorContas });
 });
 
 // ----- ano anterior (histórico de salários por mês, para o comparativo) -----
@@ -298,6 +301,36 @@ app.delete('/api/ano-anterior', exigirAdmin, (req, res) => {
   db.exec('DELETE FROM ano_anterior');
   db.prepare("DELETE FROM config WHERE chave = 'anterior_meses_reais'").run();
   registrar('Administrador', 'Apagou o histórico do ano anterior');
+  res.json({ ok: true });
+});
+
+// Contas realizadas do ano anterior por filial e mês (ex.: auxílios). Substitui tudo; guarda as contas que a planilha
+// cobre (nas filiais dela, conta coberta sem linha = zero) e a ligação de nomes usada, para a próxima importação.
+app.post('/api/ano-anterior/contas', exigirAdmin, (req, res) => {
+  const linhas = (Array.isArray(req.body?.linhas) ? req.body.linhas : []).map(b => ({
+    filial: texto(b.filial, 120).toUpperCase(), rubrica: texto(b.rubrica, 40),
+    meses: Array.from({ length: 12 }, (_, i) => numero(Array.isArray(b.meses) ? b.meses[i] : 0)),
+  })).filter(l => l.filial && RUBRICAS_VALIDAS.has(l.rubrica));
+  if (!linhas.length) return res.status(400).json({ erro: 'Nenhuma linha válida (filial e conta ligadas).' });
+  const cobertas = [...new Set((Array.isArray(req.body?.cobertas) ? req.body.cobertas : linhas.map(l => l.rubrica)).filter(r => RUBRICAS_VALIDAS.has(r)))];
+  const ins = db.prepare('INSERT INTO ano_anterior_contas (filial, rubrica, meses) VALUES (?, ?, ?) ON CONFLICT(filial, rubrica) DO UPDATE SET meses = excluded.meses');
+  const cfg = db.prepare('INSERT INTO config (chave, valor) VALUES (?, ?) ON CONFLICT(chave) DO UPDATE SET valor = excluded.valor');
+  db.exec('BEGIN');
+  try {
+    db.exec('DELETE FROM ano_anterior_contas');
+    for (const l of linhas) ins.run(l.filial, l.rubrica, JSON.stringify(l.meses));
+    cfg.run('anterior_contas_cobertas', JSON.stringify(cobertas));
+    if (req.body?.mapa && typeof req.body.mapa === 'object') cfg.run('anterior_contas_mapa', JSON.stringify(req.body.mapa).slice(0, 20000));
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  registrar('Administrador', 'Importou contas realizadas do ano anterior', `${new Set(linhas.map(l => l.filial)).size} filial(is) · ${cobertas.length} conta(s)`);
+  res.json({ ok: true, linhas: linhas.length });
+});
+
+app.delete('/api/ano-anterior/contas', exigirAdmin, (req, res) => {
+  db.exec('DELETE FROM ano_anterior_contas');
+  db.prepare("DELETE FROM config WHERE chave = 'anterior_contas_cobertas'").run();
+  registrar('Administrador', 'Apagou as contas realizadas do ano anterior');
   res.json({ ok: true });
 });
 
