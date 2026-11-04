@@ -174,6 +174,11 @@ custo médio do ano anterior), reajustes do orçamento (com e sem dissídios/rea
 resto: valores, regras, quem recebe, realizado × orçado) e lançamentos; mostra a ponte, números de apoio, as filiais que
 mais pesam, um texto pronto para copiar e Excel.
 
+**Importar só quem ainda não está**: na importação da base, o modo "Só quem ainda não está na base" inclui apenas as
+pessoas novas da planilha (mesma matrícula e nome = já está) admitidas até a data de corte (coluna DATA ADMISSÃO; padrão:
+fim do último mês realizado do histórico, ex.: 31/10/2026). Quem já está não muda. Antes de gravar, mostra a lista (com
+Excel para conferir) para desmarcar quem não deve entrar, e quem ficou fora pelo corte.
+
 **Atualizar dados em lote**: em Base de colaboradores, "👥 Atualizar dados em lote" lê uma planilha com MATRÍCULA (e NOME)
 e as colunas SEXO, GESTOR e/ou centro de custo e atualiza só esses dados (célula vazia não apaga), com resumo de
 encontrados e não encontrados antes de gravar.

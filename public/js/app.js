@@ -3200,9 +3200,10 @@ const ALIASES = {
   mes_inicio: ['MES INICIO', 'MES DE INICIO', 'MES ADMISSAO', 'MES DE ADMISSAO'],
   mes_fim: ['MES FIM', 'MES DESLIGAMENTO', 'MES DE DESLIGAMENTO'],
   sexo: ['SEXO', 'GENERO'],
+  admissao: ['DATA ADMISSAO', 'DATA DE ADMISSAO', 'ADMISSAO', 'DT ADMISSAO', 'DT. ADMISSAO', 'DT.ADMISSAO'],
   gestor: ['GESTOR', 'GESTOR IMEDIATO', 'NOME DO GESTOR', 'GESTOR DIRETO', 'SUPERIOR IMEDIATO', 'LIDER', 'LIDER IMEDIATO', 'COORDENADOR'],
 };
-const ROTULO_CAMPO = { matricula: 'Matrícula', nome: 'Funcionário', regional: 'Regional', filial: 'Filial', situacao: 'Situação', funcao: 'Função', cargo: 'Cargo / nível', cc_cod: 'Cód. centro de custo', cc_nome: 'Centro de custo', salario: 'Salário', mes_inicio: 'Mês início', mes_fim: 'Mês fim', sexo: 'Sexo', gestor: 'Gestor' };
+const ROTULO_CAMPO = { matricula: 'Matrícula', nome: 'Funcionário', regional: 'Regional', filial: 'Filial', situacao: 'Situação', funcao: 'Função', cargo: 'Cargo / nível', cc_cod: 'Cód. centro de custo', cc_nome: 'Centro de custo', salario: 'Salário', mes_inicio: 'Mês início', mes_fim: 'Mês fim', sexo: 'Sexo', gestor: 'Gestor', admissao: 'Admissão' };
 const normCab = s => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/\s+/g, ' ').trim();
 
 /** Lê as planilhas: acha a linha de cabeçalho (com FUNCIONÁRIO/NOME e SALÁRIO) e mapeia as colunas até o salário. */
@@ -3233,7 +3234,7 @@ function lerPlanilha(wb) {
           nome: String(v('nome')).trim(), regional: String(v('regional') ?? '').trim(), filial: String(v('filial')).trim(),
           situacao, funcao: v('funcao') ?? '', cargo: v('cargo') ?? '', cc_cod: v('cc_cod') != null ? String(v('cc_cod')).trim() : '', cc_nome: v('cc_nome') ?? '',
           salario: typeof v('salario') === 'number' ? v('salario') : Number(String(v('salario') ?? '0').replace(/\./g, '').replace(',', '.')) || 0,
-          mes_inicio: v('mes_inicio') ?? 1, mes_fim: v('mes_fim') ?? 12, sexo: v('sexo') ?? '', gestor: String(v('gestor') ?? '').trim(),
+          mes_inicio: v('mes_inicio') ?? 1, mes_fim: v('mes_fim') ?? 12, sexo: v('sexo') ?? '', gestor: String(v('gestor') ?? '').trim(), admissao: v('admissao'),
           vaga: /vaga/i.test(situacao) || /vaga/i.test(String(v('nome'))),
           ...valoresDaLinha(l, colunas, comDiss && Number(l[iSalD]) > 0 && Number(l[mapa.salario]) > 0 ? Number(l[mapa.salario]) / Number(l[iSalD]) : 1),
         });
@@ -3466,7 +3467,7 @@ async function previaImportacao(arquivos) {
     <div class="fila-cab"><b>${lidas.length} arquivo(s) na lista</b><button class="btn btn-claro btn-sm" id="add-arquivo">+ Adicionar outra planilha</button><button class="btn-link" id="limpar-fila">Limpar lista</button></div>
     ${lidas.map((l, i) => l.erro ? `<p class="fila-item">❌ <b>${esc(l.arquivo)}</b>: não encontrei uma linha de cabeçalho com Funcionário, Filial e Salário. <button class="btn-ic" data-tirar="${i}" title="Tirar da lista">✕</button></p>`
       : `<div class="fila-item"><b>📄 ${esc(l.arquivo)}</b> · aba “${esc(l.aba)}” · ${l.linhas.length} linha(s) <button class="btn-ic" data-tirar="${i}" title="Tirar da lista">✕</button><div class="chips" style="margin-top:.35rem">${Object.entries(l.mapa).map(([k, i]) => {
-        const opcional = k === 'mes_inicio' || k === 'mes_fim' || k === 'matricula' || k === 'sexo' || k === 'gestor';
+        const opcional = k === 'mes_inicio' || k === 'mes_fim' || k === 'matricula' || k === 'sexo' || k === 'gestor' || k === 'admissao';
         return `<span class="chip ${i >= 0 ? 'ok' : opcional ? '' : 'falta'}">${i >= 0 ? '✓' : '–'} ${ROTULO_CAMPO[k]}${i < 0 && opcional ? ' (opcional)' : ''}</span>`;
       }).join('')}</div></div>`).join('')}
     ${linhas.length ? `
@@ -3486,6 +3487,7 @@ async function previaImportacao(arquivos) {
           <label class="check"><input type="radio" name="modo" value="tudo" checked> <span><b>Substituir toda a base</b> por estes arquivos <small>recomendado · a base fica só com o que está nos arquivos</small></span></label>
           <label class="check"><input type="radio" name="modo" value="substituir"> <span><b>Substituir só as regionais</b> que estão nos arquivos <small>as outras regionais ficam como estão</small></span></label>
           <label class="check"><input type="radio" name="modo" value="adicionar"> <span><b>Adicionar</b> à base atual <small>soma, não apaga nada · cuidado com duplicados</small></span></label>
+          <label class="check"><input type="radio" name="modo" value="novos"> <span><b>Só quem ainda não está</b> na base <small>quem já está não muda (CC, área, salário…) · com data de corte pela admissão · você confere a lista antes de gravar</small></span></label>
         </div>
         <button class="btn btn-laranja" id="confirmar-import" style="margin-left:auto">Importar ${linhas.length} linhas</button>
       </div>` : ''}`;
@@ -3506,6 +3508,11 @@ async function previaImportacao(arquivos) {
         const vals = Object.fromEntries(Object.entries(valores_base || {}).filter(([r]) => usar.has(r)));
         return { ...l, excecoes: { ...vals, ...(l.excecoes || {}) }, colunas_base: (colunas_arq || []).filter(r => usar.has(r)) };
       });
+      if (modo === 'novos') {
+        e.target.disabled = false;
+        e.target.textContent = `Importar ${linhas.length} linhas`;
+        return conferirNovos(enviar);
+      }
       const r = await api('/api/colaboradores/importar', { method: 'POST', body: { modo, linhas: enviar } });
       E.base.fila = [];
       await carregar();
@@ -3910,6 +3917,85 @@ async function atualizarBaseEmLote(arquivo) {
       } catch (e) { toast(e.message, 'erro'); }
     });
   } catch (e) { toast(e.message || 'Não consegui ler o arquivo.', 'erro'); }
+}
+
+/** Data de uma célula: número do Excel, data, "dd/mm/aaaa" ou "aaaa-mm-dd" (null se não der). */
+function dataDaCelula(v) {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) return v;
+  if (typeof v === 'number' && v > 20000 && v < 80000) return new Date(Math.round((v - 25569) * 864e5));
+  const t = String(v).trim();
+  let m = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/);
+  if (m) return new Date(Date.UTC(m[3].length === 2 ? 2000 + Number(m[3]) : Number(m[3]), Number(m[2]) - 1, Number(m[1])));
+  m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  return m ? new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))) : null;
+}
+const dataBrUtc = d => (d ? `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}` : '—');
+
+/** Importação "só quem ainda não está": separa quem já está, quem fica fora pela data de corte e quem entra (com conferência). */
+function conferirNovos(enviar) {
+  const n = v => String(v ?? '').trim().toUpperCase();
+  const chave = c => (c.matricula ? `M|${n(c.matricula)}|${n(c.nome)}` : `N|${n(c.nome)}|${n(c.filial)}`);
+  const existe = new Set(E.dados.colaboradores.map(chave));
+  const novos = enviar.filter(l => !existe.has(chave(l)));
+  const jaEstao = enviar.length - novos.length;
+  // corte padrão: fim do último mês realizado do histórico (ex.: 31/10/2026)
+  const corte0 = new Date(Date.UTC(anoAnt(), mesesReaisAnt(), 0));
+  const iso = d => `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  const temData = novos.some(l => dataDaCelula(l.admissao));
+  const d = abrirModal({
+    titulo: 'Incluir só quem ainda não está', sup: 'BASE DE COLABORADORES', largo: true,
+    corpo: `<p class="subtitulo" style="margin:0">Quem já está na base (mesma matrícula e nome) <b>não muda</b>. Entram só os novos, admitidos até a data de corte. Desmarque quem não deve voltar (ex.: desligados que você tirou de propósito).</p>
+      <div class="ferramentas" style="margin:0"><label class="rotulo" style="flex-direction:row;align-items:center;gap:.5rem">Admitidos até <input class="campo" type="date" id="nv-corte" value="${iso(corte0)}" style="width:170px"></label>
+        <span class="chips"><span class="chip">${num0.format(jaEstao)} já estão na base</span><span class="chip ok" id="nv-qtd"></span><span class="chip falta" id="nv-fora"></span></span></div>
+      ${temData ? '' : '<p class="aviso-ajuste" style="margin:0">⚠ A planilha não tem a coluna de <b>data de admissão</b> (ou ela está vazia): o corte não tem como ser aplicado — confira a lista.</p>'}
+      <div id="nv-lista"></div>`,
+    rodape: '<button class="btn btn-claro" id="nv-excel">⬇ Baixar a lista (Excel)</button><span style="flex:1"></span><button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="nv-ok">Incluir marcados</button>',
+  });
+  let entram = [];
+  let fora = [];
+  const desenhar = () => {
+    const corte = dataDaCelula($('#nv-corte', d).value) || corte0;
+    entram = [];
+    fora = [];
+    novos.forEach(l => { const a = dataDaCelula(l.admissao); (a && a > corte ? fora : entram).push(l); });
+    $('#nv-qtd', d).textContent = `${num0.format(entram.length)} novo(s) para incluir`;
+    $('#nv-fora', d).textContent = `${num0.format(fora.length)} fora pelo corte`;
+    const linha = (l, i, marc) => `<tr><td>${marc ? `<input type="checkbox" data-nv="${i}" checked>` : ''}</td><td>${esc(l.nome)}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}</td><td>${esc(l.matricula || '—')}</td><td>${esc(l.filial)}</td><td>${esc(String(l.funcao || ''))}</td><td>${dataDaCelula(l.admissao) ? dataBrUtc(dataDaCelula(l.admissao)) : '<span class="sub" style="display:inline">sem data</span>'}</td></tr>`;
+    $('#nv-lista', d).innerHTML = `
+      <h4>Vão entrar (${entram.length}) <button type="button" class="btn-link" id="nv-todos">marcar/desmarcar todos</button></h4>
+      <div class="tabela-wrap" style="max-height:300px"><table class="tabela"><thead><tr><th></th><th>Nome</th><th>Matrícula</th><th>Filial</th><th>Função</th><th>Admissão</th></tr></thead>
+        <tbody>${entram.map((l, i) => linha(l, i, true)).join('') || '<tr><td colspan="6" class="vazio">Ninguém novo para incluir.</td></tr>'}</tbody></table></div>
+      ${fora.length ? `<details style="margin-top:.6rem"><summary>Fora pelo corte — admitidos depois de ${dataBrUtc(corte)} (${fora.length})</summary>
+        <div class="tabela-wrap" style="max-height:220px"><table class="tabela"><tbody>${fora.map((l, i) => linha(l, i, false)).join('')}</tbody></table></div></details>` : ''}`;
+    $('#nv-todos', d)?.addEventListener('click', () => { const cs = $$('[data-nv]', d); const marcar = cs.some(c => !c.checked); cs.forEach(c => { c.checked = marcar; }); });
+  };
+  desenhar();
+  $('#nv-corte', d).addEventListener('change', desenhar);
+  $('#nv-excel', d).addEventListener('click', () => {
+    if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
+    const marcados = new Set($$('[data-nv]:checked', d).map(c => Number(c.dataset.nv)));
+    const cab = ['Situação', 'Matrícula', 'Nome', 'Regional', 'Filial', 'Função', 'Cód. C. Custo', 'Centro de custo', 'Salário', 'Admissão'];
+    const linha = (sit, l) => [sit, l.matricula, l.nome, l.regional, l.filial, l.funcao, l.cc_cod, l.cc_nome, l.salario, dataDaCelula(l.admissao) ? dataBrUtc(dataDaCelula(l.admissao)) : ''];
+    const aoa = [cab, ...entram.map((l, i) => linha(marcados.has(i) ? 'Vai entrar' : 'Desmarcado', l)), ...fora.map(l => linha('Fora pelo corte', l))];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: cab.length - 1 } }) };
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Novos');
+    XLSX.writeFile(wb, 'Colaboradores-novos-para-conferir.xlsx');
+  });
+  $('#nv-ok', d).addEventListener('click', async () => {
+    const sel = $$('[data-nv]:checked', d).map(c => entram[Number(c.dataset.nv)]);
+    if (!sel.length) return toast('Nenhum colaborador marcado.', 'erro');
+    try {
+      const r = await api('/api/colaboradores/importar', { method: 'POST', body: { modo: 'adicionar', linhas: sel } });
+      d.close();
+      E.base.fila = [];
+      await carregar();
+      renderBase();
+      toast(`${r.importados} colaborador(es) incluído(s) · ${jaEstao} já estavam na base · ${fora.length} fora pelo corte.`);
+    } catch (e) { toast(e.message, 'erro'); }
+  });
 }
 
 function desenharSituacaoBase() {
