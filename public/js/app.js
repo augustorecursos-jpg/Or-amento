@@ -713,21 +713,23 @@ function desenharComparativo(box) {
   let aberta = null;
   const maxD = Math.max(...contas.map(x => Math.abs(x.d)), 1);
   const desenharRanking = () => {
-    $('#gc-ranking', box).innerHTML = `<thead><tr><th>#</th><th>Conta</th><th>Grupo</th><th class="n">${ant}</th><th class="n">${esc(ano)}</th><th class="n">Δ R$</th><th class="n">Δ %</th><th style="min-width:140px">Peso na variação</th></tr></thead>
+    $('#gc-ranking', box).innerHTML = `<thead><tr><th>#</th><th>Conta</th><th>Grupo</th><th class="n">${ant}</th><th class="n">${esc(ano)}</th><th class="n">Δ R$</th><th class="n">Δ %</th><th style="min-width:140px">Peso na variação</th><th></th></tr></thead>
       <tbody>${porDelta.map((x, i) => {
         const linha = `<tr class="rk-linha${aberta === x.k ? ' aberto' : ''}" data-k="${x.k}" title="${esc(regraDaRubrica(x.r.id))}"><td>${i + 1}</td><td><span class="hc-seta">${aberta === x.k ? '▾' : '▸'}</span>${esc(x.r.nome)}</td><td><i class="bola" style="background:${COR_GRUPO[x.r.grupo]}"></i>${esc(NOME_GRUPO[x.r.grupo])}</td>
           <td class="n">${brl0.format(x.v0)}</td><td class="n">${brl0.format(x.v1)}</td><td class="n ${clsDelta(x.d)}"><b>${deltaFmt(x.d)}</b></td><td class="n ${clsDelta(x.d)}">${x.v0 ? deltaPct(x.d, x.v0) : 'novo'}</td>
-          <td><div class="comp-barra"><i class="${x.d >= 0 ? 'sobe' : 'desce'}" style="width:${(Math.abs(x.d) / maxD) * 100}%"></i></div></td></tr>`;
+          <td><div class="comp-barra"><i class="${x.d >= 0 ? 'sobe' : 'desce'}" style="width:${(Math.abs(x.d) / maxD) * 100}%"></i></div></td>
+          <td><button class="btn btn-claro btn-sm" data-pq="${x.k}" title="Decompõe a variação: pessoas e meses, reajustes, valor por pessoa e lançamentos">🔍 Por que?</button></td></tr>`;
         if (aberta !== x.k) return linha;
         const fs = [...new Set([...fil0.keys(), ...fil1.keys()])].map(f => {
           const v0 = fil0.has(f) ? somaRub(fil0.get(f), x.k) : 0;
           const v1 = fil1.has(f) ? somaRub(fil1.get(f), x.k) : 0;
           return { f, v0, v1, d: v1 - v0 };
         }).filter(y => Math.abs(y.v0) + Math.abs(y.v1) >= 0.5).sort((p, q) => q.d - p.d);
-        return linha + fs.map(y => `<tr class="rk-filial"><td></td><td colspan="2">${esc(y.f)}</td><td class="n">${brl0.format(y.v0)}</td><td class="n">${brl0.format(y.v1)}</td><td class="n ${clsDelta(y.d)}">${deltaFmt(y.d)}</td><td class="n ${clsDelta(y.d)}">${y.v0 ? deltaPct(y.d, y.v0) : 'novo'}</td><td></td></tr>`).join('');
-      }).join('') || '<tr><td colspan="8" class="vazio">Nada para comparar.</td></tr>'}</tbody>
-      <tfoot><tr><td></td><td colspan="2">Total</td><td class="n">${brl0.format(a0.total)}</td><td class="n">${brl0.format(a1.total)}</td><td class="n">${deltaFmt(d)}</td><td class="n">${deltaPct(d, a0.total)}</td><td></td></tr></tfoot>`;
+        return linha + fs.map(y => `<tr class="rk-filial"><td></td><td colspan="2">${esc(y.f)}</td><td class="n">${brl0.format(y.v0)}</td><td class="n">${brl0.format(y.v1)}</td><td class="n ${clsDelta(y.d)}">${deltaFmt(y.d)}</td><td class="n ${clsDelta(y.d)}">${y.v0 ? deltaPct(y.d, y.v0) : 'novo'}</td><td></td><td></td></tr>`).join('');
+      }).join('') || '<tr><td colspan="9" class="vazio">Nada para comparar.</td></tr>'}</tbody>
+      <tfoot><tr><td></td><td colspan="2">Total</td><td class="n">${brl0.format(a0.total)}</td><td class="n">${brl0.format(a1.total)}</td><td class="n">${deltaFmt(d)}</td><td class="n">${deltaPct(d, a0.total)}</td><td></td><td></td></tr></tfoot>`;
     $$('#gc-ranking tr.rk-linha', box).forEach(tr => tr.addEventListener('click', () => { const k = Number(tr.dataset.k); aberta = aberta === k ? null : k; desenharRanking(); }));
+    $$('#gc-ranking [data-pq]', box).forEach(bt => bt.addEventListener('click', e => { e.stopPropagation(); porQueMudou(Number(bt.dataset.pq)); }));
   };
   desenharRanking();
 
@@ -740,6 +742,119 @@ function desenharComparativo(box) {
   }).sort((p, q) => (q.v1 - q.v0) - (p.v1 - p.v0));
   $('#gc-escopo', box).innerHTML = `<thead><tr><th>${nomeNivel}</th><th class="n">HC dez/${String(ant).slice(-2)}</th><th class="n">HC dez/${String(ano).slice(-2)}</th><th class="n">${ant}</th><th class="n">${esc(ano)}</th><th class="n">Δ R$</th><th class="n">Δ %</th></tr></thead>
     <tbody>${itens.map(x => `<tr><td>${esc(x.k)}</td><td class="n">${num0.format(x.h0)}</td><td class="n">${num0.format(x.h1)}</td><td class="n">${brl0.format(x.v0)}</td><td class="n">${brl0.format(x.v1)}</td><td class="n ${clsDelta(x.v1 - x.v0)}"><b>${deltaFmt(x.v1 - x.v0)}</b></td><td class="n ${clsDelta(x.v1 - x.v0)}">${x.v0 ? deltaPct(x.v1 - x.v0, x.v0) : 'novo'}</td></tr>`).join('')}</tbody>`;
+}
+
+// ----- "Por que mudou?": decomposição da variação de uma conta entre o ano anterior e o orçamento -----
+
+/** Decompõe a variação da conta k no escopo do topo: mais pessoas/meses, reajustes do orçamento, valor por pessoa e
+ * lançamentos (outros lançamentos, provisões e realizados que não são de pessoas). */
+function decomporConta(k) {
+  const ano = E.dados.config.ano;
+  const ant = anoAnt();
+  // 2027 sem dissídios e sem reajuste de benefícios: separa o efeito dos reajustes
+  const semReaj = {};
+  for (const [f, cfg] of Object.entries(filiaisComRascunho())) semReaj[f] = { ...cfg, dissidio_pct: 0, dissidio_ant_pct: 0, reaj_benef_pct: 0, reaj_benef_ant_pct: 0 };
+  const resS = Motor.calcular({ colaboradores: [...E.dados.colaboradores, ...lancamentosComoLinhas()], filiais: semReaj, premissas: E.dados.premissas, niveis: E.dados.niveis });
+  const lado = res => {
+    const o = { pessoas: 0, lanc: 0, pm: 0, porFilial: new Map(), porPessoa: new Map() };
+    res.colaboradores.forEach((c, i) => {
+      if (!noFiltro(c)) return;
+      // base: colaboradores ativos no mês (HC × meses), recebendo ou não; o realizado da planilha conta como das pessoas
+      let t = 0, pm = 0;
+      for (let m = 0; m < 12; m++) {
+        t += res.valor(i, k, m);
+        if (!c.avulso && (c.salarios ? Number(c.salarios[m]) > 0 : m + 1 >= (Number(c.mes_inicio) || 1) && m + 1 <= (Number(c.mes_fim) || 12))) pm++;
+      }
+      if (c.avulso && !c.avulso.realizado) o.lanc += t;
+      else { o.pessoas += t; o.pm += pm; if (t && !c.avulso) o.porPessoa.set(chaveCmp(c), { c, t }); }
+      o.porFilial.set(c.filial, (o.porFilial.get(c.filial) || 0) + t);
+    });
+    o.total = o.pessoas + o.lanc;
+    o.hc = totalDe(res).hc.reduce((a, b) => a + b, 0) / 12;
+    return o;
+  };
+  const a = lado(E.bruto.resAnt), b = lado(E.bruto.res), s = lado(resS); // sem o filtro de conta do topo
+  const med0 = a.pm ? a.pessoas / a.pm : 0;
+  const volume = (b.pm - a.pm) * med0;
+  const reajuste = b.pessoas - s.pessoas;
+  const valor = s.pessoas - a.pessoas - volume;
+  const lanc = b.lanc - a.lanc;
+  const delta = b.total - a.total;
+  const filiais = [...new Set([...a.porFilial.keys(), ...b.porFilial.keys()])].map(f => ({ f, v0: a.porFilial.get(f) || 0, v1: b.porFilial.get(f) || 0 }))
+    .map(x => ({ ...x, d: x.v1 - x.v0 })).filter(x => Math.abs(x.d) >= 0.5).sort((p, q) => Math.abs(q.d) - Math.abs(p.d));
+  const so27 = [...b.porPessoa].filter(([key]) => !a.porPessoa.has(key)).map(([, x]) => x);
+  const so26 = [...a.porPessoa].filter(([key]) => !b.porPessoa.has(key)).map(([, x]) => x);
+  return { k, ano, ant, a, b, s, med0, med1: b.pm ? b.pessoas / b.pm : 0, med1s: s.pm ? s.pessoas / s.pm : 0, volume, reajuste, valor, lanc, delta, filiais,
+    so27: { n: so27.length, v: so27.reduce((x, y) => x + y.t, 0), vagas: so27.filter(x => x.c.vaga).length },
+    so26: { n: so26.length, v: so26.reduce((x, y) => x + y.t, 0) } };
+}
+
+function textoPorQueMudou(x) {
+  const r = RUBRICAS[x.k];
+  const p = v => (x.a.total ? `${sinal(v)}${(Math.abs(v / x.a.total) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : '');
+  const partes = [];
+  if (Math.abs(x.volume) >= 1) partes.push(`${p(x.volume)} (${deltaFmt(x.volume)}) por ${x.volume >= 0 ? 'mais' : 'menos'} colaboradores ao longo do ano — HC médio ${num0.format(x.a.pm / 12)} → ${num0.format(x.b.pm / 12)} (${num0.format(x.a.pm)} → ${num0.format(x.b.pm)} colaboradores-mês)${x.so27.vagas ? `, com ${x.so27.vagas} vaga(s) prevista(s)` : ''}`);
+  if (Math.abs(x.reajuste) >= 1) partes.push(`${p(x.reajuste)} (${deltaFmt(x.reajuste)}) pelos reajustes de ${x.ano} (dissídio / reajuste de benefícios)`);
+  if (Math.abs(x.valor) >= 1) partes.push(`${p(x.valor)} (${deltaFmt(x.valor)}) por ${x.valor >= 0 ? 'aumento' : 'redução'} do custo por colaborador (valores, regras, quem recebe${(E.dados.anteriorContas || []).length && contasCobertasAnt().includes(r.id) ? `, realizado de ${x.ant} × orçado` : ''}) — média de ${brl.format(x.med0)} → ${brl.format(x.med1s)} por colaborador-mês, antes dos reajustes`);
+  if (Math.abs(x.lanc) >= 1) partes.push(`${p(x.lanc)} (${deltaFmt(x.lanc)}) por lançamentos fora das pessoas (outros lançamentos e provisões)`);
+  const top = x.filiais.slice(0, 3).map(f => `${f.f} (${deltaFmt(f.d)})`).join(', ');
+  return `${r.nome}: ${x.ant} ${brl0.format(x.a.total)} → ${x.ano} ${brl0.format(x.b.total)} (${deltaFmt(x.delta)}, ${deltaPct(x.delta, x.a.total)}). A variação se explica por: ${partes.join('; ')}.${top ? ` Filiais que mais pesam: ${top}.` : ''}`;
+}
+
+function porQueMudou(k) {
+  const x = decomporConta(k);
+  const r = RUBRICAS[k];
+  const passos = [
+    { nome: 'Pessoas e meses', valor: x.volume },
+    { nome: 'Reajustes', valor: x.reajuste },
+    { nome: 'Valor por pessoa', valor: x.valor },
+    { nome: 'Lançamentos', valor: x.lanc },
+  ].filter(p => Math.abs(p.valor) >= 0.5);
+  const linha = (rot, v0, v1, fmt = brl0.format) => `<tr><td>${rot}</td><td class="n">${fmt(v0)}</td><td class="n">${fmt(v1)}</td></tr>`;
+  const texto = textoPorQueMudou(x);
+  const d = abrirModal({
+    titulo: `Por que ${r.nome} mudou?`, sup: `${x.ant} × ${x.ano} · ${escopoFiltro('Empresa toda')}`, largo: true,
+    corpo: `<div class="calc-cards" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+        <div class="calc-card destaque"><span>Variação</span><b class="${clsDelta(x.delta)}">${deltaFmt(x.delta)}</b><small>${deltaPct(x.delta, x.a.total)} · ${brl0.format(x.a.total)} → ${brl0.format(x.b.total)}</small></div>
+        ${passos.map(p => `<div class="calc-card"><span>${p.nome}</span><b class="${clsDelta(p.valor)}">${deltaFmt(p.valor)}</b><small>${deltaPct(p.valor, x.a.total)} sobre ${x.ant}</small></div>`).join('')}
+      </div>
+      <div id="pq-ponte"></div>
+      <div class="grade-2" style="align-items:start;margin-top:.8rem">
+        <div><h4>Números de apoio</h4><table class="tabela"><thead><tr><th></th><th class="n">${x.ant}</th><th class="n">${esc(x.ano)}</th></tr></thead><tbody>
+          ${linha('Colaboradores-mês (HC × meses)', x.a.pm, x.b.pm, num0.format)}
+          ${linha('HC médio', x.a.pm / 12, x.b.pm / 12, num0.format)}
+          ${linha('Custo médio por colaborador-mês', x.med0, x.med1, brl.format)}
+          ${linha(`… sem os reajustes de ${x.ano}`, x.med0, x.med1s, brl.format)}
+          ${linha('Lançamentos fora das pessoas', x.a.lanc, x.b.lanc)}
+          <tr><td>Só em ${esc(x.ano)} (admissões e vagas)</td><td></td><td class="n">${num0.format(x.so27.n)} · ${brl0.format(x.so27.v)}</td></tr>
+          <tr><td>Só em ${x.ant} (desligados)</td><td class="n">${num0.format(x.so26.n)} · ${brl0.format(x.so26.v)}</td><td></td></tr>
+        </tbody></table></div>
+        <div><h4>Filiais que mais explicam</h4><div class="tabela-wrap" style="max-height:300px"><table class="tabela"><thead><tr><th>Filial</th><th class="n">${x.ant}</th><th class="n">${esc(x.ano)}</th><th class="n">Δ</th></tr></thead><tbody>
+          ${x.filiais.slice(0, 15).map(f => `<tr><td>${esc(f.f)}</td><td class="n">${brl0.format(f.v0)}</td><td class="n">${brl0.format(f.v1)}</td><td class="n ${clsDelta(f.d)}"><b>${deltaFmt(f.d)}</b></td></tr>`).join('') || '<tr><td colspan="4" class="vazio">—</td></tr>'}
+        </tbody></table></div></div>
+      </div>
+      <h4 style="margin-top:.8rem">Texto para explicar</h4>
+      <textarea class="campo" id="pq-texto" rows="5" style="width:100%">${esc(texto)}</textarea>
+      <p class="sub" style="margin:.3rem 0 0">Pessoas e meses = diferença de colaboradores-mês (HC × meses ativos) × custo médio por colaborador-mês de ${x.ant}. Reajustes = ${esc(x.ano)} com e sem os dissídios e o reajuste de benefícios. Valor por pessoa = o que sobra (valores e regras, quem recebe, promoções, realizado × orçado). Lançamentos = outros lançamentos e provisões fora das pessoas.</p>`,
+    rodape: '<button class="btn btn-claro" id="pq-copiar">📋 Copiar texto</button><button class="btn btn-claro" id="pq-excel">⬇ Excel</button><span style="flex:1"></span><button class="btn btn-laranja" data-fechar>Fechar</button>',
+  });
+  Graficos.ponteVariacao($('#pq-ponte', d), { inicio: x.a.total, fim: x.b.total, nomeInicio: String(x.ant), nomeFim: String(x.ano), passos });
+  $('#pq-copiar', d).addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('#pq-texto', d).value); toast('Texto copiado.'); } catch { $('#pq-texto', d).select(); toast('Selecione e copie o texto (Ctrl+C).'); }
+  });
+  $('#pq-excel', d).addEventListener('click', () => {
+    if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
+    const r2 = v => Math.round(v * 100) / 100;
+    const aoa = [[`Por que ${r.nome} mudou`, escopoFiltro('Empresa toda')], [], ['', String(x.ant), String(x.ano), 'Δ'],
+      ['Total', r2(x.a.total), r2(x.b.total), r2(x.delta)], [], ['Componente', 'Valor', '% sobre ' + x.ant],
+      ...passos.map(p => [p.nome, r2(p.valor), x.a.total ? r2((p.valor / x.a.total) * 100) : '']), [],
+      ['Colaboradores-mês', x.a.pm, x.b.pm], ['HC médio', r2(x.a.pm / 12), r2(x.b.pm / 12)], ['Custo médio por colaborador-mês', r2(x.med0), r2(x.med1)],
+      ['Valor médio sem reajustes', r2(x.med0), r2(x.med1s)], ['Lançamentos fora das pessoas', r2(x.a.lanc), r2(x.b.lanc)], [], ['Texto', textoPorQueMudou(x)], [],
+      ['Filial', String(x.ant), String(x.ano), 'Δ'], ...x.filiais.map(f => [f.f, r2(f.v0), r2(f.v1), r2(f.d)])];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Por que mudou');
+    XLSX.writeFile(wb, `Por-que-mudou-${r.nome}.xlsx`.replace(/[^\w.-]+/g, '_'));
+  });
 }
 
 /** Regra efetiva de uma conta nas filiais visíveis: o texto da premissa, ou "varia por filial". */

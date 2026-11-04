@@ -169,6 +169,11 @@ o do ano entra por cima na data-base. Ex.: base 13.720,34 → jan–jul/27 14.40
 Simulador (abas Dissídio e Benefícios), premissas da filial, reajuste em lote e os Excel de premissas têm os dois; o
 Painel mostra o impacto de cada dissídio.
 
+**🔍 Por que mudou?** (ranking por conta do comparativo): decompõe a variação da conta em pessoas e meses (HC × meses ×
+custo médio do ano anterior), reajustes do orçamento (com e sem dissídios/reajuste de benefícios), valor por pessoa (o
+resto: valores, regras, quem recebe, realizado × orçado) e lançamentos; mostra a ponte, números de apoio, as filiais que
+mais pesam, um texto pronto para copiar e Excel.
+
 **Atualizar dados em lote**: em Base de colaboradores, "👥 Atualizar dados em lote" lê uma planilha com MATRÍCULA (e NOME)
 e as colunas SEXO, GESTOR e/ou centro de custo e atualiza só esses dados (célula vazia não apaga), com resumo de
 encontrados e não encontrados antes de gravar.
