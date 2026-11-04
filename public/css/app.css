@@ -734,3 +734,4 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .pq-tabela td, .pq-tabela th { padding: .4rem .55rem; font-size: .8rem; }
 .pq-tabela td:first-child { white-space: normal; }
 #pq-ponte .grafico-svg { max-height: 270px; width: 100%; }
+.pq-card small b { color: var(--marinho, #164d74); font-weight: 700; }

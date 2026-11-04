@@ -797,6 +797,22 @@ function valorFalado(v) {
   return `R$ ${Math.round(a).toLocaleString('pt-BR')}`;
 }
 
+/** % e mês do dissídio (pre = 'dissidio') ou do reajuste de benefícios (pre = 'reaj_benef') nas filiais do filtro:
+ * "4,5% em mai", "de 4,2% a 5%, conforme a filial", e o do ano anterior que ainda entra no orçamento. */
+function textoPctReajuste(pre) {
+  const fils = filiaisVisiveis().map(f => filiaisComRascunho()[f]).filter(Boolean);
+  const parte = (campoPct, campoMes, ano) => {
+    const v = fils.map(f => ({ pct: Number(f[campoPct]) || 0, mes: Number(f[campoMes]) || 1 })).filter(x => x.pct);
+    if (!v.length) return '';
+    const pcts = [...new Set(v.map(x => x.pct))];
+    const meses = [...new Set(v.map(x => x.mes))];
+    const quando = meses.length === 1 ? ` em ${MESES[meses[0] - 1].toLowerCase()}` : '';
+    const pct = pcts.length === 1 ? `${fmtN(pcts[0])}%${quando}` : `de ${fmtN(Math.min(...pcts))}% a ${fmtN(Math.max(...pcts))}%, conforme a filial`;
+    return `${ano}: ${pct}`;
+  };
+  return [parte(`${pre}_ant_pct`, `${pre}_ant_mes`, anoAnt()), parte(`${pre}_pct`, `${pre}_mes`, E.dados.config.ano)].filter(Boolean).join(' · ');
+}
+
 /** Explicação em linguagem simples, para quem não é da área (uma frase por motivo). */
 function textoSimplesPorQueMudou(x) {
   const r = RUBRICAS[x.k];
@@ -814,7 +830,10 @@ function textoSimplesPorQueMudou(x) {
       ? `• Mais pessoas: a equipe passa de ${num0.format(h0)} para ${num0.format(h1)} pessoas em média${vagas}. Isso soma ${valorFalado(x.volume)}.`
       : `• Menos pessoas: a equipe passa de ${num0.format(h0)} para ${num0.format(h1)} pessoas em média. Isso reduz ${valorFalado(x.volume)}.`);
   } else outros += x.volume;
-  if (pesa(x.reajuste)) linhas.push(`• ${benef ? 'Reajuste dos benefícios' : 'Dissídio'} de ${x.ano}: soma ${valorFalado(x.reajuste)}.`);
+  if (pesa(x.reajuste)) {
+    const pct = textoPctReajuste(benef ? 'reaj_benef' : 'dissidio');
+    linhas.push(`• ${benef ? 'Reajuste dos benefícios' : 'Dissídio'}${pct ? ` (${pct})` : ''}: soma ${valorFalado(x.reajuste)}.`);
+  }
   else outros += x.reajuste;
   if (pesa(x.valor)) {
     const motivo = benef ? 'mudanças no valor do benefício e em quem recebe' : 'promoções, mudanças de cargo e o perfil de quem entrou e saiu';
@@ -836,7 +855,10 @@ function textoPorQueMudou(x) {
   const p = v => (x.a.total ? `${sinal(v)}${(Math.abs(v / x.a.total) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%` : '');
   const partes = [];
   if (Math.abs(x.volume) >= 1) partes.push(`${p(x.volume)} (${deltaFmt(x.volume)}) por ${x.volume >= 0 ? 'mais' : 'menos'} colaboradores ao longo do ano — HC médio ${num0.format(x.a.pm / 12)} → ${num0.format(x.b.pm / 12)} (${num0.format(x.a.pm)} → ${num0.format(x.b.pm)} colaboradores-mês)${x.so27.vagas ? `, com ${x.so27.vagas} vaga(s) prevista(s)` : ''}`);
-  if (Math.abs(x.reajuste) >= 1) partes.push(`${p(x.reajuste)} (${deltaFmt(x.reajuste)}) pelos reajustes de ${x.ano} (dissídio / reajuste de benefícios)`);
+  if (Math.abs(x.reajuste) >= 1) {
+    const pct = textoPctReajuste(r.grupo === 'beneficios' ? 'reaj_benef' : 'dissidio');
+    partes.push(`${p(x.reajuste)} (${deltaFmt(x.reajuste)}) pelos reajustes de ${x.ano} (${r.grupo === 'beneficios' ? 'reajuste de benefícios' : 'dissídio'}${pct ? ` — ${pct}` : ''})`);
+  }
   if (Math.abs(x.valor) >= 1) partes.push(`${p(x.valor)} (${deltaFmt(x.valor)}) por ${x.valor >= 0 ? 'aumento' : 'redução'} do custo por colaborador (valores, regras, quem recebe${(E.dados.anteriorContas || []).length && contasCobertasAnt().includes(r.id) ? `, realizado de ${x.ant} × orçado` : ''}) — média de ${brl.format(x.med0)} → ${brl.format(x.med1s)} por colaborador-mês, antes dos reajustes`);
   if (Math.abs(x.lanc) >= 1) partes.push(`${p(x.lanc)} (${deltaFmt(x.lanc)}) por lançamentos fora das pessoas (outros lançamentos e provisões)`);
   const top = x.filiais.slice(0, 3).map(f => `${f.f} (${deltaFmt(f.d)})`).join(', ');
@@ -848,7 +870,7 @@ function porQueMudou(k) {
   const r = RUBRICAS[k];
   const passos = [
     { nome: 'Pessoas e meses', valor: x.volume },
-    { nome: 'Reajustes', valor: x.reajuste },
+    { nome: r.grupo === 'beneficios' ? 'Reajuste dos benefícios' : 'Dissídio', valor: x.reajuste, info: textoPctReajuste(r.grupo === 'beneficios' ? 'reaj_benef' : 'dissidio') },
     { nome: 'Valor por pessoa', valor: x.valor },
     { nome: 'Lançamentos', valor: x.lanc },
   ].filter(p => Math.abs(p.valor) >= 0.5);
@@ -858,7 +880,7 @@ function porQueMudou(k) {
     titulo: `Por que ${r.nome} mudou?`, sup: `${x.ant} × ${x.ano} · ${escopoFiltro('Empresa toda')}`, largo: true, extra: true,
     corpo: `<div class="pq-cards">
         <div class="pq-card destaque"><span>Variação no ano</span><b>${deltaFmt(x.delta)}</b><small>${deltaPct(x.delta, x.a.total)} · ${brl0.format(x.a.total)} → ${brl0.format(x.b.total)}</small></div>
-        ${passos.map(p => `<div class="pq-card"><span>${p.nome}</span><b class="${clsDelta(p.valor)}">${deltaFmt(p.valor)}</b><small>${deltaPct(p.valor, x.a.total)} sobre ${x.ant} · ${x.delta ? pctFmt(p.valor / x.delta) : '–'} da variação</small></div>`).join('')}
+        ${passos.map(p => `<div class="pq-card"><span>${p.nome}</span><b class="${clsDelta(p.valor)}">${deltaFmt(p.valor)}</b><small>${p.info ? `<b>${esc(p.info)}</b><br>` : ''}${deltaPct(p.valor, x.a.total)} sobre ${x.ant} · ${x.delta ? pctFmt(p.valor / x.delta) : '–'} da variação</small></div>`).join('')}
       </div>
       <div id="pq-ponte"></div>
       <div class="pq-grade">
