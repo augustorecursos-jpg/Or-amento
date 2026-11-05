@@ -494,12 +494,14 @@ function renderPainel() {
       <div class="painel-acoes">
         <div class="segmentos" id="painel-visao"><button data-v="custo" class="${E.painelVisao === 'custo' ? 'ativo' : ''}">💰 Custo</button><button data-v="hc" class="${E.painelVisao === 'hc' ? 'ativo' : ''}">👥 Headcount</button></div>
         ${E.resAnt ? `<div class="segmentos" id="painel-comp" title="Compare o orçamento com o realizado de ${anoAnt()}"><button data-c="0" class="${E.comparar ? '' : 'ativo'}">Só ${esc(ano)}</button><button data-c="1" class="${E.comparar ? 'ativo' : ''}">${anoAnt()} × ${esc(ano)}</button></div>` : ''}
+        <button class="btn btn-laranja" id="btn-pptx" title="Baixa um PowerPoint com o resumo do orçamento (mês a mês, ano × ano e principais motivos), no escopo dos filtros do topo">📊 Gerar apresentação</button>
         <button class="btn btn-marinho" id="btn-apresentar">▶ Modo apresentação</button>
       </div>
     </div>`;
   const ligarTopo = () => {
     ligarFaixa(el);
     $('#btn-apresentar', el).addEventListener('click', alternarApresentacao);
+    $('#btn-pptx', el).addEventListener('click', e => gerarApresentacao(e.currentTarget));
     $$('#painel-visao button', el).forEach(b => b.addEventListener('click', () => { E.painelVisao = b.dataset.v; renderPainel(); }));
     $$('#painel-comp button', el).forEach(b => b.addEventListener('click', () => { E.comparar = b.dataset.c === '1'; renderPainel(); }));
     ligarLegenda(el);
@@ -748,13 +750,10 @@ function desenharComparativo(box) {
 
 /** Decompõe a variação da conta k no escopo do topo: mais pessoas/meses, reajustes do orçamento, valor por pessoa e
  * lançamentos (outros lançamentos, provisões e realizados que não são de pessoas). */
-function decomporConta(k) {
+function decomporConta(k, resS = calcSemReajustes()) {
   const ano = E.dados.config.ano;
   const ant = anoAnt();
-  // 2027 sem dissídios e sem reajuste de benefícios: separa o efeito dos reajustes
-  const semReaj = {};
-  for (const [f, cfg] of Object.entries(filiaisComRascunho())) semReaj[f] = { ...cfg, dissidio_pct: 0, dissidio_ant_pct: 0, reaj_benef_pct: 0, reaj_benef_ant_pct: 0 };
-  const resS = Motor.calcular({ colaboradores: [...E.dados.colaboradores, ...lancamentosComoLinhas()], filiais: semReaj, premissas: E.dados.premissas, niveis: E.dados.niveis });
+  // resS: o orçamento sem dissídios e sem reajuste de benefícios, que separa o efeito dos reajustes
   const lado = res => {
     const o = { pessoas: 0, lanc: 0, pm: 0, porFilial: new Map(), porPessoa: new Map() };
     res.colaboradores.forEach((c, i) => {

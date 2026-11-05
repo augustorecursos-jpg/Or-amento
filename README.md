@@ -46,6 +46,7 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   colaborador, impacto do dissídio, encargos + benefícios), custo mês a mês por grupo, rosca de composição, **ponte do
   salário ao custo total**, cards por regional → filial → centro de custo (clique para descer) e conferência das filiais.
   **Modo apresentação**: tela cheia sem menus; as setas ← → passam pelas regionais.
+  **📊 Gerar apresentação**: baixa um PowerPoint para a diretoria, no escopo dos filtros do topo — resumo executivo, orçamento mês a mês por grupo, ano anterior × orçamento por mês e por grupo, o que explica a variação (reajustes, quadro de pessoas, custo por pessoa), contas que mais sobem, principais motivos das 4 maiores (com o texto no campo de anotações), headcount, regionais/filiais e premissas. Os gráficos são nativos do PowerPoint (editáveis).
   **Visão Headcount** (botão 👥 no topo do Painel): cadeiras no orçamento (colaboradores + vagas), ocupadas, vagas previstas,
   desligamentos previstos, HC janeiro → dezembro, headcount mês a mês (ocupadas × vagas) e a tabela de **cadeiras por
   regional, filial, centro de custo, gestor, nível do cargo ou função**, com o custo separado em **ocupadas** e **vagas**,
