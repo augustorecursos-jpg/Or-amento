@@ -252,8 +252,8 @@ mostram todas as contas.
   importar de novo com a folha real substitui a projeção.
 - O ano anterior é calculado com o salário de cada mês + as **mesmas premissas** do orçamento, **sem dissídio** e **sem
   reajuste de benefícios**. Quem ainda está na base (mesma matrícula) herda os valores próprios da planilha.
-  Outros lançamentos só entram no ano do orçamento. O comparativo vai até os encargos: **remuneração, provisões,
-  encargos e benefícios**; o grupo Demais (treinamento, viagens, serviços…) fica fora.
+  Outros lançamentos só entram no ano do orçamento. O comparativo considera **pessoal, provisões trabalhistas e
+  benefícios**; as despesas gerais (exames, endomarketing, treinamento, viagens, confraternizações, terceiros) ficam fora.
 - **Painel**: botão “Só 2027 | 2026 × 2027” (a visão atual continua sendo a padrão). No comparativo: KPIs, custo mês a
   mês nos dois anos com Δ R$ e Δ %, ponte de variação por conta, variação por grupo, ranking de aumento por conta
   (clique abre as filiais) e tabela por regional/filial/CC.
@@ -279,13 +279,19 @@ Conferência e sem pedidos de ajuste (o servidor também bloqueia).
 
 ## Rubricas (todas as que aparecem nas planilhas das regionais)
 
+Os grupos seguem os **pacotes do relatório contábil**. O cálculo usa a natureza de cada conta (remuneração, provisões,
+encargos, benefícios, despesas gerais), que não mudou; cada linha da Simulação mostra a conta contábil vinculada em
+**Relatório contábil** (ou a sugerida).
+
 | Grupo | Rubricas |
 |---|---|
-| Remuneração | Salário, Periculosidade, Insalubridade, Penosidade, Adicionais de turno, Adicional noturno, Horas extras, Banco de horas, Promoções e méritos |
-| Provisões | Férias (1/3), 13º salário, Rescisão |
-| Encargos | FGTS, FGTS férias, FGTS 13º, INSS, INSS férias, INSS 13º |
-| Benefícios | PPR, VA/VR, VA natal / 13º VR, Vale mobilidade (antigo vale-transporte), Auxílio-creche, Auxílio educacional (ou educação), Material escolar, Auxílio óculos, Oftalmo, Assistência médica, Coparticipação convênio médico, Assistência odontológica, Farmácia, Seguro de vida, Previdência privada, Auxílio dependente portadores, Refeitório, Fretado, Fretado (overall), Cesta natalina |
-| Demais | Saúde ocupacional, Endomarketing, Treinamento, Viagens, Confraternizações, Serviços / Terceiros |
+| Pessoal | Salário, Periculosidade, Insalubridade, Penosidade, Adicionais de turno, Adicional noturno, Horas extras, Banco de horas, Promoções e méritos, Rescisão, FGTS, INSS, PPR |
+| Provisões trabalhistas | Férias (1/3), 13º salário, FGTS férias, FGTS 13º, INSS férias, INSS 13º |
+| Benefícios | VA/VR, VA natal / 13º VR, Vale mobilidade (antigo vale-transporte), Auxílio-creche, Auxílio educacional, Material escolar, Auxílio óculos, Oftalmo, Assistência médica, Coparticipação convênio médico, Assistência odontológica, Farmácia, Seguro de vida, Previdência privada, Auxílio dependente portadores, Auxílios matrimônio e nascituro, Refeitório, Fretado, Fretado (overall), Cesta natalina e as despesas gerais: Saúde ocupacional, Endomarketing, Treinamento, Viagens, Confraternizações, Serviços / Terceiros, Outras despesas |
+
+**📘 Memória de cálculo** (menu): por grupo, cada conta com a conta contábil, o que é, como é calculada, a premissa
+aplicada no filtro do topo e os totais do ano anterior e do orçamento; regras gerais e reajustes das filiais. Exporta
+Excel, imprime em PDF e entra como anexo da apresentação.
 
 Padrões do sistema (regra do ADM de pessoal, ajustáveis em Premissas): periculosidade 30% do salário. Férias, 13º,
 FGTS e INSS sobre **salário + adicionais (periculosidade, insalubridade, penosidade, turno/noturno) + horas extras**: férias

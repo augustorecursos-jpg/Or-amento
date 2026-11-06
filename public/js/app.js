@@ -130,12 +130,15 @@ function aplicarFiltroConta() {
   _regras = new Map();
 }
 
-// O comparativo com o ano anterior vai até os encargos: remuneração, provisões, encargos e benefícios (sem "Demais").
-const GRUPOS_CMP = new Set(['remuneracao', 'provisoes', 'encargos', 'beneficios']);
-const GRUPOS_CMP_TXT = 'remuneração, provisões, encargos e benefícios';
-/** Cópia do cálculo só com as contas dos grupos comparados. */
+// O comparativo com o ano anterior: pessoal, provisões trabalhistas e benefícios — sem as despesas gerais (exames,
+// endomarketing, treinamento, viagens, confraternizações, terceiros), que não existem no realizado do ano anterior.
+const GRUPOS_CMP = new Set(GRUPOS.map(g => g.id));
+const FORA_CMP = new Set(RUBRICAS.filter(r => r.natureza === 'demais').map(r => r.id));
+const GRUPOS_CMP_TXT = 'pessoal, provisões trabalhistas e benefícios';
+const FORA_CMP_TXT = 'despesas gerais (exames periódicos, endomarketing, treinamento, viagens, confraternizações e terceiros)';
+/** Cópia do cálculo só com as contas comparadas. */
 function soGruposComparados(res) {
-  return soRubricas(res, RUBRICAS.map((r, k) => (GRUPOS_CMP.has(r.grupo) ? k : -1)).filter(k => k >= 0));
+  return soRubricas(res, RUBRICAS.map((r, k) => (FORA_CMP.has(r.id) ? -1 : k)).filter(k => k >= 0));
 }
 /** Meses do ano anterior que são realizados; os seguintes foram projetados com o salário do último mês. */
 const mesesReaisAnt = () => Number(E.dados.config.anterior_meses_reais) || 12;
@@ -227,6 +230,8 @@ const bateUf = (filial, ufs = E.filtro.sel.uf) => {
 const noSel = (k, v) => !E.filtro.sel[k].length || E.filtro.sel[k].includes(v);
 const noFiltro = c => noSel('regional', c.regional) && bateUf(c.filial) && noSel('filial', c.filial) && noSel('cc', String(c.cc_cod || ''));
 const rotuloCc = c => `${c.cc_cod || '—'} · ${c.cc_nome || 'Sem centro de custo'}`;
+/** Soma do ano das contas de uma natureza de cálculo (remuneracao, provisoes, encargos, beneficios, demais). */
+const somaNat = (ag, nat) => RUBRICAS.reduce((s, r, k) => (r.natureza === nat ? s + somaRub(ag, k) : s), 0);
 const regionais = () => [...new Set(Object.values(E.dados.filiais).map(f => f.regional))].sort();
 const filiaisDa = regional => Object.values(E.dados.filiais).filter(f => !regional || f.regional === regional).map(f => f.filial).sort();
 /** Filiais que passam pelos filtros do topo (regional, estado e filial). */
@@ -375,7 +380,7 @@ function escopoFiltro(padrao) {
 }
 
 const TITULOS = {
-  painel: 'Painel', simulacao: 'Simulação mês a mês', calculadora: 'Calculadora de impacto', premissas: 'Premissas e regras', base: 'Base de colaboradores',
+  painel: 'Painel', simulacao: 'Simulação mês a mês', calculadora: 'Calculadora de impacto', memoria: 'Memória de cálculo', premissas: 'Premissas e regras', base: 'Base de colaboradores',
   conferencia: 'Conferência', contabil: 'Relatório contábil', lancamentos: 'Outros lançamentos', solicitacoes: 'Pedidos de ajuste', coordenadores: 'Acessos dos coordenadores', historico: 'Histórico',
 };
 
@@ -384,7 +389,7 @@ function irPara(aba) {
   $$('.lateral-item[data-aba]').forEach(b => b.classList.toggle('ativo', b.dataset.aba === aba));
   $$('[data-painel]').forEach(s => { s.hidden = s.dataset.painel !== aba; });
   $('#barra-pagina').textContent = TITULOS[aba];
-  $('#barra-filtros').style.visibility = ['painel', 'simulacao', 'calculadora', 'base', 'conferencia', 'contabil', 'lancamentos'].includes(aba) ? '' : 'hidden';
+  $('#barra-filtros').style.visibility = ['painel', 'simulacao', 'calculadora', 'memoria', 'base', 'conferencia', 'contabil', 'lancamentos'].includes(aba) ? '' : 'hidden';
   $('#lateral').classList.remove('aberta');
   history.replaceState(null, '', `#${aba}`);
   renderAba();
@@ -393,7 +398,7 @@ function irPara(aba) {
 
 function renderAba() {
   ({
-    painel: renderPainel, simulacao: renderSimulacao, calculadora: renderCalculadora, premissas: renderPremissas, base: renderBase,
+    painel: renderPainel, simulacao: renderSimulacao, calculadora: renderCalculadora, memoria: renderMemoria, premissas: renderPremissas, base: renderBase,
     conferencia: renderConferencia, contabil: renderContabil, lancamentos: renderLancamentos, solicitacoes: renderSolicitacoes, coordenadores: renderCoordenadores, historico: renderHistorico,
   })[E.aba]();
 }
@@ -469,20 +474,18 @@ function renderPainel() {
   const impactoAnt = totalDe(E.resSoDissAnt).total - semD.total; // parte do dissídio do ano anterior
   const fil = filiaisComRascunho();
   const mesesDiss = mesesDeDissidio([...new Set(col.map(c => c.filial))].map(f => fil[f]));
-  const encBen = (somaG('encargos') + somaG('beneficios')) / (ag.total || 1);
+  const encBen = (ag.total - somaNat(ag, 'remuneracao')) / (ag.total || 1);
   const escopo = [escopoFiltro(E.eu.admin ? 'Todas as regionais' : E.eu.regionais.join(' · ')), ccFiltrado(), nomeContaFiltro()].filter(Boolean).join(' · ');
   const nivelCards = E.filtro.filial ? 'cc' : E.filtro.regional ? 'filial' : 'regional';
   const tituloCards = { regional: 'Custo por regional', filial: `Filiais da regional ${E.filtro.regional}`, cc: `Centros de custo · ${E.filtro.filial}` }[nivelCards];
 
-  // Ponte: salário → adicionais e HE → provisões → encargos → benefícios → demais = total
+  // Ponte: salário → demais itens de pessoal → provisões trabalhistas → benefícios = total
   const salAno = [...ag.porRubrica.slice(0, 12)].reduce((a, b) => a + b, 0);
   const passos = [
     { nome: 'Salários', valor: salAno, cor: '#164d74' },
-    { nome: 'Adicionais e HE', valor: somaG('remuneracao') - salAno, cor: COR_GRUPO.remuneracao },
-    { nome: 'Provisões', valor: somaG('provisoes'), cor: COR_GRUPO.provisoes },
-    { nome: 'Encargos', valor: somaG('encargos'), cor: COR_GRUPO.encargos },
+    { nome: 'Adicionais, HE, encargos e PPR', valor: somaG('pessoal') - salAno, cor: COR_GRUPO.pessoal },
+    { nome: 'Provisões trabalhistas', valor: somaG('provisoes'), cor: COR_GRUPO.provisoes },
     { nome: 'Benefícios', valor: somaG('beneficios'), cor: COR_GRUPO.beneficios },
-    { nome: 'Demais', valor: somaG('demais'), cor: COR_GRUPO.demais },
   ];
 
   const kpi = (ic, cor, rotulo, valor, nota, id = '') => `<div class="kpi2"><span class="kpi2-ic" style="--c:${cor}">${ic}</span><div><span>${rotulo}</span><strong${id ? ` id="${id}"` : ''}>${valor}</strong><small>${nota}</small></div></div>`;
@@ -539,7 +542,7 @@ function renderPainel() {
       ${kpi('👥', '#2f6fa3', 'Headcount médio', num0.format(hcMedio), vagas ? `${vagas} vaga(s) no ano` : 'sem vagas previstas')}
       ${kpi('💼', '#8b5fbf', 'Custo médio por colaborador', brl0.format(colabMes ? ag.total / colabMes : 0), 'por mês, com encargos e benefícios')}
       ${kpi('📈', '#ec6b24', 'Impacto do dissídio', `${impacto >= 0 ? '+' : ''}${brl0.format(impacto)}`, semD.total ? `${pctFmt(impacto / semD.total)} sobre o custo sem reajuste${impactoAnt ? ` · ${anoAnt()} +${Graficos.curto(impactoAnt)} · ${esc(ano)} +${Graficos.curto(impacto - impactoAnt)}` : ''}` : '–')}
-      ${kpi('🧾', '#2a9d8f', 'Encargos + benefícios', pctFmt(encBen), 'do custo total')}
+      ${kpi('🧾', '#2a9d8f', 'Encargos, provisões e benefícios', pctFmt(encBen), 'do custo total, além da remuneração')}
     </div>
     <div class="grade-2">
       <section class="cartao"><h3>Custo mês a mês <small>· por grupo${mesesDiss.length ? ' · meses de dissídio em laranja' : ''}</small></h3><div id="g-meses"></div></section>
@@ -648,7 +651,7 @@ function desenharComparativo(box) {
       <div class="pontilhado"></div>
       <div class="hero2-num">
         <small>CUSTO ANUAL DE PESSOAL · ${ant} × ${esc(ano)}</small>
-        <p class="comp-escopo">Remuneração, provisões, encargos e benefícios · o grupo Demais (treinamento, viagens, serviços…) fica fora do comparativo${notaProjecao() ? `<br>${notaProjecao()}` : ''}${notaProvisaoAnt() ? `<br>${notaProvisaoAnt()}` : ''}${notaRealizadoAnt() ? `<br>${esc(notaRealizadoAnt())}` : ''}</p>
+        <p class="comp-escopo">Pessoal, provisões trabalhistas e benefícios · as ${FORA_CMP_TXT} ficam fora do comparativo${notaProjecao() ? `<br>${notaProjecao()}` : ''}${notaProvisaoAnt() ? `<br>${notaProvisaoAnt()}` : ''}${notaRealizadoAnt() ? `<br>${esc(notaRealizadoAnt())}` : ''}</p>
         <div class="comp-totais">
           <div><span style="--c:${COR_ANT}">${ant} · realizado</span><b>${brl0.format(a0.total)}</b></div>
           <div class="comp-seta">→</div>
@@ -815,7 +818,7 @@ function textoPctReajuste(pre) {
 /** Explicação em linguagem simples, para quem não é da área (uma frase por motivo). */
 function textoSimplesPorQueMudou(x) {
   const r = RUBRICAS[x.k];
-  const benef = r.grupo === 'beneficios';
+  const benef = r.natureza === 'beneficios';
   const sobe = x.delta >= 0;
   const pct = deltaPct(x.delta, x.a.total).replace(/^[+−]/, '');
   const linhas = [`${r.nome}: ${valorFalado(x.a.total)} em ${x.ant} → ${valorFalado(x.b.total)} em ${x.ano}. ${sobe ? 'Aumento' : 'Redução'} de ${valorFalado(x.delta)} (${pct}).`, '', 'Por quê?'];
@@ -855,8 +858,8 @@ function textoPorQueMudou(x) {
   const partes = [];
   if (Math.abs(x.volume) >= 1) partes.push(`${p(x.volume)} (${deltaFmt(x.volume)}) por ${x.volume >= 0 ? 'mais' : 'menos'} colaboradores ao longo do ano — HC médio ${num0.format(x.a.pm / 12)} → ${num0.format(x.b.pm / 12)} (${num0.format(x.a.pm)} → ${num0.format(x.b.pm)} colaboradores-mês)${x.so27.vagas ? `, com ${x.so27.vagas} vaga(s) prevista(s)` : ''}`);
   if (Math.abs(x.reajuste) >= 1) {
-    const pct = textoPctReajuste(r.grupo === 'beneficios' ? 'reaj_benef' : 'dissidio');
-    partes.push(`${p(x.reajuste)} (${deltaFmt(x.reajuste)}) pelos reajustes de ${x.ano} (${r.grupo === 'beneficios' ? 'reajuste de benefícios' : 'dissídio'}${pct ? ` — ${pct}` : ''})`);
+    const pct = textoPctReajuste(r.natureza === 'beneficios' ? 'reaj_benef' : 'dissidio');
+    partes.push(`${p(x.reajuste)} (${deltaFmt(x.reajuste)}) pelos reajustes de ${x.ano} (${r.natureza === 'beneficios' ? 'reajuste de benefícios' : 'dissídio'}${pct ? ` — ${pct}` : ''})`);
   }
   if (Math.abs(x.valor) >= 1) partes.push(`${p(x.valor)} (${deltaFmt(x.valor)}) por ${x.valor >= 0 ? 'aumento' : 'redução'} do custo por colaborador (valores, regras, quem recebe${(E.dados.anteriorContas || []).length && contasCobertasAnt().includes(r.id) ? `, realizado de ${x.ant} × orçado` : ''}) — média de ${brl.format(x.med0)} → ${brl.format(x.med1s)} por colaborador-mês, antes dos reajustes`);
   if (Math.abs(x.lanc) >= 1) partes.push(`${p(x.lanc)} (${deltaFmt(x.lanc)}) por lançamentos fora das pessoas (outros lançamentos e provisões)`);
@@ -869,7 +872,7 @@ function porQueMudou(k) {
   const r = RUBRICAS[k];
   const passos = [
     { nome: 'Pessoas e meses', valor: x.volume },
-    { nome: r.grupo === 'beneficios' ? 'Reajuste dos benefícios' : 'Dissídio', valor: x.reajuste, info: textoPctReajuste(r.grupo === 'beneficios' ? 'reaj_benef' : 'dissidio') },
+    { nome: r.natureza === 'beneficios' ? 'Reajuste dos benefícios' : 'Dissídio', valor: x.reajuste, info: textoPctReajuste(r.natureza === 'beneficios' ? 'reaj_benef' : 'dissidio') },
     { nome: 'Valor por pessoa', valor: x.valor },
     { nome: 'Lançamentos', valor: x.lanc },
   ].filter(p => Math.abs(p.valor) >= 0.5);
@@ -958,7 +961,7 @@ function montarRegra(rid, fils) {
   return proprios ? `${regra} · ${proprios} (vale sobre a regra)` : regra;
 }
 
-const BASE_FOLHA = 'salário + todo o grupo Remuneração (adicionais, HE, promoções)';
+const BASE_FOLHA = 'salário + adicionais, horas extras, banco de horas e promoções';
 const NOTAS_LEGENDA = {
   ferias: `remuneração ÷ 12 + 1/3 (= ÷ 9) · remuneração = ${BASE_FOLHA}`,
   decimo: `remuneração ÷ 12 · remuneração = ${BASE_FOLHA}`,
@@ -1168,7 +1171,7 @@ function desenharHeadcount(el, col) {
     if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
     const linhas = linhasHc();
     const r2 = v => Math.round(v * 100) / 100;
-    // Ano anterior: custo realizado e o do orçamento nos mesmos grupos (sem "Demais"), para comparar
+    // Ano anterior: custo realizado e o do orçamento nas mesmas contas (sem as despesas gerais), para comparar
     const c0 = comp ? Motor.agregar(E.resAnt, dim.chave, noFiltro) : null;
     const c1 = comp ? Motor.agregar(E.resCmp, dim.chave, noFiltro) : null;
     const custosAnt = l => {
@@ -1183,7 +1186,7 @@ function desenharHeadcount(el, col) {
       ...linhas.map(l => [l.k, l.cadeiras, l.ocupadas, l.vagas, l.deslig, l.jan, l.dez, ...MESES.map((_, m) => l.ocupadasMes[m] + l.vagasMes[m]),
         r2(l.custoOcup), r2(l.custoVaga), r2(l.custo), r2(l.medio),
         ...(comp ? [...l.antMes, l.dez - l.antMes[11], ...custosAnt(l)] : [])])];
-    if (comp) aoa.push([], [`* Comparativo ${anoAnt()} × ${E.dados.config.ano}: ${GRUPOS_CMP_TXT} (sem o grupo Demais, que não existe no realizado de ${anoAnt()}). As colunas "Custo ocupadas/vagas/no ano" de ${E.dados.config.ano} incluem Demais.${notaProjecao() ? ` ${notaProjecao()}.` : ''}`]);
+    if (comp) aoa.push([], [`* Comparativo ${anoAnt()} × ${E.dados.config.ano}: ${GRUPOS_CMP_TXT}, sem as ${FORA_CMP_TXT}, que não existem no realizado de ${anoAnt()}. As colunas "Custo ocupadas/vagas/no ano" de ${E.dados.config.ano} incluem essas despesas.${notaProjecao() ? ` ${notaProjecao()}.` : ''}`]);
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{ wch: 40 }, ...aoa[0].slice(1).map(() => ({ wch: 11 }))];
     if (comp) {
@@ -1483,7 +1486,7 @@ function linhasSimulacao(res = E.res) {
     const linhas = [];
     for (const g of GRUPOS) {
       const filhos = RUBRICAS.map((r, i) => ({ r, i })).filter(x => x.r.grupo === g.id)
-        .map(({ r, i }) => ({ rotulo: r.nome, meses: [...ag.porRubrica.slice(i * 12, i * 12 + 12)] }))
+        .map(({ r, i }) => ({ rotulo: r.nome, contaCont: contaContabilDe(r.id), meses: [...ag.porRubrica.slice(i * 12, i * 12 + 12)] }))
         .filter(l => l.meses.some(x => x));
       const meses = MESES.map((_, m) => filhos.reduce((s, f) => s + f.meses[m], 0));
       if (E.filtro.conta && !filhos.length) continue; // com filtro de conta, só os grupos que têm valor
@@ -1590,7 +1593,7 @@ function contaDoItem(c, rub) {
   const onze = Motor.MESES_SALARIO < 12 ? `${Motor.MESES_SALARIO}/12` : '';
   const notaMeses = onze ? `mês cheio × ${onze} · 1 mês do ano é pago como férias + 1/3` : '';
   if (rub.fixa && Number(c.promo_mes) && Number(c.promo_salario) > 0) return `promoção: ${brl.format(c.salario)} → ${brl.format(c.promo_salario)}${c.promo_cargo ? ` · ${c.cargo || 'sem nível'} → ${c.promo_cargo}` : ''} a partir de ${MESES[c.promo_mes - 1]} (sem dissídio; o dissídio entra por cima)${notaMeses ? ` · ${notaMeses}` : ''}`;
-  if (rub.fixa || (rub.grupo === 'remuneracao' && rub.adicional)) return notaMeses;
+  if (rub.fixa || (rub.natureza === 'remuneracao' && rub.adicional)) return notaMeses;
   if (rub.id === 'horas_extras') {
     const p = Motor.aplicarExcecao(Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rub.id), excecaoEfetiva(c, rub.id));
     return p.metodo === 'rateio' ? '' : notaMeses;
@@ -1599,7 +1602,7 @@ function contaDoItem(c, rub) {
   if (rub.id === 'decimo') return '(salário + adicionais + HE) ÷ 12';
   if (rub.id === 'fgts' || rub.id === 'inss') return `sobre salário + adicionais + HE${onze ? ` pagos no mês (${onze})` : ''}`;
   const p = Motor.aplicarExcecao(Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rub.id), excecaoEfetiva(c, rub.id));
-  if (p.metodo === 'fixo' && rub.grupo === 'beneficios' && p.periodo !== 'por_mes') {
+  if (p.metodo === 'fixo' && rub.natureza === 'beneficios' && p.periodo !== 'por_mes') {
     // Benefício em R$: mostra o reajuste de benefícios da filial, que entra por cima do valor lançado.
     const f = filiaisComRascunho()[c.filial] || {};
     const fim = fatorBenefDe(f, 11);
@@ -1658,7 +1661,8 @@ function linhasComparadas() {
     b.forEach((x, i) => { if (x.k === prefixo || x.k.startsWith(prefixo + S)) pos = i; });
     b.splice(pos >= 0 ? pos + 1 : b.length, 0, linha);
   }
-  const linhas = [...blocos.values()].flat().map(x => x.l).filter(l => !(l.grupo && !GRUPOS_CMP.has(l.grupo)));
+  const foraNomes = new Set(RUBRICAS.filter(r => FORA_CMP.has(r.id)).map(r => r.nome));
+  const linhas = [...blocos.values()].flat().map(x => x.l).filter(l => !((l.filho || l.det === 'rubrica') && foraNomes.has(l.rotulo)));
   return { linhas, total: atual.total, totalAnt: anterior.total, comHc: atual.comHc };
 }
 
@@ -1673,7 +1677,7 @@ function tabelaComparadaHtml() {
     return `<td class="n${v1 || v0 ? '' : ' zero'}">${v1 || v0 ? `${fmtVal(v1)}<span class="sub-ant">${fmtVal(v0)}</span>` : '–'}</td>`;
   };
   const fim = (t1, t0) => `<td class="n">${fmtVal(t0)}</td><td class="n"><b>${fmtVal(t1)}</b></td><td class="n ${clsDelta(t1 - t0)}"><b>${sinal(t1 - t0)}${fmtVal(Math.abs(t1 - t0))}</b></td><td class="n ${clsDelta(t1 - t0)}">${t0 ? deltaPct(t1 - t0, t0) : t1 ? 'novo' : '–'}</td>`;
-  const rotulo = l => `${l.grupo || l.det === 'grupo' ? `<i class="bola" style="background:${l.cor}"></i>` : ''}${esc(l.rotulo)}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.avulso ? (l.provisao ? ' <span class="etiqueta azul">📈 provisão</span>' : ' <span class="etiqueta neutra">📌 lançamento</span>') : ''}${l.soAnt ? ` <span class="etiqueta neutra">só em ${ant}</span>` : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}`;
+  const rotulo = l => `${l.grupo || l.det === 'grupo' ? `<i class="bola" style="background:${l.cor}"></i>` : ''}${esc(l.rotulo)}${l.contaCont ? `<span class="sub conta">${esc(l.contaCont)}</span>` : ''}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.avulso ? (l.provisao ? ' <span class="etiqueta azul">📈 provisão</span>' : ' <span class="etiqueta neutra">📌 lançamento</span>') : ''}${l.soAnt ? ` <span class="etiqueta neutra">só em ${ant}</span>` : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}`;
   const regra = l => { const r = (l.filho || l.det === 'rubrica') && RUBRICAS.find(x => x.nome === l.rotulo); return r ? ` title="${esc(regraDaRubrica(r.id))}"` : ` title="${esc(l.rotulo)}"`; };
   return `<table class="tabela tabela-sim-comp">
     <thead><tr><th class="fixa">${{ rubricas: 'Rubrica', filiais: 'Filial', cc: 'Centro de custo', colaboradores: 'Colaborador' }[E.sim.visao]}<span class="sub">${so ? `Δ ${ant} → ${esc(ano)} por mês` : `${esc(ano)} <span class="sub-ant" style="display:inline">· ${ant} abaixo</span>`} · ${GRUPOS_CMP_TXT}</span></th>
@@ -1712,7 +1716,7 @@ function tabelaSimulacaoHtml() {
         }
         const cls = l.grupo ? `grupo${E.sim.fechados.has(l.grupo) ? ' fechado' : ''}` : l.filho ? 'filho' : l.colab != null || l.ag != null ? `colab${l.aberto ? ' aberto' : ''}${l.vaga ? ' vaga' : ''}` : l.vaga ? 'vaga' : '';
         return `<tr class="${cls}" ${l.grupo ? `data-grupo="${l.grupo}"` : ''}${l.colab != null ? ` data-colab="${l.colab}" title="Clique para ${l.aberto ? 'fechar' : 'ver'} o detalhe"` : ''}${l.ag != null ? ` data-ag="${esc(l.ag)}" title="Clique para ${l.aberto ? 'fechar' : 'ver'} as contas por grupo"` : ''}>
-          <td class="fixa" title="${esc(l.filho ? `${l.rotulo}: ${regraDaRubrica(RUBRICAS.find(x => x.nome === l.rotulo)?.id)}` : l.rotulo)}">${l.grupo ? `<i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.avulso ? (l.provisao ? ' <span class="etiqueta azul">📈 provisão</span>' : ' <span class="etiqueta neutra">📌 lançamento</span>') : ''}${l.proprias ? ' <span class="etiqueta azul">condições próprias</span>' : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}</td>
+          <td class="fixa" title="${esc(l.filho ? `${l.rotulo}: ${regraDaRubrica(RUBRICAS.find(x => x.nome === l.rotulo)?.id)}` : l.rotulo)}">${l.grupo ? `<i style="display:inline-block;width:9px;height:9px;border-radius:2px;background:${l.cor};margin-right:.4rem"></i>` : ''}${esc(l.rotulo)}${l.contaCont ? `<span class="sub conta">${esc(l.contaCont)}</span>` : ''}${l.vaga ? ' <span class="etiqueta pend">vaga</span>' : ''}${l.avulso ? (l.provisao ? ' <span class="etiqueta azul">📈 provisão</span>' : ' <span class="etiqueta neutra">📌 lançamento</span>') : ''}${l.proprias ? ' <span class="etiqueta azul">condições próprias</span>' : ''}${l.sub ? `<span class="sub">${esc(l.sub)}</span>` : ''}</td>
           ${comHc ? `<td class="n">${l.hc ?? ''}</td>` : ''}${l.meses.map(cel).join('')}<td class="n"><b>${fmtVal(t)}</b></td><td class="n">${pctFmt(t / totAno)}</td></tr>`;
       }).join('');
     })()}</tbody>
@@ -2137,7 +2141,7 @@ function trocarEscopo(escopo) {
 
 const TIPOS = { pct: '% sobre base', pct_folha: '% da folha (remuneração)', fixo: 'R$ por colaborador', rateio: 'Total da filial (média por colab.)', multiplo: 'Nº de salários', nivel: 'Nº de salários por nível do cargo' };
 // "Por nível do cargo" é o método nº de salários com a tabela de níveis ligada.
-// "% da folha" é o % com a base folha (salário + todo o grupo Remuneração), em destaque para PPR, bônus etc.
+// "% da folha" é o % com a base folha (salário + adicionais, HE, banco de horas e promoções), em destaque para PPR, bônus etc.
 const tipoDe = p => (p.metodo === 'multiplo' && p.por_nivel ? 'nivel' : p.metodo === 'pct' && p.base === 'folha' ? 'pct_folha' : p.metodo);
 /** Regra a partir do tipo escolhido na tela ("nivel" e "pct_folha" são atalhos de outros métodos). */
 function regraDoTipo(tipo, p) {
@@ -2188,7 +2192,7 @@ function textoCurto(p) {
 /** Na filial com reajuste de benefícios, mostra quanto o valor lançado vira depois do reajuste. */
 function notaReajuste(rub, tipo, p) {
   const { escopo } = E.prem;
-  if (rub.grupo !== 'beneficios' || (tipo !== 'fixo' && tipo !== 'rateio') || !E.dados.filiais[escopo]) return '';
+  if (rub.natureza !== 'beneficios' || (tipo !== 'fixo' && tipo !== 'rateio') || !E.dados.filiais[escopo]) return '';
   const cfg = { ...E.dados.filiais[escopo], ...E.prem.filial };
   const fim = fatorBenefDe(cfg, 11);
   if (fim === 1 || !Number(p.valor)) return '';
@@ -2621,8 +2625,8 @@ function pedirModeloPremissas() {
     corpo: `<p style="margin:0">Gera um Excel com <b>uma linha por filial e item</b>, já preenchido com o que está na ferramenta, e com <b>listas de seleção</b> nas colunas amarelas. Envie para quem vai preencher e depois use <b>⬆ Importar quadro</b> para carregar.</p>
       <p style="margin:0"><b>${fils.length}</b> filial(is) — ${esc([E.prem.quadroReg || 'todas as regionais', E.prem.uf && (E.prem.uf === '_' ? 'estado a definir' : E.prem.uf)].filter(Boolean).join(' · '))} (use os filtros do quadro para mudar).</p>
       <div class="rotulo">Itens que entram no modelo
-        <div class="regionais-check" style="margin-top:.4rem">${GRUPOS.map(g => `<label class="check"><input type="checkbox" name="grupo" value="${g.id}" ${['provisoes', 'encargos'].includes(g.id) ? '' : 'checked'}> ${g.nome}</label>`).join('')}</div>
-        <small>Provisões e encargos (férias, 13º, FGTS, INSS) costumam ser iguais para todos — por isso vêm desmarcados.</small></div>
+        <div class="regionais-check" style="margin-top:.4rem">${GRUPOS.map(g => `<label class="check"><input type="checkbox" name="grupo" value="${g.id}" ${g.id === 'provisoes' ? '' : 'checked'}> ${g.nome}</label>`).join('')}</div>
+        <small>Provisões trabalhistas (férias, 13º e seus encargos) costumam ser iguais para todos — por isso vêm desmarcadas.</small></div>
       <label class="check"><input type="checkbox" name="reajustes" checked> Incluir dissídio e reajuste de benefícios de cada filial</label>`,
     rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="gerar-modelo">⬇ Gerar Excel</button>',
   });
@@ -3069,7 +3073,7 @@ function quemColaboradoresHtml(rub, atual, colabs) {
     const [v1, m1] = com[com.length - 1] || [0, 0];
     const mud = com.find(([v]) => Math.abs(v - v0) >= 0.01);
     const hoje = !ano ? '<span class="sub" style="display:inline">não recebe</span>'
-      : `<b>${brl.format(v0)}</b>/mês${mud ? `<span class="sub">→ <b>${brl.format(v1)}</b> a partir de ${MESES[mud[1]]}${rub && RUBRICAS[k].grupo === 'beneficios' ? ' (reajuste)' : ''}</span>` : ''}<span class="sub">${brl0.format(ano)} no ano</span>`;
+      : `<b>${brl.format(v0)}</b>/mês${mud ? `<span class="sub">→ <b>${brl.format(v1)}</b> a partir de ${MESES[mud[1]]}${rub && RUBRICAS[k].natureza === 'beneficios' ? ' (reajuste)' : ''}</span>` : ''}<span class="sub">${brl0.format(ano)} no ano</span>`;
     const e = c.excecoes?.[rub];
     const manual = e && e.origem !== 'base' ? (e.metodo === 'nao' ? 0 : e.valor) : '';
     const origem = !e ? 'regra' : excecaoEfetiva(c, rub) ? (e.origem === 'base' ? 'planilha da base' : 'personalizado') : 'regra';
@@ -3338,7 +3342,7 @@ function lerPlanilha(wb) {
 // como total do ano de cada filial e distribuídas pela ferramenta.
 // Ficam de fora o PPR (salário × target), a cesta natalina e o grupo Demais, que seguem as premissas; férias, 13º e
 // encargos seguem calculados sobre esses valores.
-const RUBS_BASE = RUBRICAS.filter(r => !r.fixa && r.id !== 'ppr' && r.id !== 'cesta_natalina' && r.id !== 'horas_extras' && r.id !== 'promocoes' && (r.grupo === 'remuneracao' || r.grupo === 'beneficios' || r.id === 'rescisao'));
+const RUBS_BASE = RUBRICAS.filter(r => !r.fixa && r.id !== 'ppr' && r.id !== 'cesta_natalina' && r.id !== 'horas_extras' && r.id !== 'promocoes' && (r.natureza === 'remuneracao' || r.natureza === 'beneficios' || r.id === 'rescisao'));
 const APELIDOS_BASE = { adic_turno: ['ADICIONAIS DE TURNO'], adic_noturno: ['ADIC. NOTURNO', 'ADICIONAL NOTURNO', 'ADIC NOTURNO'] };
 
 /** Colunas da planilha com o valor de cada item por colaborador: [{ rub, col }]. */
@@ -3389,7 +3393,7 @@ function valoresDaLinha(l, colunas, deflator) {
     let n = numeroCelula(v);
     if (!Number.isFinite(n)) { if (/^(-|—|n|nao|não)$/i.test(String(v).trim())) n = 0; else continue; }
     // Remuneração e rescisão entram sem dissídio (como o salário): a ferramenta aplica o dissídio da filial no mês da data-base.
-    if (RUBRICAS[IDX[rub]].grupo !== 'beneficios') n *= deflator;
+    if (RUBRICAS[IDX[rub]].natureza !== 'beneficios') n *= deflator;
     vals[rub] = n > 0 ? { metodo: 'fixo', valor: Math.round(n * 100) / 100, origem: 'base' } : { metodo: 'nao', valor: 0, origem: 'base' };
   }
   return { valores_base: vals, colunas_arq: colunas.map(c => c.rub) };
@@ -3499,7 +3503,7 @@ function baixarModeloBase() {
     ['PERICULOSIDADE … RESCISÃO', 'Opcional. Valor do colaborador em R$ por mês, SEM dissídio (como o salário): 0 = não recebe · vazio = segue a regra da filial. Sobem com o dissídio da filial; férias, 13º e encargos são calculados sobre eles.'],
     ['VA / VR … FRETADO (OVERALL)', 'Opcional. Valor de cada benefício do colaborador em R$: 0 = não recebe · vazio = segue a regra da filial. Cada valor segue a periodicidade do item nas premissas (todo mês, 1x no ano…) e recebe o reajuste de benefícios da filial. Pode apagar as colunas que não usar.'],
     [''],
-    ['Horas extras (total do ano de cada filial), PPR, cesta natalina, férias, 13º, encargos e o grupo Demais (endomarketing, treinamento…) não vêm da planilha: seguem as premissas de cada filial.'],
+    ['Horas extras (total do ano de cada filial), PPR, cesta natalina, férias, 13º, encargos e as despesas gerais (endomarketing, treinamento…) não vêm da planilha: seguem as premissas de cada filial.'],
     [''],
     ['ABA "Condições próprias" (opcional)', 'Só para quem tem benefício diferente da regra da filial (ex.: sucedidos). Uma linha por colaborador e item:'],
     ['MATRÍCULA', 'A mesma da aba Base'],
@@ -3564,11 +3568,11 @@ async function previaImportacao(arquivos) {
       ${lidas.flatMap(l => l.avisosCond || []).map(a => `<p style="color:#b54d12;margin:0">⚠ ${esc(a)}</p>`).join('')}
       ${comValores.length ? `<div class="benef-base">
         <b>Valores por colaborador encontrados na planilha</b> <small>marque os itens que devem vir da planilha · valor = R$ do colaborador · 0 = não recebe · vazio = segue a regra da filial</small>
-        ${[['Remuneração e rescisão', 'entram sem dissídio, como o salário, e sobem com o dissídio da filial; férias, 13º e encargos são calculados sobre eles', r => RUBRICAS[IDX[r]].grupo !== 'beneficios'],
-          ['Benefícios', 'cada valor segue a periodicidade do item nas premissas (todo mês, 1x no ano…) e recebe o reajuste de benefícios da filial', r => RUBRICAS[IDX[r]].grupo === 'beneficios']]
+        ${[['Remuneração e rescisão', 'entram sem dissídio, como o salário, e sobem com o dissídio da filial; férias, 13º e encargos são calculados sobre eles', r => RUBRICAS[IDX[r]].natureza !== 'beneficios'],
+          ['Benefícios', 'cada valor segue a periodicidade do item nas premissas (todo mês, 1x no ano…) e recebe o reajuste de benefícios da filial', r => RUBRICAS[IDX[r]].natureza === 'beneficios']]
           .map(([titulo, dica, f]) => comValores.filter(f).length ? `<div class="benef-grupo"><span><b>${titulo}</b><small>${dica}</small></span><div class="chips">${comValores.filter(f).map(r => `<label class="chip ok"><input type="checkbox" data-usar="${r}" checked> ${esc(RUBRICAS[IDX[r]].nome)} <small>(${linhas.filter(l => l.valores_base?.[r]?.metodo === 'fixo').length})${quandoGeral(r)}</small></label>`).join('')}</div></div>` : '').join('')}
         ${lidas.filter(l => l.comDiss).map(l => `<p style="margin:.3rem 0 0;color:#b54d12">ℹ ${esc(l.arquivo)}: a remuneração está calculada sobre o salário com dissídio — a ferramenta tira o dissídio desses valores, porque aplica o da filial no mês da data-base.</p>`).join('')}
-        <small>PPR, cesta natalina e o grupo Demais (endomarketing, treinamento…) continuam pelas premissas.</small></div>` : ''}
+        <small>PPR, cesta natalina e as despesas gerais (endomarketing, treinamento…) continuam pelas premissas.</small></div>` : ''}
       <div class="chips">${Object.entries(porReg).map(([r, f]) => `<span class="chip">${esc(r)} · ${f.size} filiais</span>`).join('')}</div>
       ${semRegional ? `<p style="color:#b54d12">⚠ ${semRegional} linha(s) sem regional — serão ignoradas.</p>` : ''}
       <div class="linha">
@@ -3732,7 +3736,7 @@ function conferirRealizadoAnt({ presentes, linhas }) {
   const sugF = f => (mapa.filiais && f in mapa.filiais ? mapa.filiais[f] : filialParecida(f));
   const sugE = e => (mapa.eventos && e in mapa.eventos ? mapa.eventos[e] : contaDoEvento(e));
   const optsF = sel => `<option value="">— ignorar —</option>${Object.keys(E.dados.filiais).sort().map(f => `<option ${f === sel ? 'selected' : ''}>${esc(f)}</option>`).join('')}`;
-  const optsE = sel => `<option value="">— ignorar —</option>${RUBRICAS.filter(r => r.grupo === 'beneficios').map(r => `<option value="${r.id}" ${r.id === sel ? 'selected' : ''}>${esc(r.nome)}</option>`).join('')}`;
+  const optsE = sel => `<option value="">— ignorar —</option>${RUBRICAS.filter(r => r.natureza === 'beneficios').map(r => `<option value="${r.id}" ${r.id === sel ? 'selected' : ''}>${esc(r.nome)}</option>`).join('')}`;
   const faltam = MESES.map((m, i) => (presentes.includes(i) ? '' : m)).filter(Boolean);
   const d = abrirModal({
     titulo: `Benefícios realizados ${a}`, sup: 'HISTÓRICO', largo: true,
@@ -4247,7 +4251,7 @@ function montarProprias(d, c) {
     div.dataset.origem = e.origem || '';
     div.addEventListener('change', () => { div.dataset.origem = ''; });
     div.innerHTML = `
-      <select class="campo" data-p="rub"><option value="">Escolha o item…</option>${GRUPOS.filter(g => g.id !== 'provisoes' && g.id !== 'encargos').map(g => `<optgroup label="${g.nome}">${RUBRICAS.filter(r => r.grupo === g.id && !r.fixa && !r.soLancamento).map(r => `<option value="${r.id}" ${r.id === rub ? 'selected' : ''}>${esc(r.nome)}</option>`).join('')}</optgroup>`).join('')}</select>
+      <select class="campo" data-p="rub"><option value="">Escolha o item…</option>${GRUPOS.map(g => `<optgroup label="${g.nome}">${RUBRICAS.filter(r => r.grupo === g.id && r.natureza !== 'provisoes' && r.natureza !== 'encargos' && !r.fixa && !r.soLancamento).map(r => `<option value="${r.id}" ${r.id === rub ? 'selected' : ''}>${esc(r.nome)}</option>`).join('')}</optgroup>`).join('')}</select>
       <select class="campo" data-p="metodo">${Object.entries(TIPOS_PROPRIA).map(([k, v]) => `<option value="${k}" ${k === e.metodo ? 'selected' : ''}>${v}</option>`).join('')}</select>
       <input class="campo" type="number" step="any" data-p="valor" value="${e.valor ?? ''}" placeholder="valor" ${e.metodo === 'nao' ? 'disabled' : ''}>
       <button type="button" class="btn-ic" data-p="rem" title="Remover">✕</button>
@@ -4639,10 +4643,7 @@ function pacoteDoItem(cfg, rub) {
   if (PROVISOES_TRAB.has(rub)) return provisoes;
   const terceiros = cfg.pacotes.find(p => /TERCEIR/i.test(p));
   if (rub === 'servicos' && terceiros) return terceiros;
-  const grupo = RUBRICAS[IDX[rub]].grupo;
-  if (grupo === 'beneficios' && rub !== 'ppr') return beneficios;
-  if (grupo === 'demais') return beneficios;
-  return pessoal;
+  return RUBRICAS[IDX[rub]].grupo === 'beneficios' ? beneficios : pessoal;
 }
 
 const codigoDe = rotulo => String(rotulo || '').split(' - ')[0].trim();
@@ -4987,7 +4988,7 @@ function baixarContabil(cfg) {
 
 // ---------- Outros lançamentos (custos fora dos colaboradores) ----------
 
-const RUBS_LANC = RUBRICAS.filter(r => !r.fixa && r.grupo !== 'encargos');
+const RUBS_LANC = RUBRICAS.filter(r => !r.fixa && r.natureza !== 'encargos');
 const nomeItemLanc = id => (id === 'outras' ? 'Outra conta' : RUBRICAS[IDX[id]]?.nome || id);
 const noFiltroLanc = l => (l.regional === '*' || noSel('regional', l.regional)) && noSel('filial', l.filial)
   && (!l.filial || bateUf(l.filial)) && noSel('cc', String(l.cc_cod || ''));
@@ -5070,7 +5071,7 @@ function editarLancamento(l) {
       <label class="rotulo">Centro de custo<input class="campo" name="cc" list="lanc-ccs" value="${esc(ccAtual)}" placeholder="digite o código ou escolha na lista">
         <datalist id="lanc-ccs">${[...ccsBase, ...cfg.ccs].map(c => `<option value="${esc(c)}">`).join('')}</datalist><small>Lista com os CCs da base e os da contabilidade (ex.: 25506).</small></label>
       <label class="rotulo">Item<select class="campo" name="rubrica"><option value="outras" ${a.rubrica === 'outras' ? 'selected' : ''}>Outra conta (escolha a conta contábil)</option>
-        ${GRUPOS.filter(g => g.id !== 'encargos').map(g => `<optgroup label="${g.nome}">${RUBS_LANC.filter(r => r.grupo === g.id && !r.soLancamento).map(r => `<option value="${r.id}" ${r.id === a.rubrica ? 'selected' : ''}>${esc(r.nome)}</option>`).join('')}</optgroup>`).join('')}</select></label>
+        ${GRUPOS.map(g => `<optgroup label="${g.nome}">${RUBS_LANC.filter(r => r.grupo === g.id && !r.soLancamento).map(r => `<option value="${r.id}" ${r.id === a.rubrica ? 'selected' : ''}>${esc(r.nome)}</option>`).join('')}</optgroup>`).join('')}</select></label>
       <label class="rotulo">Conta contábil<input class="campo" name="conta" list="lanc-contas" value="${esc(a.conta)}">
         <datalist id="lanc-contas">${(cfg.contas.length ? cfg.contas : Object.values(CONTA_SUGERIDA)).map(c => `<option value="${esc(c)}">`).join('')}</datalist><small id="lanc-conta-dica"></small></label>
       <label class="rotulo">Pacote<select class="campo" name="pacote"><option value="">— o do item —</option>${cfg.pacotes.map(p => `<option ${p === a.pacote ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></label>

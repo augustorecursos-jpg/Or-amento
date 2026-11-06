@@ -2,7 +2,7 @@
 // motivos de aumento. Respeita os filtros do topo (regional, estado, filial, centro de custo e conta).
 /* global E, Motor, RUBRICAS, GRUPOS, MESES, RN, Graficos, brl0, num0, totalDe, somaRub, anoAnt, rotulosAnt, notaProjecao,
    notaProvisaoAnt, notaRealizadoAnt, escopoFiltro, ccFiltrado, nomeContaFiltro, noFiltro, rotuloCc, decomporConta,
-   textoSimplesPorQueMudou, textoPctReajuste, filiaisComRascunho, lancamentosComoLinhas, GRUPOS_CMP, GRUPOS_CMP_TXT, toast */
+   textoSimplesPorQueMudou, textoPctReajuste, filiaisComRascunho, lancamentosComoLinhas, GRUPOS_CMP_TXT, FORA_CMP_TXT, toast, linhasMemoria, MEMORIA_GRUPO */
 
 function carregarPptx() {
   if (window.PptxGenJS) return Promise.resolve(window.PptxGenJS);
@@ -50,7 +50,7 @@ function dadosApresentacao() {
   Object.assign(x, { a0, a1, d: a1.total - a0.total, demais: tot.total - a1.total });
   x.hc0 = a0.hc.reduce((a, b) => a + b, 0) / 12;
   x.hc1 = a1.hc.reduce((a, b) => a + b, 0) / 12;
-  x.gruposCmp = GRUPOS.filter(g => GRUPOS_CMP.has(g.id)).map(g => ({ g, v0: grupo(a0, g.id), v1: grupo(a1, g.id) })).filter(y => y.v0 || y.v1).map(y => ({ ...y, d: y.v1 - y.v0 }));
+  x.gruposCmp = GRUPOS.map(g => ({ g, v0: grupo(a0, g.id), v1: grupo(a1, g.id) })).filter(y => y.v0 || y.v1).map(y => ({ ...y, d: y.v1 - y.v0 }));
   x.contas = RUBRICAS.map((r, k) => ({ r, k, v0: somaRub(a0, k), v1: somaRub(a1, k) })).map(y => ({ ...y, d: y.v1 - y.v0 }))
     .filter(y => Math.abs(y.v0) + Math.abs(y.v1) >= 0.5).sort((p, q) => q.d - p.d);
   // O que explica a variação (todas as contas comparadas): pessoas, reajustes, custo por pessoa e lançamentos
@@ -105,7 +105,7 @@ function montarApresentacao(Pptx, x) {
     s.addShape(pptx.ShapeType.rect, { x: 0, y: 0, w: W, h: 0.12, fill: { color: PPT.marinho }, line: { color: PPT.marinho } });
     s.addShape(pptx.ShapeType.rect, { x: 0.5, y: 0.42, w: 0.08, h: 0.62, fill: { color: PPT.laranja }, line: { color: PPT.laranja } });
     s.addText(titulo, { ...F, x: 0.7, y: 0.32, w: 11.9, h: 0.5, fontSize: 24, bold: true, color: PPT.marinho, margin: 0 });
-    if (sub) s.addText(sub, { ...F, x: 0.7, y: 0.8, w: 11.9, h: 0.32, fontSize: 12, color: PPT.cinza, margin: 0 });
+    if (sub) s.addText(sub, { ...F, x: 0.7, y: 0.8, w: 11.9, h: sub.length > 120 ? 0.7 : 0.32, fontSize: sub.length > 120 ? 10 : 12, color: PPT.cinza, margin: 0, valign: 'top' });
     pagina++;
     s.addShape(pptx.ShapeType.line, { x: 0.5, y: 7.02, w: W - 1, h: 0, line: { color: PPT.linha, width: 0.75 } });
     s.addText(`Orçamento de Pessoal ${x.ano} · ${x.escopo}`, { ...F, x: 0.5, y: 7.07, w: 10, h: 0.28, fontSize: 9, color: PPT.cinza, margin: 0 });
@@ -120,11 +120,12 @@ function montarApresentacao(Pptx, x) {
     if (nota) s.addText(nota, { ...F, x: cx + 0.22, y: y + 0.98, w: w - 0.35, h: h - 1.05, fontSize: 10, color: PPT.cinza, margin: 0, valign: 'top' });
   };
   // Tabela com cabeçalho marinho e números à direita
-  const tabela = (s, linhas, opts) => {
-    const cab = linhas[0].map((t, i) => ({ text: t, options: { bold: true, color: 'FFFFFF', fill: { color: PPT.marinho }, align: i ? 'right' : 'left' } }));
+  const tabela = (s, linhas, { esq = [0], ...opts }) => {
+    const al = i => (esq.includes(i) ? 'left' : 'right');
+    const cab = linhas[0].map((t, i) => ({ text: t, options: { bold: true, color: 'FFFFFF', fill: { color: PPT.marinho }, align: al(i) } }));
     const corpo = linhas.slice(1).map((l, j) => l.map((c, i) => {
       const o = typeof c === 'object' && c !== null ? c : { text: String(c) };
-      return { text: o.text, options: { align: i ? 'right' : 'left', fill: { color: j % 2 ? 'FFFFFF' : 'F8FAFC' }, ...(o.options || {}) } };
+      return { text: o.text, options: { align: al(i), fill: { color: j % 2 ? 'FFFFFF' : 'F8FAFC' }, ...(o.options || {}) } };
     }));
     s.addTable([cab, ...corpo], { ...F, fontSize: 10, color: '1F2937', border: { type: 'solid', pt: 0.5, color: PPT.linha }, margin: 0.05, ...opts });
   };
@@ -150,7 +151,7 @@ function montarApresentacao(Pptx, x) {
     const s = novoSlide('Resumo executivo', x.temAnt ? `Orçamento ${x.ano} × realizado ${x.ant}` : `Orçamento ${x.ano}`);
     const cw = 2.95, gap = 0.17, y = 1.35;
     if (x.temAnt) {
-      cartao(s, { x: 0.5, y, w: cw, h: 1.75, rotulo: `Orçamento ${x.ano} (total)`, valor: brl0.format(x.tot.total), nota: `inclui Demais (${pptMi(x.demais)})` });
+      cartao(s, { x: 0.5, y, w: cw, h: 1.75, rotulo: `Orçamento ${x.ano} (total)`, valor: brl0.format(x.tot.total), nota: `inclui despesas gerais (${pptMi(x.demais)})` });
       cartao(s, { x: 0.5 + (cw + gap), y, w: cw, h: 1.75, rotulo: `Variação sobre ${x.ant}`, valor: `${pptDelta(x.d)}`, nota: `${pptPct(x.d, x.a0.total)} · ${pptMi(x.a0.total)} → ${pptMi(x.a1.total)} (${GRUPOS_CMP_TXT})`, cor: x.d > 0 ? PPT.laranja : PPT.desce });
       cartao(s, { x: 0.5 + 2 * (cw + gap), y, w: cw, h: 1.75, rotulo: 'Headcount médio', valor: `${num0.format(x.hc0)} → ${num0.format(x.hc1)}`, nota: `${pptSinal(x.hc1 - x.hc0)}${num0.format(Math.abs(x.hc1 - x.hc0))} pessoa(s) em média${x.vagas ? ` · ${x.vagas} vaga(s) prevista(s)` : ''}`, cor: PPT.azul });
       const m0 = x.hc0 ? x.a0.total / x.hc0 / 12 : 0, m1 = x.hc1 ? x.a1.total / x.hc1 / 12 : 0;
@@ -218,7 +219,7 @@ function montarApresentacao(Pptx, x) {
         ...x.gruposCmp.map(y => [y.g.nome, pptMi(y.v0), pptMi(y.v1), ...delta(y.d, y.v0)]),
         [negrito('Total'), negrito(pptMi(x.a0.total)), negrito(pptMi(x.a1.total)), ...delta(x.d, x.a0.total)]],
       { x: 0.5, y: 1.75, w: 6.1, colW: [1.7, 1.15, 1.15, 1.2, 0.9], fontSize: 11, rowH: 0.36 });
-      if (Math.abs(x.demais) >= 0.5) s.addText(`Demais (treinamento, viagens, serviços…) fica fora do comparativo: ${pptMi(x.demais)} em ${x.ano}.`, { ...F, x: 0.5, y: 4.15, w: 6.1, h: 0.5, fontSize: 10, italic: true, color: PPT.cinza, margin: 0 });
+      if (Math.abs(x.demais) >= 0.5) s.addText(`As ${FORA_CMP_TXT} ficam fora do comparativo: ${pptMi(x.demais)} em ${x.ano}.`, { ...F, x: 0.5, y: 4.15, w: 6.1, h: 0.5, fontSize: 10, italic: true, color: PPT.cinza, margin: 0 });
 
       // Motivos (barras proporcionais)
       s.addText('Por motivo', { ...F, x: 7.05, y: 1.3, w: 5.8, h: 0.35, fontSize: 14, bold: true, color: PPT.marinho, margin: 0 });
@@ -328,13 +329,30 @@ function montarApresentacao(Pptx, x) {
       diss ? `Dissídio: ${diss}.` : 'Sem dissídio lançado nas filiais selecionadas.',
       ben ? `Reajuste de benefícios: ${ben}.` : '',
       x.vagas ? `${x.vagas} vaga(s) prevista(s) no orçamento ${x.ano}, a partir do mês de abertura de cada uma.` : '',
-      x.temAnt ? `O comparativo com ${x.ant} considera ${GRUPOS_CMP_TXT}; o grupo Demais (treinamento, viagens, serviços…) fica fora.` : '',
+      x.temAnt ? `O comparativo com ${x.ant} considera ${GRUPOS_CMP_TXT}; as ${FORA_CMP_TXT} ficam fora.` : '',
       x.temAnt && notaProjecao() ? `${notaProjecao()}.` : '',
       x.temAnt && notaProvisaoAnt() ? `${notaProvisaoAnt()}.` : '',
       x.temAnt && notaRealizadoAnt() ? notaRealizadoAnt() : '',
       'Encargos, provisões (férias e 13º) e benefícios seguem as premissas e regras de cada filial cadastradas na ferramenta.',
     ].filter(Boolean);
     s.addText(itens.map(t => ({ text: t, options: { bullet: { indent: 18 }, paraSpaceAfter: 10 } })), { ...F, x: 0.6, y: 1.35, w: 12.1, h: 5.5, fontSize: 14, color: '1F2937', valign: 'top', margin: 0.05, fit: 'shrink' });
+  }
+
+  // Anexo: memória de cálculo das contas com valor, por grupo (7 contas por slide)
+  for (const { g, contas } of linhasMemoria()) {
+    const comValor = contas.filter(c => Math.abs(c.v1) >= 0.5 || Math.abs(c.v0 || 0) >= 0.5);
+    for (let i = 0; i < comValor.length; i += 7) {
+      const parte = comValor.slice(i, i + 7);
+      const s = novoSlide(`Anexo · Memória de cálculo · ${g.nome}`, i ? 'continuação' : MEMORIA_GRUPO[g.id]);
+      tabela(s, [['Conta', 'O que é e como calculamos', ...(x.temAnt ? [String(x.ant)] : []), String(x.ano)],
+        ...parte.map(c => [
+          { text: [{ text: c.r.nome, options: { bold: true, breakLine: true } }, { text: c.conta || '', options: { fontSize: 8, color: PPT.cinza } }] },
+          { text: [{ text: `${c.oque} `, options: { bold: true } }, { text: c.como }] },
+          ...(x.temAnt ? [c.v0 == null ? { text: 'fora do comparativo', options: { fontSize: 8, color: PPT.cinza } } : pptMi(c.v0)] : []),
+          negrito(pptMi(c.v1)),
+        ])],
+      { x: 0.5, y: i ? 1.3 : 1.55, w: 12.3, colW: x.temAnt ? [2.6, 7.3, 1.2, 1.2] : [2.6, 8.5, 1.2], fontSize: 9, valign: 'middle', esq: [0, 1] });
+    }
   }
   return pptx;
 }

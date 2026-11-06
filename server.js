@@ -270,7 +270,8 @@ app.get('/api/dados', exigirLogin, (req, res) => {
   const anteriorContas = db.prepare('SELECT * FROM ano_anterior_contas ORDER BY filial, rubrica').all()
     .filter(a => u.admin || filiais[a.filial])
     .map(a => ({ ...a, meses: (() => { try { return JSON.parse(a.meses); } catch { return []; } })() }));
-  res.json({ config, colaboradores, filiais, premissas, niveis, lancamentos, linhasLanc, anterior, anteriorContas });
+  const contasItens = lerContabil().mapa_rubricas || {}; // conta contábil de cada item (memória de cálculo e simulação)
+  res.json({ config, colaboradores, filiais, premissas, niveis, lancamentos, linhasLanc, anterior, anteriorContas, contasItens });
 });
 
 // ----- ano anterior (histórico de salários por mês, para o comparativo) -----

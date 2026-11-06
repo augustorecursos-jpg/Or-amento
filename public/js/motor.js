@@ -37,12 +37,16 @@
 
   const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
+  // Grupos de exibição: os pacotes do relatório contábil. O cálculo usa a "natureza" de cada conta (abaixo), que não muda.
   const GRUPOS = [
-    { id: 'remuneracao', nome: 'Remuneração', cor: '#2f6fa3' },
-    { id: 'provisoes', nome: 'Provisões', cor: '#ec6b24' },
-    { id: 'encargos', nome: 'Encargos', cor: '#2a9d8f' },
+    { id: 'pessoal', nome: 'Pessoal', cor: '#2f6fa3' },
+    { id: 'provisoes', nome: 'Provisões trabalhistas', cor: '#ec6b24' },
     { id: 'beneficios', nome: 'Benefícios', cor: '#8b5fbf' },
-    { id: 'demais', nome: 'Demais', cor: '#b58a12' },
+  ];
+  // Natureza (para o cálculo): remuneração, provisões, encargos, benefícios e demais despesas.
+  const NATUREZAS = [
+    { id: 'remuneracao', nome: 'Remuneração' }, { id: 'provisoes', nome: 'Provisões' }, { id: 'encargos', nome: 'Encargos' },
+    { id: 'beneficios', nome: 'Benefícios' }, { id: 'demais', nome: 'Demais despesas' },
   ];
 
   const P = (metodo, extra = {}) => ({ metodo, valor: 0, base: 'salario', periodo: 'mensal', mes: 12, rateio: 'hc', teto: null, por_nivel: false, niveis: {}, quem: [], ...extra });
@@ -50,60 +54,60 @@
   // Catálogo único com todas as rubricas encontradas nas planilhas das regionais.
   // A ordem importa: uma rubrica só pode usar como base o que já foi calculado antes dela.
   const RUBRICAS = [
-    { id: 'salario', nome: 'Salário', grupo: 'remuneracao', fixa: true },
-    { id: 'periculosidade', nome: 'Periculosidade', grupo: 'remuneracao', adicional: true, padrao: P('pct', { valor: 30 }) },
-    { id: 'insalubridade', nome: 'Insalubridade', grupo: 'remuneracao', adicional: true, padrao: P('nao') },
-    { id: 'penosidade', nome: 'Penosidade', grupo: 'remuneracao', adicional: true, padrao: P('nao') },
-    { id: 'adic_turno', nome: 'Adicionais de turno', grupo: 'remuneracao', adicional: true, dica: 'Inclui adicional intrajornada e passagem de turno', padrao: P('nao') },
-    { id: 'adic_noturno', nome: 'Adicional noturno', grupo: 'remuneracao', adicional: true, padrao: P('nao') },
-    { id: 'horas_extras', nome: 'Horas extras', grupo: 'remuneracao', dica: 'Custo total do ano da filial; vira média mensal por colaborador', padrao: P('rateio', { periodo: 'anual_diluido' }) },
-    { id: 'banco_horas', nome: 'Banco de horas', grupo: 'remuneracao', dica: 'Pagamento de saldo de banco de horas: total da filial, R$ por colaborador ou % — entra na base de férias, 13º, FGTS e INSS', padrao: P('nao', { periodo: 'anual_diluido' }) },
-    { id: 'promocoes', nome: 'Promoções e méritos', grupo: 'remuneracao', dica: 'Budget de aumentos por promoção e mérito: % sobre o salário a partir de um mês, ou total da filial', padrao: P('nao', { base: 'salario' }) },
+    { id: 'salario', nome: 'Salário', grupo: 'pessoal', natureza: 'remuneracao', fixa: true },
+    { id: 'periculosidade', nome: 'Periculosidade', grupo: 'pessoal', natureza: 'remuneracao', adicional: true, padrao: P('pct', { valor: 30 }) },
+    { id: 'insalubridade', nome: 'Insalubridade', grupo: 'pessoal', natureza: 'remuneracao', adicional: true, padrao: P('nao') },
+    { id: 'penosidade', nome: 'Penosidade', grupo: 'pessoal', natureza: 'remuneracao', adicional: true, padrao: P('nao') },
+    { id: 'adic_turno', nome: 'Adicionais de turno', grupo: 'pessoal', natureza: 'remuneracao', adicional: true, dica: 'Inclui adicional intrajornada e passagem de turno', padrao: P('nao') },
+    { id: 'adic_noturno', nome: 'Adicional noturno', grupo: 'pessoal', natureza: 'remuneracao', adicional: true, padrao: P('nao') },
+    { id: 'horas_extras', nome: 'Horas extras', grupo: 'pessoal', natureza: 'remuneracao', dica: 'Custo total do ano da filial; vira média mensal por colaborador', padrao: P('rateio', { periodo: 'anual_diluido' }) },
+    { id: 'banco_horas', nome: 'Banco de horas', grupo: 'pessoal', natureza: 'remuneracao', dica: 'Pagamento de saldo de banco de horas: total da filial, R$ por colaborador ou % — entra na base de férias, 13º, FGTS e INSS', padrao: P('nao', { periodo: 'anual_diluido' }) },
+    { id: 'promocoes', nome: 'Promoções e méritos', grupo: 'pessoal', natureza: 'remuneracao', dica: 'Budget de aumentos por promoção e mérito: % sobre o salário a partir de um mês, ou total da filial', padrao: P('nao', { base: 'salario' }) },
 
     // Férias, 13º, FGTS e INSS sobre salário + adicionais (periculosidade, insalubridade…) + horas extras (regra do ADM de pessoal).
     // Férias + 1/3 = base ÷ 12 + (base ÷ 12) ÷ 3 = base ÷ 9 (11,1111%).
-    { id: 'ferias', nome: 'Férias + 1/3', grupo: 'provisoes', padrao: P('pct', { valor: 100 / 9, base: 'folha' }) },
-    { id: 'decimo', nome: '13º salário', grupo: 'provisoes', padrao: P('pct', { valor: 8.3333, base: 'folha' }) },
-    { id: 'rescisao', nome: 'Rescisão', grupo: 'provisoes', padrao: P('nao') },
+    { id: 'ferias', nome: 'Férias + 1/3', grupo: 'provisoes', natureza: 'provisoes', padrao: P('pct', { valor: 100 / 9, base: 'folha' }) },
+    { id: 'decimo', nome: '13º salário', grupo: 'provisoes', natureza: 'provisoes', padrao: P('pct', { valor: 8.3333, base: 'folha' }) },
+    { id: 'rescisao', nome: 'Rescisão', grupo: 'pessoal', natureza: 'provisoes', padrao: P('nao') },
 
-    { id: 'fgts', nome: 'FGTS', grupo: 'encargos', padrao: P('pct', { valor: 8, base: 'folha' }) },
-    { id: 'fgts_ferias', nome: 'FGTS férias', grupo: 'encargos', padrao: P('pct', { valor: 8, base: 'ferias' }) },
-    { id: 'fgts_13', nome: 'FGTS 13º', grupo: 'encargos', padrao: P('pct', { valor: 8, base: 'decimo' }) },
-    { id: 'inss', nome: 'INSS', grupo: 'encargos', padrao: P('pct', { valor: 29, base: 'folha' }) },
-    { id: 'inss_ferias', nome: 'INSS férias', grupo: 'encargos', padrao: P('pct', { valor: 29, base: 'ferias' }) },
-    { id: 'inss_13', nome: 'INSS 13º', grupo: 'encargos', padrao: P('nao', { base: 'decimo' }) },
+    { id: 'fgts', nome: 'FGTS', grupo: 'pessoal', natureza: 'encargos', padrao: P('pct', { valor: 8, base: 'folha' }) },
+    { id: 'fgts_ferias', nome: 'FGTS férias', grupo: 'provisoes', natureza: 'encargos', padrao: P('pct', { valor: 8, base: 'ferias' }) },
+    { id: 'fgts_13', nome: 'FGTS 13º', grupo: 'provisoes', natureza: 'encargos', padrao: P('pct', { valor: 8, base: 'decimo' }) },
+    { id: 'inss', nome: 'INSS', grupo: 'pessoal', natureza: 'encargos', padrao: P('pct', { valor: 29, base: 'folha' }) },
+    { id: 'inss_ferias', nome: 'INSS férias', grupo: 'provisoes', natureza: 'encargos', padrao: P('pct', { valor: 29, base: 'ferias' }) },
+    { id: 'inss_13', nome: 'INSS 13º', grupo: 'provisoes', natureza: 'encargos', padrao: P('nao', { base: 'decimo' }) },
 
-    { id: 'ppr', nome: 'PPR', grupo: 'beneficios', padrao: P('multiplo', { valor: 2.4, periodo: 'anual_diluido' }) },
-    { id: 'va', nome: 'VA / VR', grupo: 'beneficios', padrao: P('fixo') },
-    { id: 'va_natal', nome: 'VA natal / 13º VR', grupo: 'beneficios', padrao: P('nao', { periodo: 'anual_mes', mes: 12 }) },
-    { id: 'vt', nome: 'Vale mobilidade', grupo: 'beneficios', dica: 'Antigo vale-transporte', padrao: P('fixo') },
-    { id: 'aux_creche', nome: 'Auxílio-creche', grupo: 'beneficios', padrao: P('nao') },
-    { id: 'educacional', nome: 'Auxílio educacional', grupo: 'beneficios', padrao: P('nao') },
-    { id: 'material_escolar', nome: 'Material escolar', grupo: 'beneficios', padrao: P('nao', { periodo: 'anual_mes', mes: 1 }) },
-    { id: 'aux_oculos', nome: 'Auxílio óculos', grupo: 'beneficios', dica: 'Valor do ano, dividido em 12 meses', padrao: P('nao', { periodo: 'anual_diluido' }) },
-    { id: 'oftalmo', nome: 'Oftalmo', grupo: 'beneficios', padrao: P('nao') },
-    { id: 'assist_medica', nome: 'Assistência médica', grupo: 'beneficios', padrao: P('fixo') },
-    { id: 'coparticipacao', nome: 'Coparticipação convênio médico', grupo: 'beneficios', padrao: P('nao') },
-    { id: 'assist_odonto', nome: 'Assistência odontológica', grupo: 'beneficios', padrao: P('fixo') },
-    { id: 'farmacia', nome: 'Farmácia', grupo: 'beneficios', padrao: P('nao') },
-    { id: 'seguro_vida', nome: 'Seguro de vida', grupo: 'beneficios', padrao: P('fixo') },
-    { id: 'previdencia', nome: 'Previdência privada', grupo: 'beneficios', padrao: P('nao') },
-    { id: 'aux_dependente', nome: 'Auxílio dependente portadores', grupo: 'beneficios', dica: 'Auxílio a dependente portador de deficiência (filho excepcional)', padrao: P('nao') },
-    { id: 'aux_matrimonio', nome: 'Auxílio matrimônio', grupo: 'beneficios', padrao: P('nao') },
-    { id: 'aux_nascituro', nome: 'Auxílio nascituro', grupo: 'beneficios', padrao: P('nao') },
-    { id: 'refeitorio', nome: 'Refeitório', grupo: 'beneficios', padrao: P('nao') },
-    { id: 'fretado', nome: 'Fretado', grupo: 'beneficios', padrao: P('nao') },
-    { id: 'fretado_overall', nome: 'Fretado (overall)', grupo: 'beneficios', padrao: P('nao') },
-    { id: 'cesta_natalina', nome: 'Cesta natalina', grupo: 'beneficios', padrao: P('fixo', { periodo: 'anual_mes', mes: 12 }) },
+    { id: 'ppr', nome: 'PPR', grupo: 'pessoal', natureza: 'beneficios', padrao: P('multiplo', { valor: 2.4, periodo: 'anual_diluido' }) },
+    { id: 'va', nome: 'VA / VR', grupo: 'beneficios', natureza: 'beneficios', padrao: P('fixo') },
+    { id: 'va_natal', nome: 'VA natal / 13º VR', grupo: 'beneficios', natureza: 'beneficios', padrao: P('nao', { periodo: 'anual_mes', mes: 12 }) },
+    { id: 'vt', nome: 'Vale mobilidade', grupo: 'beneficios', natureza: 'beneficios', dica: 'Antigo vale-transporte', padrao: P('fixo') },
+    { id: 'aux_creche', nome: 'Auxílio-creche', grupo: 'beneficios', natureza: 'beneficios', padrao: P('nao') },
+    { id: 'educacional', nome: 'Auxílio educacional', grupo: 'beneficios', natureza: 'beneficios', padrao: P('nao') },
+    { id: 'material_escolar', nome: 'Material escolar', grupo: 'beneficios', natureza: 'beneficios', padrao: P('nao', { periodo: 'anual_mes', mes: 1 }) },
+    { id: 'aux_oculos', nome: 'Auxílio óculos', grupo: 'beneficios', natureza: 'beneficios', dica: 'Valor do ano, dividido em 12 meses', padrao: P('nao', { periodo: 'anual_diluido' }) },
+    { id: 'oftalmo', nome: 'Oftalmo', grupo: 'beneficios', natureza: 'beneficios', padrao: P('nao') },
+    { id: 'assist_medica', nome: 'Assistência médica', grupo: 'beneficios', natureza: 'beneficios', padrao: P('fixo') },
+    { id: 'coparticipacao', nome: 'Coparticipação convênio médico', grupo: 'beneficios', natureza: 'beneficios', padrao: P('nao') },
+    { id: 'assist_odonto', nome: 'Assistência odontológica', grupo: 'beneficios', natureza: 'beneficios', padrao: P('fixo') },
+    { id: 'farmacia', nome: 'Farmácia', grupo: 'beneficios', natureza: 'beneficios', padrao: P('nao') },
+    { id: 'seguro_vida', nome: 'Seguro de vida', grupo: 'beneficios', natureza: 'beneficios', padrao: P('fixo') },
+    { id: 'previdencia', nome: 'Previdência privada', grupo: 'beneficios', natureza: 'beneficios', padrao: P('nao') },
+    { id: 'aux_dependente', nome: 'Auxílio dependente portadores', grupo: 'beneficios', natureza: 'beneficios', dica: 'Auxílio a dependente portador de deficiência (filho excepcional)', padrao: P('nao') },
+    { id: 'aux_matrimonio', nome: 'Auxílio matrimônio', grupo: 'beneficios', natureza: 'beneficios', padrao: P('nao') },
+    { id: 'aux_nascituro', nome: 'Auxílio nascituro', grupo: 'beneficios', natureza: 'beneficios', padrao: P('nao') },
+    { id: 'refeitorio', nome: 'Refeitório', grupo: 'beneficios', natureza: 'beneficios', padrao: P('nao') },
+    { id: 'fretado', nome: 'Fretado', grupo: 'beneficios', natureza: 'beneficios', padrao: P('nao') },
+    { id: 'fretado_overall', nome: 'Fretado (overall)', grupo: 'beneficios', natureza: 'beneficios', padrao: P('nao') },
+    { id: 'cesta_natalina', nome: 'Cesta natalina', grupo: 'beneficios', natureza: 'beneficios', padrao: P('fixo', { periodo: 'anual_mes', mes: 12 }) },
 
-    { id: 'saude_ocupacional', nome: 'Saúde ocupacional', grupo: 'demais', padrao: P('nao') },
-    { id: 'endomarketing', nome: 'Endomarketing', grupo: 'demais', padrao: P('fixo', { valor: 25 }) },
-    { id: 'treinamento', nome: 'Treinamento', grupo: 'demais', padrao: P('rateio', { periodo: 'anual_diluido' }) },
-    { id: 'viagens', nome: 'Viagens', grupo: 'demais', padrao: P('rateio', { periodo: 'anual_diluido' }) },
-    { id: 'confraternizacoes', nome: 'Confraternizações', grupo: 'demais', padrao: P('fixo', { periodo: 'anual_mes', mes: 12 }) },
-    { id: 'servicos', nome: 'Serviços / Terceiros', grupo: 'demais', dica: 'Consultorias, prestadores e serviços contratados', padrao: P('nao', { rateio: 'hc', periodo: 'anual_diluido' }) },
+    { id: 'saude_ocupacional', nome: 'Saúde ocupacional', grupo: 'beneficios', natureza: 'demais', padrao: P('nao') },
+    { id: 'endomarketing', nome: 'Endomarketing', grupo: 'beneficios', natureza: 'demais', padrao: P('fixo', { valor: 25 }) },
+    { id: 'treinamento', nome: 'Treinamento', grupo: 'beneficios', natureza: 'demais', padrao: P('rateio', { periodo: 'anual_diluido' }) },
+    { id: 'viagens', nome: 'Viagens', grupo: 'beneficios', natureza: 'demais', padrao: P('rateio', { periodo: 'anual_diluido' }) },
+    { id: 'confraternizacoes', nome: 'Confraternizações', grupo: 'beneficios', natureza: 'demais', padrao: P('fixo', { periodo: 'anual_mes', mes: 12 }) },
+    { id: 'servicos', nome: 'Serviços / Terceiros', grupo: 'beneficios', natureza: 'demais', dica: 'Consultorias, prestadores e serviços contratados', padrao: P('nao', { rateio: 'hc', periodo: 'anual_diluido' }) },
     // Só para "Outros lançamentos" (consultoria, Gupy…): não tem premissa, a conta contábil vem do próprio lançamento.
-    { id: 'outras', nome: 'Outras despesas', grupo: 'demais', soLancamento: true, padrao: P('nao') },
+    { id: 'outras', nome: 'Outras despesas', grupo: 'beneficios', natureza: 'demais', soLancamento: true, padrao: P('nao') },
   ];
 
   const METODOS = {
@@ -122,7 +126,7 @@
   const MESES_SALARIO = 12;
   const IDX = Object.fromEntries(RUBRICAS.map((r, i) => [r.id, i]));
   const ADICIONAIS = RUBRICAS.map((r, i) => (r.adicional ? i : -1)).filter(i => i >= 0);
-  const REMUNERACAO = RUBRICAS.map((r, i) => (r.grupo === 'remuneracao' ? i : -1)).filter(i => i >= 0);
+  const REMUNERACAO = RUBRICAS.map((r, i) => (r.natureza === 'remuneracao' ? i : -1)).filter(i => i >= 0);
 
   /** O colaborador recebe a rubrica? (filtro "quem recebe" da premissa) */
   function elegivel(p, c, m) {
@@ -304,7 +308,7 @@
 
       for (let r = 1; r < R; r++) {
         const rub = RUBRICAS[r];
-        const ehBenef = rub.grupo === 'beneficios';
+        const ehBenef = rub.natureza === 'beneficios';
 
         // Rateio: o total é dividido entre quem está ativo no mês — da filial ou, com dividir = 'escopo' numa regra da
         // regional (ou geral), entre todas as filiais que herdam essa regra (ex.: treinamento de R$ 8 mil/mês para a regional).
@@ -356,7 +360,7 @@
               // inicio2: um 2º aumento do mesmo % a partir de outro mês, somado ao 1º (ex.: 0,40% da folha em abril e
               // mais 0,40% em outubro → abr–set 0,40%, out–dez 0,80%); o aumento fica no salário dos meses seguintes.
               v = (num(p.inicio) > 1 && m + 1 < num(p.inicio) ? 0 : 1) + (num(p.inicio2) && m + 1 >= num(p.inicio2) ? 1 : 0);
-              v *= (valorDe(p, colaboradores[i].funcao) / 100) * base(i, rub.adicional ? 'salario' : p.base, rub.grupo !== 'encargos');
+              v *= (valorDe(p, colaboradores[i].funcao) / 100) * base(i, rub.adicional ? 'salario' : p.base, rub.natureza !== 'encargos');
               if (p.teto != null && p.teto !== '' && num(p.teto) > 0) v = Math.min(v, num(p.teto));
               break;
             case 'fixo':
@@ -377,7 +381,7 @@
             default:
               v = 0;
           }
-          if (rub.grupo === 'remuneracao') { cheio[i * R + r] = v; v *= T; }
+          if (rub.natureza === 'remuneracao') { cheio[i * R + r] = v; v *= T; }
           valores[at(i, r, m)] = v;
         }
       }
@@ -408,7 +412,7 @@
         acumulado += x.valor[m];
         const folha = todos[at(i, 0, m)] + x.valor[m];
         for (let r = 1; r < R; r++) {
-          const g = RUBRICAS[r].grupo;
+          const g = RUBRICAS[r].natureza;
           const p = ps[r];
           if ((g !== 'provisoes' && g !== 'encargos') || !p || p.metodo !== 'pct') continue;
           const b = p.base === 'ferias' ? todos[at(i, IDX.ferias, m)] : p.base === 'decimo' ? todos[at(i, IDX.decimo, m)] : folha;
@@ -454,7 +458,7 @@
     return out;
   }
 
-  /** Totais por grupo (Remuneração, Provisões...) a partir de um agregado: { [grupo]: Float64Array(12) }. */
+  /** Totais por grupo (Pessoal, Provisões trabalhistas, Benefícios) a partir de um agregado: { [grupo]: Float64Array(12) }. */
   function porGrupo(ag) {
     const out = Object.fromEntries(GRUPOS.map(g => [g.id, new Float64Array(12)]));
     RUBRICAS.forEach((rub, r) => {
@@ -463,5 +467,5 @@
     return out;
   }
 
-  return { MESES_SALARIO, MESES, GRUPOS, RUBRICAS, METODOS, BASES, PERIODOS, IDX, premissaDe, origemDe, elegivel, aplicarExcecao, multiploDe, valorDe, calcular, agregar, porGrupo };
+  return { MESES_SALARIO, MESES, GRUPOS, NATUREZAS, RUBRICAS, METODOS, BASES, PERIODOS, IDX, premissaDe, origemDe, elegivel, aplicarExcecao, multiploDe, valorDe, calcular, agregar, porGrupo };
 });
