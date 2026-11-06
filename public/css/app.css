@@ -757,3 +757,17 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
   .mem-tabela tr { break-inside: avoid; }
   .tabela-wrap { max-height: none !important; overflow: visible !important; }
 }
+
+/* Rosca do painel com as contas de cada grupo */
+.rosca.rosca-grande { grid-template-columns: minmax(150px, 40%) minmax(0, 1fr); gap: 1.2rem; }
+.rosca.rosca-grande svg { max-width: 260px; justify-self: center; }
+.comp-lista-det .comp-item { grid-template-columns: 12px minmax(0, 1fr) auto auto; }
+.comp-lista-det { display: flex; flex-direction: column; gap: .9rem; }
+.comp-bloco .comp-item { font-size: .95rem; }
+.comp-bloco .comp-item span { font-weight: 700; color: var(--marinho); }
+.comp-sub { display: grid; grid-template-columns: minmax(0, 1fr) 46px 50px; gap: .5rem; align-items: center; font-size: .78rem; color: var(--texto-suave); padding: .12rem 0 .12rem 1.3rem; }
+.comp-sub span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.comp-sub b { text-align: right; color: #334155; font-weight: 600; }
+.comp-sub-barra { height: 6px; border-radius: 3px; background: #eef2f6; overflow: hidden; }
+.comp-sub-barra i { display: block; height: 100%; border-radius: 3px; opacity: .75; }
+@media (max-width: 900px) { .rosca.rosca-grande { grid-template-columns: 1fr; justify-items: center; } .rosca.rosca-grande .comp-lista-det { width: 100%; } }

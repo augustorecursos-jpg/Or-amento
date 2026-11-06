@@ -128,12 +128,22 @@ const Graficos = (() => {
       acum += frac;
       return arco;
     }).join('');
-    el.innerHTML = `<div class="rosca">
+    const pct = v => `${((v / total) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+    // Com "itens" em cada parte: abaixo de cada grupo, as contas que mais pesam, com barra proporcional ao grupo
+    const comItens = partes.some(p => p.itens?.length);
+    const lista = comItens
+      ? `<div class="comp-lista comp-lista-det">${partes.filter(p => p.valor > 0).map(p => {
+        const maxI = Math.max(...(p.itens || []).map(x => x.valor), 1);
+        return `<div class="comp-bloco"><div class="comp-item"><i style="background:${p.cor}"></i><span>${esc(p.nome)}</span><b>${curto(p.valor)}</b><small>${pct(p.valor)}</small></div>
+          ${(p.itens || []).map(x => `<div class="comp-sub" title="${esc(x.nome)}: ${brl.format(x.valor)}"><span>${esc(x.nome)}</span><div class="comp-sub-barra"><i style="width:${(x.valor / maxI) * 100}%;background:${p.cor}"></i></div><b>${curto(x.valor)}</b></div>`).join('')}</div>`;
+      }).join('')}</div>`
+      : `<div class="comp-lista">${partes.map(p => `
+        <div class="comp-item"><i style="background:${p.cor}"></i><span>${esc(p.nome)}</span><b>${curto(p.valor)}</b><small>${pct(p.valor)}</small></div>`).join('')}</div>`;
+    el.innerHTML = `<div class="rosca${comItens ? ' rosca-grande' : ''}">
       <svg viewBox="0 0 220 220" role="img" aria-label="Composição do custo">${arcos}
         <text x="110" y="106" text-anchor="middle" class="rosca-valor">${esc(centro)}</text>
         <text x="110" y="128" text-anchor="middle" class="rosca-sub">${esc(sub)}</text></svg>
-      <div class="comp-lista">${partes.map(p => `
-        <div class="comp-item"><i style="background:${p.cor}"></i><span>${esc(p.nome)}</span><b>${curto(p.valor)}</b><small>${((p.valor / total) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%</small></div>`).join('')}</div>
+      ${lista}
     </div>`;
     ligarDicas(el, k => `<b>${esc(visiveis[k].nome)}</b><br>${brl.format(visiveis[k].valor)} · ${((visiveis[k].valor / total) * 100).toFixed(1)}%`);
   }

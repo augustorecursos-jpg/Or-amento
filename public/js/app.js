@@ -564,7 +564,13 @@ function renderPainel() {
     series: GRUPOS.map(g => ({ nome: g.nome, cor: g.cor, valores: [...grupos[g.id]] })),
     destaque: mesesDiss,
   });
-  Graficos.rosca($('#g-comp', el), GRUPOS.map(g => ({ nome: g.nome, cor: g.cor, valor: somaG(g.id) })), { centro: Graficos.curto(ag.total), sub: 'no ano' });
+  // Cada grupo com as 3 contas que mais pesam (o resto em "outras")
+  const itensDo = g => {
+    const cs = RUBRICAS.map((r, k) => ({ nome: r.nome, valor: somaRub(ag, k), g: r.grupo })).filter(x => x.g === g && x.valor >= 0.5).sort((a, b) => b.valor - a.valor);
+    const resto = cs.slice(3).reduce((s, x) => s + x.valor, 0);
+    return [...cs.slice(0, 3), ...(resto >= 0.5 ? [{ nome: `Outras (${cs.length - 3})`, valor: resto }] : [])];
+  };
+  Graficos.rosca($('#g-comp', el), GRUPOS.map(g => ({ nome: g.nome, cor: g.cor, valor: somaG(g.id), itens: itensDo(g.id) })), { centro: Graficos.curto(ag.total), sub: 'no ano' });
   Graficos.ponte($('#g-ponte', el), passos, { total: ag.total });
 
   // Cards por regional / filial / centro de custo, com minigráfico do ano
