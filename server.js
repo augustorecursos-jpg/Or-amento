@@ -91,7 +91,9 @@ function usuarioDaSessao(req) {
   let regionais = JSON.parse(u.regionais || '[]');
   const todas = regionais.includes('*'); // '*' = todas as regionais, inclusive as que entrarem depois
   if (todas) regionais = db.prepare('SELECT DISTINCT regional FROM filiais ORDER BY regional').all().map(r => r.regional);
-  return { admin: false, id: u.id, nome: u.nome, login: u.login, regionais, todas, leitura: u.perfil === 'leitura' };
+  // financeiro: só visualização e só totais (sem dados que identifiquem colaborador)
+  const financeiro = u.perfil === 'financeiro';
+  return { admin: false, id: u.id, nome: u.nome, login: u.login, regionais, todas, leitura: u.perfil === 'leitura' || financeiro, financeiro };
 }
 
 /** Acesso somente de visualização (ex.: gerente): não confere filial nem envia pedidos. */
@@ -236,8 +238,8 @@ app.post('/api/logout', (req, res) => {
 });
 
 app.get('/api/eu', exigirLogin, (req, res) => {
-  const { admin, nome, login, regionais, todas, leitura } = req.usuario;
-  res.json({ admin, nome, login, regionais, todas: Boolean(todas), leitura: Boolean(leitura) });
+  const { admin, nome, login, regionais, todas, leitura, financeiro } = req.usuario;
+  res.json({ admin, nome, login, regionais, todas: Boolean(todas), leitura: Boolean(leitura), financeiro: Boolean(financeiro) });
 });
 
 // ----- dados do orçamento (base + premissas) -----
@@ -271,6 +273,20 @@ app.get('/api/dados', exigirLogin, (req, res) => {
     .filter(a => u.admin || filiais[a.filial])
     .map(a => ({ ...a, meses: (() => { try { return JSON.parse(a.meses); } catch { return []; } })() }));
   const contasItens = lerContabil().mapa_rubricas || {}; // conta contábil de cada item (memória de cálculo e simulação)
+  if (u.financeiro) {
+    // Perfil financeiro: nome, matrícula, gestor e datas pessoais não saem do servidor. Matrícula e nome viram códigos
+    // (HMAC) que continuam casando a base com o histórico do ano anterior, sem permitir voltar ao original.
+    const cod = (t, n = 10) => crypto.createHmac('sha256', SESSION_SECRET).update(String(t)).digest('hex').slice(0, n).toUpperCase();
+    const anon = c => {
+      const mat = c.matricula ? cod(`m|${c.matricula}`) : '';
+      const nome = c.vaga ? 'Vaga' : cod(`n|${c.matricula}|${String(c.nome || '').trim().toUpperCase()}`, 12);
+      const out = { ...c, matricula: mat, nome, gestor: '' };
+      for (const k of ['cpf', 'admissao', 'nascimento', 'email']) if (k in out) out[k] = '';
+      return out;
+    };
+    colaboradores.splice(0, colaboradores.length, ...colaboradores.map(anon));
+    anterior.splice(0, anterior.length, ...anterior.map(anon));
+  }
   res.json({ config, colaboradores, filiais, premissas, niveis, lancamentos, linhasLanc, anterior, anteriorContas, contasItens });
 });
 
@@ -818,7 +834,11 @@ function lerContabil() {
   };
 }
 
-app.get('/api/contabil', exigirAdmin, (req, res) => res.json(lerContabil()));
+// Leitura das listas e vínculos: administrador e perfil financeiro (que baixa o relatório, sem alterar nada)
+app.get('/api/contabil', exigirLogin, (req, res) => {
+  if (!req.usuario.admin && !req.usuario.financeiro) return res.status(403).json({ erro: 'Acesso restrito.' });
+  res.json(lerContabil());
+});
 
 app.put('/api/contabil', exigirAdmin, (req, res) => {
   const atual = lerContabil();
@@ -858,6 +878,7 @@ app.get('/api/usuarios', exigirAdmin, (req, res) => {
   res.json(lista);
 });
 
+const PERFIS = ['coordenador', 'leitura', 'financeiro'];
 app.post('/api/usuarios', exigirAdmin, (req, res) => {
   const nome = texto(req.body?.nome, 120);
   const login = texto(req.body?.login, 80).toLowerCase();
@@ -866,9 +887,9 @@ app.post('/api/usuarios', exigirAdmin, (req, res) => {
   if (!nome || !login || login === 'admin') return res.status(400).json({ erro: 'Informe nome e um login diferente de "admin".' });
   if (senha.length < 6) return res.status(400).json({ erro: 'A senha precisa ter pelo menos 6 caracteres.' });
   if (db.prepare('SELECT 1 FROM usuarios WHERE login = ?').get(login)) return res.status(400).json({ erro: 'Este login já existe.' });
-  const perfil = req.body?.perfil === 'leitura' ? 'leitura' : 'coordenador';
+  const perfil = PERFIS.includes(req.body?.perfil) ? req.body.perfil : 'coordenador';
   db.prepare('INSERT INTO usuarios (nome, login, senha_hash, regionais, perfil) VALUES (?, ?, ?, ?, ?)').run(nome, login, hashSenha(senha), JSON.stringify(regionais), perfil);
-  registrar('Administrador', perfil === 'leitura' ? 'Criou acesso somente visualização' : 'Criou acesso de coordenador', `${nome} (${login}) · ${regionais.join(', ').replace('*', 'todas as regionais')}`);
+  registrar('Administrador', { leitura: 'Criou acesso somente visualização', financeiro: 'Criou acesso financeiro (só totais)' }[perfil] || 'Criou acesso de coordenador', `${nome} (${login}) · ${regionais.join(', ').replace('*', 'todas as regionais')}`);
   res.json({ ok: true });
 });
 
@@ -878,7 +899,7 @@ app.put('/api/usuarios/:id', exigirAdmin, (req, res) => {
   const nome = texto(req.body?.nome, 120) || u.nome;
   const regionais = Array.isArray(req.body?.regionais) ? req.body.regionais.map(r => texto(r, 80).toUpperCase()).filter(Boolean) : JSON.parse(u.regionais);
   const ativo = req.body?.ativo == null ? u.ativo : (req.body.ativo ? 1 : 0);
-  const perfil = req.body?.perfil == null ? u.perfil : req.body.perfil === 'leitura' ? 'leitura' : 'coordenador';
+  const perfil = req.body?.perfil == null ? u.perfil : PERFIS.includes(req.body.perfil) ? req.body.perfil : 'coordenador';
   let hash = u.senha_hash;
   if (req.body?.senha) {
     if (String(req.body.senha).length < 6) return res.status(400).json({ erro: 'A senha precisa ter pelo menos 6 caracteres.' });
@@ -901,6 +922,7 @@ app.delete('/api/usuarios/:id', exigirAdmin, (req, res) => {
 
 app.get('/api/solicitacoes', exigirLogin, (req, res) => {
   const u = req.usuario;
+  if (u.financeiro) return res.json([]); // pedidos citam colaboradores
   const lista = db.prepare('SELECT * FROM solicitacoes ORDER BY CASE status WHEN \'aberta\' THEN 0 WHEN \'em_analise\' THEN 1 ELSE 2 END, id DESC').all()
     .filter(s => podeVerRegional(u, s.regional));
   res.json(lista);

@@ -1032,7 +1032,7 @@ function numerosHc(lista) {
 
 function desenharHeadcount(el, col) {
   const n = numerosHc(col);
-  const dimsVisiveis = Object.entries(DIMS_HC).filter(([k]) => !(k === 'regional' && E.filtro.regional));
+  const dimsVisiveis = Object.entries(DIMS_HC).filter(([k]) => !(k === 'regional' && E.filtro.regional) && !(k === 'gestor' && soTotais()));
   if (!dimsVisiveis.some(([k]) => k === E.hc.dim)) E.hc.dim = 'filial';
   const dim = DIMS_HC[E.hc.dim];
   const semGestor = col.filter(c => !c.gestor).length;
@@ -1127,7 +1127,7 @@ function desenharHeadcount(el, col) {
 
   // Detalhe de uma linha: quebra por outra dimensão + a lista das cadeiras
   const detalheHc = l => {
-    const subs = Object.entries(DIMS_HC).filter(([k]) => k !== E.hc.dim && !(k === 'regional' && (E.filtro.regional || E.hc.dim === 'filial')));
+    const subs = Object.entries(DIMS_HC).filter(([k]) => k !== E.hc.dim && !(k === 'regional' && (E.filtro.regional || E.hc.dim === 'filial')) && !(k === 'gestor' && soTotais()));
     if (!subs.some(([k]) => k === E.hc.sub)) E.hc.sub = 'funcao';
     const sub = DIMS_HC[E.hc.sub];
     const sl = agrupar(l.lista, sub.chave);
@@ -1140,11 +1140,11 @@ function desenharHeadcount(el, col) {
       <table class="tabela tabela-hc tabela-hc-sub"><thead><tr><th>${sub.nome}</th><th style="min-width:150px">Cadeiras</th><th class="n">Ocupadas</th><th class="n">Vagas</th><th class="n">Desligam.</th><th class="n">Custo ocupadas</th><th class="n">Custo vagas</th><th class="n">Custo no ano</th><th class="n">Custo médio / mês</th></tr></thead>
         <tbody>${sl.map(x => `<tr><td title="${esc(x.k)}">${esc(x.k)}</td><td>${barraHc(x, max)}</td><td class="n">${num0.format(x.ocupadas)}</td><td class="n${x.vagas ? '' : ' zero'}">${zero(x.vagas)}</td><td class="n${x.deslig ? '' : ' zero'}">${zero(x.deslig)}</td>
           <td class="n">${brl0.format(x.custoOcup)}</td>${custoVagaCel(x.custoVaga)}<td class="n"><b>${brl0.format(x.custo)}</b></td><td class="n">${brl0.format(x.medio)}</td></tr>`).join('')}</tbody></table>
-      <details class="hc-pessoas"><summary>Ver as ${num0.format(l.cadeiras)} cadeira(s) de ${esc(l.k)}</summary>
+      ${soTotais() ? '' : `<details class="hc-pessoas"><summary>Ver as ${num0.format(l.cadeiras)} cadeira(s) de ${esc(l.k)}</summary>
         <div class="tabela-wrap" style="max-height:360px"><table class="tabela tabela-hc"><thead><tr><th>Colaborador / vaga</th><th>Situação</th><th>Função</th><th>Nível do cargo</th><th>Centro de custo</th>${E.hc.dim !== 'gestor' ? '<th>Gestor</th>' : ''}${E.hc.dim !== 'filial' ? '<th>Filial</th>' : ''}<th>Período</th><th class="n">Salário</th><th class="n">Custo no ano</th></tr></thead>
         <tbody>${pessoas.map(c => `<tr class="${c.vaga ? 'vaga' : ''}"><td>${esc(c.nome)}${c.matricula ? `<span class="sub">${esc(c.matricula)}</span>` : ''}</td><td>${c.vaga ? '<span class="etiqueta pend">vaga</span>' : (c.mes_fim < 12 ? '<span class="etiqueta neutra">desligamento</span>' : 'Ocupada')}</td>
           <td>${esc(c.funcao || '')}</td><td>${esc(c.cargo || '')}</td><td>${esc(rotuloCc(c))}</td>${E.hc.dim !== 'gestor' ? `<td>${esc(c.gestor || '—')}</td>` : ''}${E.hc.dim !== 'filial' ? `<td>${esc(c.filial)}</td>` : ''}<td>${periodo(c)}</td>
-          <td class="n">${brl.format(c.salario)}</td><td class="n">${brl0.format(custoId.get(c.id) || 0)}</td></tr>`).join('')}</tbody></table></div></details>
+          <td class="n">${brl.format(c.salario)}</td><td class="n">${brl0.format(custoId.get(c.id) || 0)}</td></tr>`).join('')}</tbody></table></div></details>`}
     </div>`;
   };
 
@@ -1210,7 +1210,7 @@ function desenharHeadcount(el, col) {
       ...filtrados().map(c => [c.regional, c.filial, c.matricula, c.nome, c.vaga ? 'Vaga' : c.mes_fim < 12 ? 'Desligamento previsto' : 'Ocupada', c.funcao, c.cargo, c.cc_cod, c.cc_nome, c.gestor || '', c.mes_inicio, c.mes_fim, c.salario, Math.round((custoId.get(c.id) || 0) * 100) / 100])];
     const wsCad = XLSX.utils.aoa_to_sheet(cad);
     wsCad['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: cad.length - 1, c: cad[0].length - 1 } }) };
-    XLSX.utils.book_append_sheet(wb, wsCad, 'Cadeiras');
+    if (!soTotais()) XLSX.utils.book_append_sheet(wb, wsCad, 'Cadeiras');
     const nome = [E.dados.config.ano, E.filtro.regional, E.filtro.uf, E.filtro.filial, dim.nome].filter(Boolean).join('-').replace(/[^\w-]+/g, '_');
     XLSX.writeFile(wb, `Headcount-${nome}.xlsx`);
   });
@@ -1483,6 +1483,9 @@ function desenharResultadoCalc() {
 
 /** Chave para casar a mesma pessoa nos dois anos (matrícula + nome; sem matrícula, o próprio id). */
 const chaveCmp = c => (c.matricula ? `${c.matricula}|${String(c.nome).trim().toUpperCase()}` : `id|${c.id}`);
+
+/** Perfil financeiro: só totais, nada por colaborador. */
+const soTotais = () => Boolean(E.eu?.financeiro);
 
 function linhasSimulacao(res = E.res) {
   const v = E.sim.visao;
@@ -1761,6 +1764,7 @@ function simuladorHtml() {
 
 function renderSimulacao() {
   const el = painel('simulacao');
+  if (soTotais() && E.sim.visao === 'colaboradores') E.sim.visao = 'rubricas';
   const admin = E.eu.admin;
   el.innerHTML = `
     <div class="cab-pagina"><div><h1 class="titulo-pagina">Simulação <em>mês a mês</em></h1>
@@ -1769,7 +1773,7 @@ function renderSimulacao() {
     <div class="sim-grade${admin ? '' : ' sem-painel'}">
       <div>
         <div class="ferramentas">
-          <div class="segmentos" id="sim-visao">${[['rubricas', 'Rubricas'], ['filiais', 'Filiais'], ['cc', 'Centros de custo'], ['colaboradores', 'Colaboradores']].map(([v, r]) => `<button data-v="${v}" class="${E.sim.visao === v ? 'ativo' : ''}">${r}</button>`).join('')}</div>
+          <div class="segmentos" id="sim-visao">${[['rubricas', 'Rubricas'], ['filiais', 'Filiais'], ['cc', 'Centros de custo'], ...(soTotais() ? [] : [['colaboradores', 'Colaboradores']])].map(([v, r]) => `<button data-v="${v}" class="${E.sim.visao === v ? 'ativo' : ''}">${r}</button>`).join('')}</div>
           ${E.sim.visao !== 'rubricas' ? `<input class="campo" id="sim-busca" placeholder="${E.sim.visao === 'colaboradores' ? 'Buscar nome, matrícula, função…' : 'Buscar…'}" value="${esc(E.sim.busca)}">` : ''}
           ${E.sim.visao === 'colaboradores' ? `<button class="btn btn-claro btn-sm" id="sim-abrir-todos">${E.sim.abertos.size ? 'Fechar detalhes' : 'Abrir detalhe de todos'}</button>` : ''}
           ${E.sim.visao === 'filiais' || E.sim.visao === 'cc' ? `<button class="btn btn-claro btn-sm" id="sim-abrir-ag">${[...E.sim.abertosAg].some(k => k.startsWith(E.sim.visao + '|')) ? 'Fechar contas' : 'Abrir contas de todos'}</button>` : ''}
@@ -1930,7 +1934,7 @@ function exportarExcel() {
     linhas.push([c.matricula, c.nome, c.regional, ufDe(c.filial), c.filial, c.situacao, c.funcao, c.cargo, c.cc_cod, c.cc_nome, c.salario,
       fil[c.filial]?.dissidio_ant_pct ?? 0, fil[c.filial]?.dissidio_ant_mes ?? '', fil[c.filial]?.dissidio_pct ?? 0, fil[c.filial]?.dissidio_mes ?? '', c.mes_inicio, c.mes_fim, ...vals, r2(vals.reduce((a, b) => a + b, 0))]);
   });
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhas), 'Por colaborador');
+  if (!soTotais()) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(linhas), 'Por colaborador');
 
   // Comparativo com o ano anterior: por conta (mês a mês) e por filial · conta
   if (E.resAnt) {
@@ -4860,6 +4864,11 @@ async function renderContabil() {
   const salvar = async parcial => {
     try { E.contabil.cfg = await api('/api/contabil', { method: 'PUT', body: parcial }); renderContabil(); } catch (e) { toast(e.message, 'erro'); }
   };
+  if (!E.eu.admin) {
+    // Financeiro: baixa o relatório e vê a prévia; listas e vínculos ficam só para o administrador
+    $$('input, select, textarea', el).forEach(x => { if (!['ct-zeradas', 'ct-filial', 'ct-hc'].includes(x.id)) x.disabled = true; });
+    $$('#ct-listas, #ct-epm', el).forEach(x => { x.closest('label').hidden = true; });
+  }
   $('#ct-pacotes', el).addEventListener('change', e => {
     const pacotes = e.target.value.split(',').map(x => x.trim()).filter(Boolean);
     if (pacotes.length < 3) return toast('Informe pelo menos os pacotes de pessoal, benefícios e provisões trabalhistas (nessa ordem).', 'erro');
@@ -5202,7 +5211,7 @@ async function renderCoordenadores() {
       <button class="btn btn-laranja" id="novo-usuario">+ Novo acesso</button></div>
     <section class="cartao"><div class="tabela-wrap"><table class="tabela">
       <thead><tr><th>Nome</th><th>Login</th><th>Perfil</th><th>Regionais</th><th>Último acesso</th><th>Status</th><th></th></tr></thead>
-      <tbody>${usuarios.map(u => `<tr><td><b>${esc(u.nome)}</b></td><td>${esc(u.login)}</td><td>${u.perfil === 'leitura' ? '<span class="etiqueta azul">👁 Somente visualização</span>' : '<span class="etiqueta neutra">Coordenador de RH</span>'}</td><td>${u.regionais.map(r => `<span class="chip">${esc(r === '*' ? 'Todas as regionais' : r)}</span>`).join(' ')}</td>
+      <tbody>${usuarios.map(u => `<tr><td><b>${esc(u.nome)}</b></td><td>${esc(u.login)}</td><td>${u.perfil === 'leitura' ? '<span class="etiqueta azul">👁 Somente visualização</span>' : u.perfil === 'financeiro' ? '<span class="etiqueta azul">💼 Financeiro · só totais</span>' : '<span class="etiqueta neutra">Coordenador de RH</span>'}</td><td>${u.regionais.map(r => `<span class="chip">${esc(r === '*' ? 'Todas as regionais' : r)}</span>`).join(' ')}</td>
         <td>${u.ultimo_acesso ? dataBr(u.ultimo_acesso) : '<span class="sub" style="display:inline">nunca</span>'}</td>
         <td>${u.ativo ? '<span class="etiqueta ok">Ativo</span>' : '<span class="etiqueta neutra">Bloqueado</span>'}</td>
         <td><span class="acoes"><button class="btn-ic" data-editar="${u.id}" title="Editar">✎</button><button class="btn-ic" data-remover="${u.id}" title="Remover">🗑</button></span></td></tr>`).join('')
@@ -5227,8 +5236,9 @@ function editarUsuario(u) {
       <label class="rotulo">Login<input class="campo" name="login" required value="${esc(u?.login || '')}" ${u ? 'readonly' : ''} placeholder="ex.: joao.silva"></label>
       <label class="rotulo inteiro">${u ? 'Nova senha <small>(deixe em branco para manter)</small>' : 'Senha inicial <small>(mín. 6 caracteres)</small>'}<input class="campo" name="senha" type="text" ${u ? '' : 'required minlength="6"'} autocomplete="new-password"></label>
       <label class="rotulo inteiro">Perfil<select class="campo" name="perfil">
-        <option value="coordenador" ${u?.perfil !== 'leitura' ? 'selected' : ''}>Coordenador de RH · painel, simulação, conferência e pedidos de ajuste</option>
-        <option value="leitura" ${u?.perfil === 'leitura' ? 'selected' : ''}>Somente visualização (ex.: gerente) · painel e simulação, sem conferência</option></select></label>
+        <option value="coordenador" ${!u?.perfil || u.perfil === 'coordenador' ? 'selected' : ''}>Coordenador de RH · painel, simulação, conferência e pedidos de ajuste</option>
+        <option value="leitura" ${u?.perfil === 'leitura' ? 'selected' : ''}>Somente visualização (ex.: gerente) · painel e simulação, sem conferência</option>
+        <option value="financeiro" ${u?.perfil === 'financeiro' ? 'selected' : ''}>Financeiro · só totais: painel, simulação por conta/filial/CC, comparativo e relatório contábil — sem ver colaboradores</option></select></label>
       <div class="inteiro rotulo">Regionais que pode ver
         <label class="check"><input type="checkbox" name="todas" ${todas ? 'checked' : ''}> <b>Todas as regionais</b> <small>(inclusive as que entrarem depois)</small></label>
         <div class="regionais-check" id="regs-lista" ${todas ? 'hidden' : ''}>${regs.map(r => `<label class="check"><input type="checkbox" name="regionais" value="${esc(r)}" ${u?.regionais.includes(r) ? 'checked' : ''}> ${esc(r)}</label>`).join('') || '<small>Importe a base para listar as regionais.</small>'}</div></div>
@@ -5286,8 +5296,9 @@ async function iniciar() {
   $$('.so-admin').forEach(x => { x.hidden = !E.eu.admin; });
   $$('.so-coord').forEach(x => { x.hidden = E.eu.admin; });
   if (E.eu.leitura) $$('.so-confere').forEach(x => { x.hidden = true; }); // somente visualização: sem conferência nem pedidos
+  if (E.eu.financeiro) $$('.so-fin').forEach(x => { x.hidden = false; }); // financeiro: relatório contábil (só leitura)
   $('#u-nome').textContent = E.eu.nome;
-  $('#u-papel').textContent = E.eu.admin ? 'Administrador' : `${E.eu.leitura ? 'Visualização' : 'Coordenador'} · ${E.eu.todas ? 'todas as regionais' : E.eu.regionais.join(', ')}`;
+  $('#u-papel').textContent = E.eu.admin ? 'Administrador' : `${E.eu.financeiro ? 'Financeiro' : E.eu.leitura ? 'Visualização' : 'Coordenador'} · ${E.eu.todas ? 'todas as regionais' : E.eu.regionais.join(', ')}`;
   $('#u-avatar').textContent = E.eu.nome.split(' ').map(p => p[0]).slice(0, 2).join('').toUpperCase();
   if (!E.eu.admin) $('#rot-solic').textContent = 'Meus pedidos';
 

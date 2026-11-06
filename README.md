@@ -269,6 +269,14 @@ mostram todas as contas.
 Painel e Simulação das regionais liberadas (ou “Todas as regionais”, inclusive as que entrarem depois), sem
 Conferência e sem pedidos de ajuste (o servidor também bloqueia).
 
+**Financeiro · só totais** — perfil para quem só pode ver os pacotes cheios: Painel (custo, headcount em números,
+comparativo), Simulação por rubrica, filial e centro de custo, Calculadora, Memória de cálculo, apresentação e
+**Relatório contábil / EPM** (prévia e download; listas e vínculos só o administrador altera). Não vê a visão por
+colaborador, a lista de cadeiras, a dimensão Gestor, as abas "Por colaborador" e "Cadeiras" dos Excel, nem os pedidos
+de ajuste. O servidor não envia nome, matrícula e gestor a esse perfil: viram códigos (HMAC com o `SESSION_SECRET`)
+que continuam casando a base com o histórico, por isso os totais são os mesmos do administrador. O cálculo continua no
+navegador, então os salários individuais (sem nome) ainda chegam ao computador do usuário.
+
 **Coordenador** (só as regionais liberadas, sem alterar valores)
 - Painel e simulação da regional.
 - **Conferência** – cards por filial; premissas aplicadas e a tabela de colaboradores/vagas com **uma coluna por item**
