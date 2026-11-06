@@ -1167,13 +1167,33 @@ function desenharHeadcount(el, col) {
   $('#hc-excel', el).addEventListener('click', () => {
     if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
     const linhas = linhasHc();
+    const r2 = v => Math.round(v * 100) / 100;
+    // Ano anterior: custo realizado e o do orçamento nos mesmos grupos (sem "Demais"), para comparar
+    const c0 = comp ? Motor.agregar(E.resAnt, dim.chave, noFiltro) : null;
+    const c1 = comp ? Motor.agregar(E.resCmp, dim.chave, noFiltro) : null;
+    const custosAnt = l => {
+      const v0 = c0.get(l.k)?.total || 0, v1 = c1.get(l.k)?.total || 0;
+      const hm0 = l.antMes.reduce((a, x) => a + x, 0);
+      const hm1 = MESES.reduce((a, _, m) => a + l.ocupadasMes[m] + l.vagasMes[m], 0);
+      return [r2(v0), r2(hm0 ? v0 / hm0 : 0), r2(v1), r2(hm1 ? v1 / hm1 : 0), r2(v1 - v0), v0 ? r2((v1 - v0) / v0) : ''];
+    };
     const aoa = [[dim.nome, 'Cadeiras', 'Ocupadas', 'Vagas', 'Desligamentos previstos', 'HC jan', 'HC dez', ...MESES.map(m => `HC ${m}`), 'Custo ocupadas', 'Custo vagas', 'Custo no ano', 'Custo médio / mês',
-      ...(comp ? [...MESES.map(m => `HC ${m}/${a2}`), `Δ HC dez/${a2} → dez/${a1}`] : [])],
+      ...(comp ? [...MESES.map(m => `HC ${m}/${a2}`), `Δ HC dez/${a2} → dez/${a1}`,
+        `Custo no ano ${anoAnt()}*`, `Custo médio / mês ${anoAnt()}*`, `Custo no ano ${E.dados.config.ano}*`, `Custo médio / mês ${E.dados.config.ano}*`, `Δ custo ${anoAnt()} → ${E.dados.config.ano}*`, 'Δ custo %*'] : [])],
       ...linhas.map(l => [l.k, l.cadeiras, l.ocupadas, l.vagas, l.deslig, l.jan, l.dez, ...MESES.map((_, m) => l.ocupadasMes[m] + l.vagasMes[m]),
-        Math.round(l.custoOcup * 100) / 100, Math.round(l.custoVaga * 100) / 100, Math.round(l.custo * 100) / 100, Math.round(l.medio * 100) / 100,
-        ...(comp ? [...l.antMes, l.dez - l.antMes[11]] : [])])];
+        r2(l.custoOcup), r2(l.custoVaga), r2(l.custo), r2(l.medio),
+        ...(comp ? [...l.antMes, l.dez - l.antMes[11], ...custosAnt(l)] : [])])];
+    if (comp) aoa.push([], [`* Comparativo ${anoAnt()} × ${E.dados.config.ano}: ${GRUPOS_CMP_TXT} (sem o grupo Demais, que não existe no realizado de ${anoAnt()}). As colunas "Custo ocupadas/vagas/no ano" de ${E.dados.config.ano} incluem Demais.${notaProjecao() ? ` ${notaProjecao()}.` : ''}`]);
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{ wch: 40 }, ...aoa[0].slice(1).map(() => ({ wch: 11 }))];
+    if (comp) {
+      // formato de moeda nas colunas de custo e % no Δ %
+      const ini = aoa[0].length - 6;
+      for (let r = 1; r <= linhas.length; r++) for (let c = ini; c < aoa[0].length; c++) {
+        const cel = ws[XLSX.utils.encode_cell({ r, c })];
+        if (cel && typeof cel.v === 'number') cel.z = c === aoa[0].length - 1 ? '0.0%' : '#,##0.00';
+      }
+    }
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Headcount');
     // Uma linha por cadeira (colaborador ou vaga), para tabela dinâmica
