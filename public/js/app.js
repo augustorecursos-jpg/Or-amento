@@ -4917,7 +4917,18 @@ async function importarCodigosEpm(arquivo) {
   };
   const emp = ler(n => n.startsWith('EMPRESA'), 'EMP_');
   const ccs = ler(n => n.startsWith('CENTRO'), 'CC_');
-  if (!emp && !ccs) return toast('Não encontrei as abas "Empresa" e "Centro de Custo" com códigos EMP_ e CC_.', 'erro');
+  if (!emp && !ccs) {
+    // Outro layout: vínculo de cada filial ao código da empresa (Filial | EMP_…)
+    const vinc = [];
+    for (const aba of wb.SheetNames) {
+      XLSX.utils.sheet_to_json(wb.Sheets[aba], { header: 1, raw: false, defval: null }).forEach(l => {
+        const fil = String(l?.[0] ?? '').trim(), cod = String(l?.[1] ?? '').trim();
+        if (fil && /^EMP_/i.test(cod)) vinc.push({ fil, cod });
+      });
+    }
+    if (vinc.length) return previaVinculosEpm(vinc);
+    return toast('Não encontrei códigos EMP_: use as abas "Empresa" e "Centro de Custo", ou uma planilha com Filial | Código da empresa.', 'erro');
+  }
   const body = {};
   if (emp) body.epm_empresas = emp.map(([c, n]) => `${c}|${n}`);
   if (ccs) body.epm_ccs = ccs.map(([c]) => c.toUpperCase());
@@ -4925,6 +4936,62 @@ async function importarCodigosEpm(arquivo) {
   E.contabil.formato = 'epm';
   toast(`Códigos EPM importados: ${emp?.length ?? 0} empresas e ${ccs?.length ?? 0} centros de custo.`);
   renderContabil();
+}
+
+/** Prévia do vínculo filial → código de empresa vindo de planilha: mantém o que já está vinculado e inclui o que falta. */
+function previaVinculosEpm(vinc) {
+  const cfg = E.contabil.cfg;
+  const atual = cfg.mapa_empresa || {};
+  const vistos = new Set();
+  // 1º o nome exato; nome parecido só se tiver palavra significativa em comum (sem PCH, UTE…) e a filial não tiver linha exata
+  const exatas = new Set(vinc.map(v => Object.keys(E.dados.filiais).find(f => normCab(f) === normCab(v.fil))).filter(Boolean));
+  const parecida = nome => {
+    const f = filialParecida(nome);
+    if (!f || exatas.has(f)) return '';
+    const a = new Set(palavras(nome));
+    return palavras(f).some(x => a.has(x)) ? f : '';
+  };
+  const linhas = vinc.map(v => {
+    const exata = Object.keys(E.dados.filiais).find(f => normCab(f) === normCab(v.fil));
+    const filial = exata || parecida(v.fil);
+    const repetida = filial && vistos.has(filial);
+    if (filial) vistos.add(filial);
+    const tem = filial ? atual[filial] || '' : '';
+    const sit = !filial ? 'sem' : repetida ? 'repetida' : !tem ? 'novo' : tem === v.cod ? 'igual' : 'diferente';
+    return { ...v, filial, aprox: Boolean(filial && !exata), tem, sit };
+  });
+  const semCodigo = Object.keys(E.dados.filiais).filter(f => !atual[f] && !linhas.some(l => l.filial === f && l.sit === 'novo')).sort();
+  const n = k => linhas.filter(l => l.sit === k).length;
+  const rot = { novo: '<span class="etiqueta ok">entra</span>', igual: '<span class="etiqueta neutra">já igual</span>', diferente: '<span class="etiqueta pend">já tem outro — mantido</span>',
+    sem: '<span class="etiqueta ruim">filial não encontrada</span>', repetida: '<span class="etiqueta neutra">linha repetida</span>' };
+  const d = abrirModal({
+    titulo: 'Vincular filiais aos códigos de empresa (EPM)', sup: 'PRÉVIA', largo: true,
+    corpo: `<p style="margin:0">Os vínculos que a ferramenta já tem <b>ficam como estão</b>; entram só as filiais ainda sem código.
+        <b>${n('novo')}</b> entram · <b>${n('igual')}</b> já iguais · <b>${n('diferente')}</b> com outro código (mantido; marque para trocar) · <b>${n('sem')}</b> sem filial na ferramenta.${linhas.some(l => l.aprox) ? ' Nomes parecidos (≈) vêm desmarcados: confira antes de marcar.' : ''}</p>
+      <div class="tabela-wrap" style="max-height:420px"><table class="tabela"><thead><tr><th></th><th>Filial no arquivo</th><th>Filial na ferramenta</th><th>Código no arquivo</th><th>Código atual</th><th>Situação</th></tr></thead>
+        <tbody>${linhas.map((l, i) => `<tr><td>${l.sit === 'novo' || l.sit === 'diferente' ? `<input type="checkbox" data-vinc="${i}" ${l.sit === 'novo' && !l.aprox ? 'checked' : ''}>` : ''}</td>
+          <td>${esc(l.fil)}</td><td>${l.filial ? `${esc(l.filial)}${l.aprox ? ' <span class="etiqueta pend" title="Nome parecido: confira">≈ parecida</span>' : ''}` : '—'}</td>
+          <td><b>${esc(l.cod)}</b></td><td>${esc(l.tem || '—')}</td><td>${rot[l.sit]}</td></tr>`).join('')}</tbody></table></div>
+      ${semCodigo.length ? `<p style="margin:0"><b>${semCodigo.length} filial(is) continuam sem código</b> (usam o código padrão ${esc(cfg.epm_padrao || 'EMP_ANT_Input')} ou o sugerido pelo nome): ${esc(semCodigo.join(', '))}</p>` : ''}`,
+    rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="vinc-ok">Gravar vínculos marcados</button>',
+  });
+  $('#vinc-ok', d).addEventListener('click', async () => {
+    const marcadas = $$('[data-vinc]', d).filter(x => x.checked).map(x => linhas[Number(x.dataset.vinc)]);
+    if (!marcadas.length) return toast('Nenhum vínculo marcado.', 'erro');
+    const mapa = { ...atual };
+    marcadas.forEach(l => { mapa[l.filial] = l.cod; });
+    // códigos novos entram também na lista de empresas (para aparecerem no seletor de cada filial)
+    const lista = [...(cfg.epm_empresas || [])];
+    const temCod = new Set(lista.map(x => x.split('|')[0]));
+    marcadas.forEach(l => { if (!temCod.has(l.cod)) { lista.push(`${l.cod}|${l.filial}`); temCod.add(l.cod); } });
+    try {
+      E.contabil.cfg = await api('/api/contabil', { method: 'PUT', body: { mapa_empresa: mapa, epm_empresas: lista } });
+      d.close();
+      E.contabil.formato = 'epm';
+      toast(`${marcadas.length} vínculo(s) gravado(s).`);
+      renderContabil();
+    } catch (e) { toast(e.message, 'erro'); }
+  });
 }
 
 /** Arquivo no formato EPM: Código Empresa · Centro_Custo (CC_…) · Conta Contábil (DRE_…) · Jan…Dez, com 4 linhas de cabeçalho. */

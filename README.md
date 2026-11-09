@@ -154,6 +154,9 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   (abas *Empresa* e *Centro de Custo*): cada filial é ligada à empresa pelo nome (ajustável), com um código padrão
   (EMP_ANT_Input) para as que não baterem ou, se preferir, para todas. CC sem número na base sai como CC_NA; avisa os CCs
   que não estão na lista do EPM.
+  O mesmo botão aceita também uma planilha **Filial | Código da empresa** (EMP_…): mostra uma prévia e grava só as filiais
+  ainda sem código; os vínculos que já existem ficam como estão (os diferentes podem ser marcados para trocar). Nome de
+  filial parecido (≈) vem desmarcado para conferir.
 - **Pedidos de ajuste** – caixa de entrada com status (aberta, em análise, ajustada, recusada), resposta ao coordenador
   e botão **Abrir item**, que leva direto ao colaborador ou à premissa da filial.
 - **Acessos dos coordenadores** – login, senha e regionais de cada coordenador.
