@@ -160,6 +160,9 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   **Por colaborador** (opção no Formato EPM): uma linha por empresa · centro de custo · colaborador · conta, com
   *Matrícula* e *Colaborador* depois do Centro_Custo (vagas e outros lançamentos também aparecem; HC = 1 por pessoa).
   Soma o mesmo que a versão por centro de custo. Não aparece para o perfil financeiro.
+  Coluna **Base do valor**: *Individual*, *Rateio da filial (item)* — total da filial dividido entre as pessoas —,
+  *Individual + rateio da filial (item)* quando a conta junta os dois, *Outro lançamento* ou *Provisão de aumento da
+  filial*; e a aba **Contas rateadas** lista, por filial, os itens rateados com a regra, as pessoas e o total.
 - **Pedidos de ajuste** – caixa de entrada com status (aberta, em análise, ajustada, recusada), resposta ao coordenador
   e botão **Abrir item**, que leva direto ao colaborador ou à premissa da filial.
 - **Acessos dos coordenadores** – login, senha e regionais de cada coordenador.

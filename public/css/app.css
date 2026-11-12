@@ -771,3 +771,6 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .comp-sub-barra { height: 6px; border-radius: 3px; background: #eef2f6; overflow: hidden; }
 .comp-sub-barra i { display: block; height: 100%; border-radius: 3px; opacity: .75; }
 @media (max-width: 900px) { .rosca.rosca-grande { grid-template-columns: 1fr; justify-items: center; } .rosca.rosca-grande .comp-lista-det { width: 100%; } }
+
+/* EPM por colaborador: valor que vem de rateio da filial */
+.tabela-contabil td.base-rateio { color: #b54d12; font-weight: 600; white-space: nowrap; }

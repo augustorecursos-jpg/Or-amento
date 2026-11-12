@@ -4710,7 +4710,18 @@ function ccContabil(cfg, cod) {
 }
 
 /** Linhas do relatório: Pacote · Centro de custo contábil · Conta contábil · Terceiro · 12 meses. */
+/** O valor da conta para o colaborador vem do total da filial dividido entre as pessoas (e não de um valor dele)? */
+const _rateio = new Map();
+function ehRateio(c, rid) {
+  const e = excecaoEfetiva(c, rid);
+  if (e) return e.metodo === 'rateio';
+  const k = `${c.filial}|${rid}`;
+  if (!_rateio.has(k)) _rateio.set(k, Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rid).metodo === 'rateio');
+  return _rateio.get(k);
+}
+
 function linhasContabeis(cfg, epm = false) {
+  _rateio.clear();
   // EPM por colaborador: uma linha por empresa · CC · colaborador · conta (não para o perfil financeiro)
   const porColab = epm && E.contabil.porColab && !soTotais();
   const porChave = new Map();
@@ -4745,9 +4756,22 @@ function linhasContabeis(cfg, epm = false) {
           ...(porColab ? { matricula: c.avulso ? '' : String(c.matricula || ''), colaborador: c.avulso ? `${c.nome} (lançamento)` : c.vaga ? `${c.nome} (vaga)` : c.nome, pessoa: !c.avulso } : {}) });
       }
       const l = porChave.get(chave);
-      for (let m = 0; m < 12; m++) l.meses[m] += E.res.valor(i, k, m);
+      let t = 0;
+      for (let m = 0; m < 12; m++) { const v = E.res.valor(i, k, m); l.meses[m] += v; t += Math.abs(v); }
+      if (porColab && t >= 0.005) {
+        if (av) l.tipo = av.provisao ? 'Provisão de aumento da filial' : av.realizado ? 'Realizado (planilha)' : 'Outro lançamento';
+        else if (ehRateio(c, r.id)) (l.rateadas ||= new Set()).add(r.nome);
+        else l.individual = true;
+      }
     });
   });
+  if (porColab) {
+    for (const l of porChave.values()) {
+      if (l.tipo) { l.base = l.tipo; continue; }
+      const rat = l.rateadas ? [...l.rateadas].join(', ') : '';
+      l.base = rat && l.individual ? `Individual + rateio da filial (${rat})` : rat ? `Rateio da filial (${rat})` : 'Individual';
+    }
+  }
   // HC do centro de custo da linha (quem é desse CC na base; custo levado para outro CC, como o fretado, não tem HC)
   for (const l of porChave.values()) l.hc = porColab ? (l.pessoa ? 1 : 0) : hcPor.get(epm ? `${l.empresa}\u0000${l.ccEpm}` : `${l.regional}\u0000${l.filial}\u0000${l.cc}`) || 0;
   const ordemConta = new Map(cfg.contas.map((c, i) => [c, i]));
@@ -4855,11 +4879,11 @@ async function renderContabil() {
         const pc = E.contabil.porColab && !soTotais();
         const vz = `<th></th><th></th>${pc ? '<th></th><th></th>' : ''}<th></th>`;
         return `<div class="tabela-wrap alta"><table class="tabela tabela-contabil"><thead>
-          <tr><th>Código Empresa</th><th>Centro_Custo</th>${pc ? '<th>Matrícula</th><th>Colaborador</th>' : ''}<th>Conta Contábil</th>${MESES.map(() => `<th class="n">${fy}</th>`).join('')}${E.contabil.hc ? '<th class="n col-hc">HC</th>' : ''}</tr>
+          <tr><th>Código Empresa</th><th>Centro_Custo</th>${pc ? '<th>Matrícula</th><th>Colaborador</th>' : ''}<th>Conta Contábil</th>${MESES.map(() => `<th class="n">${fy}</th>`).join('')}${E.contabil.hc ? '<th class="n col-hc">HC</th>' : ''}${pc ? '<th>Base do valor</th>' : ''}</tr>
           <tr>${vz}${MESES.map(m => `<th class="n">${m}</th>`).join('')}</tr>
           <tr>${vz}${MESES.map(() => `<th class="n">Budget_${ano}</th>`).join('')}</tr>
           <tr>${vz}${MESES.map(() => '<th class="n">Trabalho</th>').join('')}</tr></thead>
-          <tbody>${epm.slice(0, 400).map(l => `<tr><td>${esc(l.empresa)}</td><td>${esc(l.ccEpm)}</td>${pc ? `<td>${esc(l.matricula)}</td><td>${esc(l.colaborador)}</td>` : ''}<td>${esc(l.contaEpm)}</td>${[...l.meses].map(v => `<td class="n">${Math.abs(v) >= 0.005 ? num2.format(v) : '-'}</td>`).join('')}${E.contabil.hc ? `<td class="n col-hc">${l.hc || '-'}</td>` : ''}</tr>`).join('')
+          <tbody>${epm.slice(0, 400).map(l => `<tr><td>${esc(l.empresa)}</td><td>${esc(l.ccEpm)}</td>${pc ? `<td>${esc(l.matricula)}</td><td>${esc(l.colaborador)}</td>` : ''}<td>${esc(l.contaEpm)}</td>${[...l.meses].map(v => `<td class="n">${Math.abs(v) >= 0.005 ? num2.format(v) : '-'}</td>`).join('')}${E.contabil.hc ? `<td class="n col-hc">${l.hc || '-'}</td>` : ''}${pc ? `<td class="${l.base === 'Individual' ? '' : 'base-rateio'}">${esc(l.base)}</td>` : ''}</tr>`).join('')
             || '<tr><td colspan="15" class="vazio">Nada para mostrar com esses filtros.</td></tr>'}</tbody></table></div>
           ${epm.length > 400 ? `<p class="subtitulo" style="margin:.6rem 0 0">Mostrando 400 de ${epm.length} linhas — o Excel traz todas.</p>` : ''}`;
       })() : `
@@ -5003,6 +5027,33 @@ function previaVinculosEpm(vinc) {
   });
 }
 
+/** Aba do EPM por colaborador: em cada filial, as contas que são um total da filial dividido entre as pessoas. */
+function abaContasRateadas() {
+  const r2 = v => Math.round(v * 100) / 100;
+  const tot = new Map();
+  E.res.colaboradores.forEach((c, i) => {
+    if (!noFiltro(c) || c.avulso) return;
+    RUBRICAS.forEach((r, k) => {
+      if (!ehRateio(c, r.id)) return;
+      let t = 0;
+      for (let m = 0; m < 12; m++) t += E.res.valor(i, k, m);
+      if (Math.abs(t) < 0.005) return;
+      const ch = `${c.filial}\u0000${r.id}`;
+      if (!tot.has(ch)) tot.set(ch, { c, r, t: 0, n: new Set() });
+      const x = tot.get(ch); x.t += t; x.n.add(c.id);
+    });
+  });
+  const regra = x => descreverComQuem(Motor.premissaDe(E.dados.premissas, x.c.filial, x.c.regional, x.r.id));
+  const aoa = [['Regional', 'Filial', 'Item', 'Conta contábil', 'Regra (premissa)', 'Pessoas no rateio', 'Total no ano'],
+    ...[...tot.values()].sort((a, b) => a.c.regional.localeCompare(b.c.regional) || a.c.filial.localeCompare(b.c.filial) || a.r.nome.localeCompare(b.r.nome))
+      .map(x => [x.c.regional, x.c.filial, x.r.nome, contaContabilDe(x.r.id), regra(x), x.n.size, r2(x.t)]),
+    [], ['Contas rateadas: o valor de cada colaborador é o total da filial dividido entre quem está ativo no mês (média por colaborador ou proporcional ao salário), e não um valor próprio dele.'],
+    ['Os outros lançamentos e as provisões de aumento da filial aparecem como linhas próprias, sem matrícula.']];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = [{ wch: 16 }, { wch: 28 }, { wch: 28 }, { wch: 40 }, { wch: 60 }, { wch: 10 }, { wch: 16 }];
+  return ws;
+}
+
 /** Arquivo no formato EPM: Código Empresa · Centro_Custo (CC_…) · Conta Contábil (DRE_…) · Jan…Dez, com 4 linhas de cabeçalho. */
 function baixarEpm(cfg) {
   if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
@@ -5013,20 +5064,21 @@ function baixarEpm(cfg) {
   const pc = E.contabil.porColab && !soTotais(); // versão por colaborador: matrícula e nome depois do centro de custo
   const vz = pc ? ['', '', '', '', ''] : ['', '', ''];
   const aoa = [
-    ['Código Empresa', 'Centro_Custo', ...(pc ? ['Matrícula', 'Colaborador'] : []), 'Conta Contábil', ...MESES.map(() => fy), ...(hc ? ['HC'] : [])],
+    ['Código Empresa', 'Centro_Custo', ...(pc ? ['Matrícula', 'Colaborador'] : []), 'Conta Contábil', ...MESES.map(() => fy), ...(hc ? ['HC'] : []), ...(pc ? ['Base do valor'] : [])],
     [...vz, ...MESES],
     [...vz, ...MESES.map(() => `Budget_${ano}`)],
     [...vz, ...MESES.map(() => 'Trabalho')],
-    ...linhas.map(l => [l.empresa, l.ccEpm, ...(pc ? [l.matricula, l.colaborador] : []), l.contaEpm, ...[...l.meses].map(v => Math.round(v * 100) / 100), ...(hc ? [l.hc || 0] : [])]),
+    ...linhas.map(l => [l.empresa, l.ccEpm, ...(pc ? [l.matricula, l.colaborador] : []), l.contaEpm, ...[...l.meses].map(v => Math.round(v * 100) / 100), ...(hc ? [l.hc || 0] : []), ...(pc ? [l.base] : [])]),
   ];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   for (let r = 4; r < aoa.length; r++) for (let c = vz.length; c < vz.length + 12; c++) {
     const ref = XLSX.utils.encode_cell({ r, c });
     if (ws[ref]) ws[ref].z = '#,##0.00';
   }
-  ws['!cols'] = [{ wch: 16 }, { wch: 14 }, ...(pc ? [{ wch: 12 }, { wch: 40 }] : []), { wch: 16 }, ...MESES.map(() => ({ wch: 13 })), ...(hc ? [{ wch: 6 }] : [])];
+  ws['!cols'] = [{ wch: 16 }, { wch: 14 }, ...(pc ? [{ wch: 12 }, { wch: 40 }] : []), { wch: 16 }, ...MESES.map(() => ({ wch: 13 })), ...(hc ? [{ wch: 6 }] : []), ...(pc ? [{ wch: 45 }] : [])];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'EPM');
+  if (pc) XLSX.utils.book_append_sheet(wb, abaContasRateadas(), 'Contas rateadas');
   const nome = [ano, E.filtro.regional, E.filtro.uf, E.filtro.filial].filter(Boolean).join('-').replace(/[^\w-]+/g, '_');
   XLSX.writeFile(wb, `Orcamento-EPM-${pc ? 'por-colaborador-' : ''}${nome}.xlsx`);
 }
