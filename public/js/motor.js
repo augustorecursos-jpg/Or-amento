@@ -193,6 +193,48 @@
     return 'padrao';
   }
 
+  /** A regra da filial não dá valor para quem não tem valor próprio (Não tem, ou R$ 0 / 0%)? */
+  const regraVazia = (p, funcao) => !p || p.metodo === 'nao' || (['fixo', 'pct', 'multiplo'].includes(p.metodo) && !valorDe(p, funcao));
+  const mediana = v => { const o = [...v].sort((a, b) => a - b); return o.length ? (o.length % 2 ? o[(o.length - 1) / 2] : (o[o.length / 2 - 1] + o[o.length / 2]) / 2) : 0; };
+  const maisComum = v => { const c = new Map(); v.forEach(x => { const k = Math.round(x * 100) / 100; c.set(k, (c.get(k) || 0) + 1); }); return [...c].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0]; };
+
+  /** Padrão das vagas: Map(índice da vaga → { [rubrica]: { valor, base, n } }) — ver calcular(). Só benefícios e adicionais,
+   * e só quando pelo menos metade dos colaboradores do grupo (filial, ou regional sem ninguém na filial) tem valor no item. */
+  function vagasPadrao(colaboradores, premsFilial, excecaoVale) {
+    const out = new Map();
+    const vagas = colaboradores.map((c, i) => (c.vaga && !c.avulso && !c.salarios ? i : -1)).filter(i => i >= 0);
+    if (!vagas.length) return out;
+    const pessoas = colaboradores.map((c, i) => (!c.vaga && !c.avulso && !c.salarios ? i : -1)).filter(i => i >= 0);
+    const por = chave => { const m = new Map(); pessoas.forEach(i => { const k = chave(colaboradores[i]); if (!m.has(k)) m.set(k, []); m.get(k).push(i); }); return m; };
+    const porFilial = por(c => c.filial), porRegional = por(c => c.regional);
+    const alvos = RUBRICAS.map((r, k) => (r.natureza === 'beneficios' || (r.natureza === 'remuneracao' && r.adicional) ? k : -1)).filter(k => k >= 0);
+    for (const i of vagas) {
+      const v = colaboradores[i];
+      const grupo = porFilial.get(v.filial)?.length ? porFilial.get(v.filial) : porRegional.get(v.regional) || [];
+      if (!grupo.length) continue;
+      for (const r of alvos) {
+        const rid = RUBRICAS[r].id;
+        const e = v.excecoes?.[rid];
+        if (e && !(e.origem === 'base' && (e.metodo === 'nao' || !num(e.valor)))) continue; // valor próprio da vaga vale
+        if (!regraVazia(premsFilial[i][r], v.funcao)) continue; // a regra da filial já dá valor à vaga
+        const comValor = grupo.filter(j => {
+          const x = colaboradores[j].excecoes?.[rid];
+          return x && x.origem === 'base' && x.metodo === 'fixo' && num(x.valor) > 0 && excecaoVale(j, r);
+        });
+        if (comValor.length * 2 < grupo.length) continue; // menos da metade recebe: não é padrão
+        const mesmaFuncao = comValor.filter(j => String(colaboradores[j].funcao || '').trim().toUpperCase() === String(v.funcao || '').trim().toUpperCase());
+        const base = mesmaFuncao.length ? mesmaFuncao : comValor;
+        const valor = RUBRICAS[r].adicional
+          ? mediana(base.filter(j => num(colaboradores[j].salario) > 0).map(j => num(colaboradores[j].excecoes[rid].valor) / num(colaboradores[j].salario))) * num(v.salario)
+          : maisComum(base.map(j => num(colaboradores[j].excecoes[rid].valor)));
+        if (!(valor > 0)) continue;
+        if (!out.has(i)) out.set(i, {});
+        out.get(i)[rid] = { valor, base: mesmaFuncao.length ? 'funcao' : porFilial.get(v.filial)?.length ? 'filial' : 'regional', n: base.length };
+      }
+    }
+    return out;
+  }
+
   /**
    * Calcula o custo mensal de cada colaborador em cada rubrica.
    * Retorna { valores: Float64Array(n × R × 12), n, colaboradores } — use valor(i, r, m) para ler.
@@ -221,12 +263,23 @@
       // "vale_todos": a regra da filial vale também para quem tem valor da planilha da base (ex.: VA reajustado na premissa).
       return Boolean(e) && !(e.origem === 'base' && (premsFilial[i][r]?.metodo === 'rateio' || premsFilial[i][r]?.vale_todos));
     };
+    // Vagas seguem o padrão da filial: o 0 / "não recebe" que a planilha da base trouxe para a vaga não vale, e quando a
+    // regra da filial não dá valor (o item vem da planilha de cada colaborador), a vaga recebe o valor típico de quem tem o
+    // item: benefício = valor mais comum (mesma função → filial → regional); adicional = mediana do % sobre o salário.
+    const padraoVaga = vagasPadrao(colaboradores, premsFilial, excecaoVale);
     const prems = colaboradores.map((c, i) => {
       const exc = c.excecoes;
-      if (!exc || !Object.keys(exc).length) return premsFilial[i];
-      return premsFilial[i].map((p, r) => (p && excecaoVale(i, r) ? aplicarExcecao(p, exc[RUBRICAS[r].id]) : p));
+      const pv = padraoVaga.get(i);
+      if ((!exc || !Object.keys(exc).length) && !pv) return premsFilial[i];
+      return premsFilial[i].map((p, r) => {
+        if (!p) return p;
+        const rid = RUBRICAS[r].id;
+        if (pv?.[rid]) return aplicarExcecao(p, { metodo: 'fixo', valor: pv[rid].valor, origem: 'base' });
+        if (c.vaga && exc?.[rid]?.origem === 'base' && (exc[rid].metodo === 'nao' || !num(exc[rid].valor))) return p; // 0 da planilha na vaga
+        return excecaoVale(i, r) ? aplicarExcecao(p, exc[rid]) : p;
+      });
     });
-    const temExcecao = excecaoVale;
+    const temExcecao = (i, r) => Boolean(padraoVaga.get(i)?.[RUBRICAS[r].id]) || excecaoVale(i, r);
     const ativo = (i, m) => {
       const c = colaboradores[i];
       if (c.avulso) return false; // lançamento avulso: não é uma pessoa
@@ -394,7 +447,7 @@
       for (let m = 0; m < 12; m++) valores[at(i, r, m)] = num(c.avulso.meses?.[m]);
     });
 
-    if (!provisoes.size) return { n, colaboradores, valores, valor: (i, r, m) => valores[at(i, r, m)] };
+    if (!provisoes.size) return { n, colaboradores, valores, valor: (i, r, m) => valores[at(i, r, m)], padraoVaga };
 
     // Linhas da provisão de aumento (uma por filial/CC): a conta (ex.: promoções e méritos) só no mês do aumento; dos meses
     // seguintes em diante o aumento acumulado entra no salário. Provisões e encargos em % seguem as regras da filial.
@@ -425,7 +478,7 @@
         mes_inicio: 1, mes_fim: 12, vaga: false, excecoes: {}, sexo: '', gestor: '', avulso: { rubrica: RUBRICAS[x.r].id, provisao: true, meses: [] },
       };
     });
-    return { n: N, colaboradores: [...colaboradores, ...linhas], valores: todos, valor: (i, r, m) => todos[at(i, r, m)] };
+    return { n: N, colaboradores: [...colaboradores, ...linhas], valores: todos, valor: (i, r, m) => todos[at(i, r, m)], padraoVaga };
   }
 
   /**

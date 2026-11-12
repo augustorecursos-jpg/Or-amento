@@ -1570,6 +1570,14 @@ function detalheAgregado(porRubrica) {
   return out;
 }
 
+/** Vaga com o valor padrão da filial (a regra não dá valor e o item vem da planilha de cada colaborador). */
+function notaPadraoVaga(res, i, r) {
+  const x = res.padraoVaga?.get(i)?.[r.id];
+  if (!x) return '';
+  const de = { funcao: 'da mesma função', filial: 'da filial', regional: 'da regional' }[x.base];
+  return `padrão para vagas: ${brl.format(x.valor)}/mês — ${r.adicional ? 'mediana do % sobre o salário' : 'valor mais comum'} de ${x.n} colaborador(es) ${de}`;
+}
+
 /** Linhas com o que está orçado para um colaborador: subtotal por grupo e cada rubrica, mês a mês. */
 function detalheColaborador(id, res = E.res) {
   const i = res.colaboradores.findIndex(c => c.id === id);
@@ -1578,7 +1586,7 @@ function detalheColaborador(id, res = E.res) {
   const out = [];
   for (const g of GRUPOS) {
     const filhos = RUBRICAS.map((r, k) => ({ r, k })).filter(x => x.r.grupo === g.id).map(({ r, k }) => ({
-      rotulo: r.nome, meses: MESES.map((_, m) => res.valor(i, k, m)), propria: excecaoEfetiva(c, r.id) ? (c.excecoes[r.id].origem === 'base' ? 'base' : 'manual') : '', conta: contaDoItem(c, r),
+      rotulo: r.nome, meses: MESES.map((_, m) => res.valor(i, k, m)), propria: excecaoEfetiva(c, r.id) ? (c.excecoes[r.id].origem === 'base' ? 'base' : 'manual') : '', conta: notaPadraoVaga(res, i, r) || contaDoItem(c, r),
     })).filter(f => f.meses.some(x => x));
     if (!filhos.length) continue;
     out.push({ rotulo: g.nome, cor: g.cor, meses: MESES.map((_, m) => filhos.reduce((s, f) => s + f.meses[m], 0)), det: 'grupo' });

@@ -289,6 +289,12 @@ de ajuste. O servidor não envia nome, matrícula e gestor a esse perfil: viram 
 que continuam casando a base com o histórico, por isso os totais são os mesmos do administrador. O cálculo continua no
 navegador, então os salários individuais (sem nome) ainda chegam ao computador do usuário.
 
+**Vagas seguem o padrão da filial**: o 0 / "não recebe" que a planilha da base trouxer para uma vaga é ignorado, e quando
+a regra da filial não dá valor ao item (Não tem / R$ 0, porque o valor vem da planilha de cada colaborador) e pelo menos
+metade dos colaboradores da filial recebe, a vaga recebe o valor típico: **benefícios** = valor mais comum (mesma função
+→ filial → regional, se a filial não tem ninguém); **adicionais** = mediana do % sobre o salário × salário da vaga. Valor
+lançado à mão na vaga continua valendo. O detalhe da vaga na Simulação mostra "padrão para vagas: …".
+
 **Coordenador** (só as regionais liberadas, sem alterar valores)
 - Painel e simulação da regional.
 - **Conferência** – cards por filial; premissas aplicadas e a tabela de colaboradores/vagas com **uma coluna por item**

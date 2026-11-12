@@ -380,3 +380,20 @@ test('histórico do ano anterior: salário de cada mês, ativo só nos meses pag
   const ag = Motor.agregar(res, () => 'x').get('x');
   perto(ag.hc[5], 1); perto(ag.hc[6], 0);
 });
+
+test('vaga segue o padrão da filial: ignora o 0 da planilha e recebe o valor mais comum de quem tem o item', () => {
+  const base = (id, extra = {}) => ({ id, matricula: String(id), nome: `P${id}`, regional: 'R', filial: 'F', funcao: 'Op', cargo: '', salario: 3000, mes_inicio: 1, mes_fim: 12, vaga: false, ...extra });
+  const exc = v => ({ va: { metodo: 'fixo', valor: v, origem: 'base' }, aux_creche: { metodo: 'fixo', valor: 500, origem: 'base' } });
+  const colaboradores = [
+    base(1, { excecoes: exc(800) }), base(2, { excecoes: exc(800) }), base(3, { excecoes: exc(900) }),
+    base(4, { vaga: true, excecoes: { va: { metodo: 'nao', valor: 0, origem: 'base' } } }),
+    base(5, { vaga: true, excecoes: { va: { metodo: 'fixo', valor: 1000 } } }), // valor lançado à mão na vaga continua valendo
+  ];
+  const premissas = { '*': { va: { metodo: 'fixo', valor: 0 }, aux_creche: { metodo: 'nao' } } };
+  const res = Motor.calcular({ colaboradores, filiais: { F: { filial: 'F', regional: 'R' } }, premissas });
+  const iVa = Motor.IDX.va, iCr = Motor.IDX.aux_creche;
+  assert.equal(Math.round(res.valor(3, iVa, 0)), 800);
+  assert.equal(Math.round(res.valor(3, iCr, 0)), 500);
+  assert.equal(Math.round(res.valor(4, iVa, 0)), 1000);
+  assert.equal(res.padraoVaga.get(3).va.base, 'funcao');
+});
