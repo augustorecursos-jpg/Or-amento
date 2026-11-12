@@ -342,6 +342,18 @@ function reajustesDaRegional(filial, regional, ignorar = []) {
   db.prepare(`UPDATE filiais SET ${CAMPOS_REAJUSTE.map(k => `${k} = ?`).join(', ')} WHERE filial = ?`).run(...JSON.parse(maisComum), filial);
 }
 
+// Lixeira: todo colaborador excluído da base fica guardado (dados completos) para restaurar ou excluir de vez.
+db.exec(`CREATE TABLE IF NOT EXISTS lixeira (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  quando   TEXT NOT NULL DEFAULT (datetime('now')),
+  quem     TEXT NOT NULL,
+  motivo   TEXT NOT NULL,
+  colab_id INTEGER,
+  dados    TEXT NOT NULL
+)`);
+// Guarda por 90 dias
+db.exec("DELETE FROM lixeira WHERE quando < datetime('now', '-90 days')");
+
 module.exports = { db, DATA_DIR, registrar, sincronizarFiliais, reajustesDaRegional, ufSugerida, PPR_HOLDING };
 
 // Bancos que já existiam antes da coluna de estado: preenche a sugestão uma vez.

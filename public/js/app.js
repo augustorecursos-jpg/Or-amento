@@ -4121,19 +4121,15 @@ function desenharSituacaoBase() {
       <h3 style="margin:0">Base atual: ${num0.format(todos.length)} registro(s)</h3>
       <span class="chip" title="Sexo informado na base (usado em ações por público)">♀ ${num0.format(todos.filter(c => c.sexo === 'F').length)} · ♂ ${num0.format(todos.filter(c => c.sexo === 'M').length)}${todos.some(c => !c.sexo && !c.vaga) ? ` · sem sexo ${num0.format(todos.filter(c => !c.sexo && !c.vaga).length)}` : ''}</span>
       <div class="chips">${Object.entries(porReg).sort().map(([r, n]) => `<span class="chip">${esc(r)} · ${num0.format(n)}</span>`).join('')}</div>
-      <span class="direita"><button class="btn btn-perigo btn-sm" id="apagar-base" ${todos.length ? '' : 'disabled'}>🗑 Apagar toda a base</button></span>
+      <span class="direita"><button class="btn btn-claro btn-sm" id="abrir-lixeira" title="Colaboradores excluídos da base (restaurar ou excluir de vez)">♻ Lixeira${E.dados.lixeira ? ` (${num0.format(E.dados.lixeira)})` : ''}</button>
+        <button class="btn btn-perigo btn-sm" id="apagar-base" ${todos.length ? '' : 'disabled'}>🗑 Apagar toda a base</button></span>
     </div>
     ${sobra ? `<div class="alerta-dup">⚠ <b>${num0.format(repetidas.length)} colaborador(es) aparecem mais de uma vez</b> (mesma matrícula, nome e filial) (${num0.format(sobra)} registro(s) a mais) — provavelmente de uma importação somada à anterior.
-      <button class="btn btn-laranja btn-sm" id="remover-dup">Remover duplicados</button><small>Fica só o registro mais recente de cada um.</small></div>` : ''}`;
-  $('#remover-dup', el)?.addEventListener('click', async () => {
-    if (!confirm(`Remover ${sobra} registro(s) duplicado(s)? Fica só o registro mais recente de cada colaborador.`)) return;
-    const r = await api('/api/colaboradores/remover-duplicados', { method: 'POST' });
-    await carregar();
-    renderBase();
-    toast(`${r.removidos} registro(s) duplicado(s) removido(s).`);
-  });
+      <button class="btn btn-laranja btn-sm" id="remover-dup">Revisar duplicados</button><small>Você escolhe qual registro fica; os outros vão para a lixeira.</small></div>` : ''}`;
+  $('#remover-dup', el)?.addEventListener('click', revisarDuplicados);
+  $('#abrir-lixeira', el)?.addEventListener('click', () => abrirLixeira().catch(e => toast(e.message, 'erro')));
   $('#apagar-base', el)?.addEventListener('click', async () => {
-    const txt = prompt(`Isto apaga os ${todos.length} registros da base (as premissas continuam). Para confirmar, digite APAGAR:`);
+    const txt = prompt(`Isto tira os ${todos.length} registros da base (vão para a lixeira; as premissas continuam). Para confirmar, digite APAGAR:`);
     if (txt !== 'APAGAR') return;
     const r = await api('/api/colaboradores', { method: 'DELETE', body: { confirmar: 'APAGAR' } });
     await carregar();
@@ -4165,7 +4161,7 @@ function desenharBase() {
   $$('[data-editar]').forEach(b => b.addEventListener('click', () => editarColaborador(Number(b.dataset.editar))));
   $$('[data-remover]').forEach(b => b.addEventListener('click', async () => {
     const c = E.dados.colaboradores.find(x => x.id === Number(b.dataset.remover));
-    if (!confirm(`Remover ${c.nome} da base do orçamento?`)) return;
+    if (!confirm(`Remover ${c.nome} da base do orçamento? O registro vai para a lixeira e pode ser restaurado.`)) return;
     await api(`/api/colaboradores/${c.id}`, { method: 'DELETE' });
     await carregar();
     desenharBase();

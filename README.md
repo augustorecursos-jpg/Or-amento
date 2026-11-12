@@ -116,7 +116,10 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   início e mês fim — mais as colunas opcionais de valores por colaborador (abaixo). Modo *substituir as
   regionais do arquivo* ou *adicionar*. Padrão: **Substituir toda a base** (a base fica só com o que está nos arquivos).
   Painel com o total por regional, aviso de **colaboradores duplicados** (mesma matrícula + nome + filial; a mesma
-  matrícula pode existir em empresas diferentes) com **Remover duplicados**, e **Apagar toda a base**. **Vagas** (situação “Nova Vaga” + mês de admissão) e **desligamentos previstos**.
+  matrícula pode existir em empresas diferentes) com **Revisar duplicados** (registros lado a lado, diferenças em
+  destaque; você escolhe qual fica ou mantém todos), **♻ Lixeira** e **Apagar toda a base**. Tudo o que sai da base
+  (duplicado, exclusão manual, apagar a base, base substituída na importação) vai para a **lixeira** por 90 dias, com os
+  dados completos: restaurar (volta como estava, com o mesmo registro e os valores próprios) ou excluir definitivamente. **Vagas** (situação “Nova Vaga” + mês de admissão) e **desligamentos previstos**.
   - **Valores por colaborador vindos da base**: colunas opcionais com o valor de cada pessoa — periculosidade,
     insalubridade, penosidade, adicionais de turno, adicional noturno, rescisão e benefícios (VA, 13º VR, VT, creche,
     educacional, material escolar, óculos (valor do ano ÷ 12), oftalmo, assistência médica, coparticipação, odonto, farmácia, seguro, previdência privada,

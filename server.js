@@ -287,7 +287,8 @@ app.get('/api/dados', exigirLogin, (req, res) => {
     colaboradores.splice(0, colaboradores.length, ...colaboradores.map(anon));
     anterior.splice(0, anterior.length, ...anterior.map(anon));
   }
-  res.json({ config, colaboradores, filiais, premissas, niveis, lancamentos, linhasLanc, anterior, anteriorContas, contasItens });
+  const lixeira = u.admin ? db.prepare('SELECT COUNT(*) AS n FROM lixeira').get().n : 0;
+  res.json({ config, colaboradores, filiais, premissas, niveis, lancamentos, linhasLanc, anterior, anteriorContas, contasItens, lixeira });
 });
 
 // ----- ano anterior (histórico de salários por mês, para o comparativo) -----
@@ -554,11 +555,9 @@ app.post('/api/colaboradores/importar', exigirAdmin, (req, res) => {
         const promo = promoPorMatricula.get(chave(c));
         if (promo && !c.promo_mes) Object.assign(c, promo);
       }
-      if (modo === 'tudo') db.exec('DELETE FROM colaboradores');
-      else {
-        const del = db.prepare('DELETE FROM colaboradores WHERE regional = ?');
-        regionais.forEach(r => del.run(r));
-      }
+      // a base que sai vai para a lixeira (dá para restaurar quem a planilha nova não trouxe)
+      if (modo === 'tudo') paraLixeira('', [], 'Substituído na importação');
+      else regionais.forEach(r => paraLixeira('WHERE regional = ?', [r], 'Substituído na importação'));
     }
     for (const c of validos) inserir.run(...CAMPOS_COLAB.map(k => c[k]));
     sincronizarFiliais();
@@ -641,29 +640,105 @@ app.put('/api/colaboradores/:id', exigirAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+/** Move para a lixeira os colaboradores do filtro (WHERE …) e apaga da base. Devolve quantos saíram. */
+function paraLixeira(where, params, motivo, quem = 'Administrador') {
+  const linhas = db.prepare(`SELECT * FROM colaboradores ${where}`).all(...params);
+  const ins = db.prepare('INSERT INTO lixeira (quem, motivo, colab_id, dados) VALUES (?, ?, ?, ?)');
+  const del = db.prepare('DELETE FROM colaboradores WHERE id = ?');
+  for (const l of linhas) { ins.run(quem, motivo, l.id, JSON.stringify(l)); del.run(l.id); }
+  return linhas.length;
+}
+
 // Duplicado = mesma matrícula, mesmo nome e mesma filial (a mesma matrícula pode existir em empresas diferentes).
-// Vagas não entram. Fica só o registro mais recente (maior id).
+// Vagas não entram. Com "ids", sai exatamente o que foi escolhido na revisão (desde que continue sobrando um registro
+// de cada colaborador); sem, fica o mais recente (maior id). O que sai vai para a lixeira.
 app.post('/api/colaboradores/remover-duplicados', exigirAdmin, (req, res) => {
-  const r = db.prepare(`DELETE FROM colaboradores WHERE vaga = 0 AND EXISTS (
-    SELECT 1 FROM colaboradores c2 WHERE c2.vaga = 0 AND c2.id > colaboradores.id AND c2.matricula = colaboradores.matricula
-      AND c2.filial = colaboradores.filial AND upper(trim(c2.nome)) = upper(trim(colaboradores.nome)))`).run();
-  registrar('Administrador', 'Removeu matrículas duplicadas', `${r.changes} registro(s)`);
-  res.json({ ok: true, removidos: Number(r.changes) });
+  const chave = 'matricula || char(1) || upper(trim(nome)) || char(1) || filial';
+  let ids;
+  if (Array.isArray(req.body?.ids)) {
+    const pedidos = new Set(req.body.ids.map(Number).filter(Number.isInteger));
+    const todos = db.prepare(`SELECT id, ${chave} AS k FROM colaboradores WHERE vaga = 0`).all();
+    const grupos = new Map();
+    todos.forEach(r => { if (!grupos.has(r.k)) grupos.set(r.k, []); grupos.get(r.k).push(r.id); });
+    ids = [];
+    for (const g of grupos.values()) {
+      if (g.length < 2) continue;
+      const sai = g.filter(id => pedidos.has(id));
+      if (sai.length >= g.length) return res.status(400).json({ erro: 'Mantenha pelo menos um registro de cada colaborador.' });
+      ids.push(...sai);
+    }
+  } else {
+    ids = db.prepare(`SELECT id FROM colaboradores WHERE vaga = 0 AND EXISTS (
+      SELECT 1 FROM colaboradores c2 WHERE c2.vaga = 0 AND c2.id > colaboradores.id AND c2.matricula = colaboradores.matricula
+        AND c2.filial = colaboradores.filial AND upper(trim(c2.nome)) = upper(trim(colaboradores.nome)))`).all().map(r => r.id);
+  }
+  db.exec('BEGIN');
+  let n = 0;
+  try {
+    for (const id of ids) n += paraLixeira('WHERE id = ?', [id], 'Duplicado');
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  registrar('Administrador', 'Removeu matrículas duplicadas', `${n} registro(s) · foram para a lixeira`);
+  res.json({ ok: true, removidos: n });
 });
 
 app.delete('/api/colaboradores', exigirAdmin, (req, res) => {
   if (req.body?.confirmar !== 'APAGAR') return res.status(400).json({ erro: 'Confirmação inválida.' });
-  const r = db.prepare('DELETE FROM colaboradores').run();
-  registrar('Administrador', 'Apagou toda a base de colaboradores', `${r.changes} registro(s)`);
-  res.json({ ok: true, removidos: Number(r.changes) });
+  db.exec('BEGIN');
+  let n = 0;
+  try { n = paraLixeira('', [], 'Apagar toda a base'); db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; }
+  registrar('Administrador', 'Apagou toda a base de colaboradores', `${n} registro(s) · foram para a lixeira`);
+  res.json({ ok: true, removidos: n });
 });
 
 app.delete('/api/colaboradores/:id', exigirAdmin, (req, res) => {
   const atual = db.prepare('SELECT * FROM colaboradores WHERE id = ?').get(req.params.id);
   if (!atual) return res.status(404).json({ erro: 'Colaborador não encontrado.' });
-  db.prepare('DELETE FROM colaboradores WHERE id = ?').run(atual.id);
-  registrar('Administrador', 'Removeu da base', `${atual.nome} · ${atual.filial}`);
+  paraLixeira('WHERE id = ?', [atual.id], 'Exclusão manual');
+  registrar('Administrador', 'Removeu da base', `${atual.nome} · ${atual.filial} · foi para a lixeira`);
   res.json({ ok: true });
+});
+
+// ----- lixeira -----
+app.get('/api/lixeira', exigirAdmin, (req, res) => {
+  res.json(db.prepare('SELECT * FROM lixeira ORDER BY id DESC LIMIT 20000').all()
+    .map(l => ({ ...l, dados: (() => { try { return JSON.parse(l.dados); } catch { return {}; } })() })));
+});
+
+app.post('/api/lixeira/restaurar', exigirAdmin, (req, res) => {
+  const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter(Number.isInteger);
+  if (!ids.length) return res.status(400).json({ erro: 'Escolha o que restaurar.' });
+  const colunas = new Set(db.prepare('PRAGMA table_info(colaboradores)').all().map(c => c.name));
+  const pegar = db.prepare('SELECT * FROM lixeira WHERE id = ?');
+  const existe = db.prepare('SELECT 1 FROM colaboradores WHERE id = ?');
+  db.exec('BEGIN');
+  let n = 0;
+  try {
+    for (const id of ids) {
+      const l = pegar.get(id);
+      if (!l) continue;
+      const d = JSON.parse(l.dados);
+      // volta com o mesmo id (se livre), para manter vínculos como pedidos de ajuste
+      const campos = Object.keys(d).filter(k => colunas.has(k) && (k !== 'id' || !existe.get(d.id)));
+      db.prepare(`INSERT INTO colaboradores (${campos.join(', ')}) VALUES (${campos.map(() => '?').join(', ')})`).run(...campos.map(k => d[k]));
+      db.prepare('DELETE FROM lixeira WHERE id = ?').run(id);
+      n++;
+    }
+    sincronizarFiliais();
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
+  registrar('Administrador', 'Restaurou da lixeira', `${n} registro(s)`);
+  res.json({ ok: true, restaurados: n });
+});
+
+app.post('/api/lixeira/excluir', exigirAdmin, (req, res) => {
+  const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter(Number.isInteger);
+  if (!ids.length) return res.status(400).json({ erro: 'Escolha o que excluir.' });
+  const del = db.prepare('DELETE FROM lixeira WHERE id = ?');
+  let n = 0;
+  for (const id of ids) n += Number(del.run(id).changes);
+  registrar('Administrador', 'Excluiu da lixeira definitivamente', `${n} registro(s)`);
+  res.json({ ok: true, excluidos: n });
 });
 
 // ----- filiais (dissídio e reajuste de benefícios) -----

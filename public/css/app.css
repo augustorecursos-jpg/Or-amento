@@ -774,3 +774,14 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 
 /* EPM por colaborador: valor que vem de rateio da filial */
 .tabela-contabil td.base-rateio { color: #b54d12; font-weight: 600; white-space: nowrap; }
+
+/* Revisão de duplicados */
+.dup-grupo { border: 1px solid var(--borda, #e3e8ee); border-radius: 10px; padding: .7rem .8rem; margin-top: .8rem; }
+.dup-grupo.com-dif { border-color: #f3c9a6; }
+.dup-cab small { color: var(--texto-suave); }
+.dup-dif-txt { color: #b54d12; font-weight: 600; }
+.dup-tabela td, .dup-tabela th { font-size: .8rem; white-space: normal; vertical-align: top; }
+.dup-tabela td:first-child { color: var(--texto-suave); width: 150px; }
+.dup-tabela tr.dif td { background: #fff4ea; }
+.dup-tabela tr.dif td:first-child { color: #b54d12; font-weight: 700; }
+.dup-todos { margin-top: .4rem; font-size: .82rem; }
