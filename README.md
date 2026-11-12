@@ -157,6 +157,9 @@ Custo aproximado: plano Starter (US$ 7/mês) + disco (US$ 0,25/mês). O Render f
   O mesmo botão aceita também uma planilha **Filial | Código da empresa** (EMP_…): mostra uma prévia e grava só as filiais
   ainda sem código; os vínculos que já existem ficam como estão (os diferentes podem ser marcados para trocar). Nome de
   filial parecido (≈) vem desmarcado para conferir.
+  **Por colaborador** (opção no Formato EPM): uma linha por empresa · centro de custo · colaborador · conta, com
+  *Matrícula* e *Colaborador* depois do Centro_Custo (vagas e outros lançamentos também aparecem; HC = 1 por pessoa).
+  Soma o mesmo que a versão por centro de custo. Não aparece para o perfil financeiro.
 - **Pedidos de ajuste** – caixa de entrada com status (aberta, em análise, ajustada, recusada), resposta ao coordenador
   e botão **Abrir item**, que leva direto ao colaborador ou à premissa da filial.
 - **Acessos dos coordenadores** – login, senha e regionais de cada coordenador.
