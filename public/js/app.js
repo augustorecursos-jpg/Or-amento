@@ -3114,6 +3114,7 @@ function quemColaboradoresHtml(rub, atual, colabs) {
   return `<div class="quem-pessoas">
     <div class="ferramentas" style="margin:0 0 .5rem"><b style="color:var(--marinho)">Colaboradores (${colabs.length})</b>
       <input class="campo" id="quem-busca" placeholder="Buscar nome, matrícula, função ou valor (ex.: 733)" style="max-width:300px">
+      <label class="btn btn-claro btn-sm" style="cursor:pointer" title="Excel com a matrícula (CHAPA) de quem recebe: fora da lista fica sem; na lista e zerado passa a seguir a regra. Mostra uma prévia antes de gravar.">⬆ Importar lista (Excel)<input type="file" id="quem-lista" accept=".xlsx,.xls" hidden></label>
       <small class="sub" style="display:inline">Valor personalizado em <b>${esc(un)}</b> · vazio = segue a regra · 0 = não recebe · vale sobre a regra e sobre a planilha da base</small></div>
     <div class="chips-valor"><span>Valor de hoje:</span><button type="button" class="chip chip-valor ativo" data-valor="*">Todos <b>${colabs.length}</b></button>${chips}<small class="sub" style="display:inline">clique num valor para ver só quem está com ele${grupos.size > 12 ? ` · ${grupos.size - 12} outro(s) valor(es): use a busca` : ''}</small></div>
     <div class="ferramentas" style="margin:0 0 .5rem">Preencher <input class="campo" id="quem-massa" type="number" step="any" placeholder="valor" style="width:110px">
@@ -3137,6 +3138,7 @@ function ligarQuemColaboradores(d, rub, atual, colabs) {
     if (info) info.textContent = `Mostrando ${n} de ${linhas.length} colaborador(es)`;
   };
   $('#quem-busca', d)?.addEventListener('input', filtrar);
+  $('#quem-lista', d)?.addEventListener('change', e => e.target.files[0] && importarListaQuem(e.target.files[0], rub, atual, colabs).catch(x => toast(x.message, 'erro')));
   $$('.chip-valor', d).forEach(ch => ch.addEventListener('click', () => {
     valorSel = ch.dataset.valor;
     $$('.chip-valor', d).forEach(x => x.classList.toggle('ativo', x === ch));

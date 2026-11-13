@@ -785,3 +785,6 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 .dup-tabela tr.dif td { background: #fff4ea; }
 .dup-tabela tr.dif td:first-child { color: #b54d12; font-weight: 700; }
 .dup-todos { margin-top: .4rem; font-size: .82rem; }
+
+/* Importar lista de quem recebe */
+.lista-quem-opcoes { display: grid; gap: .3rem; margin: .5rem 0; font-size: .86rem; }

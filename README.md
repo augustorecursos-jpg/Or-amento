@@ -289,6 +289,11 @@ de ajuste. O servidor não envia nome, matrícula e gestor a esse perfil: viram 
 que continuam casando a base com o histórico, por isso os totais são os mesmos do administrador. O cálculo continua no
 navegador, então os salários individuais (sem nome) ainda chegam ao computador do usuário.
 
+**Quem recebe por lista** (Premissas → item → 👥 Quem recebe → ⬆ Importar lista): Excel com a matrícula (CHAPA) de quem
+recebe o item no escopo. Fora da lista → não recebe; na lista e zerado → segue a regra (ex.: penosidade 7,5%); na lista
+e com valor → mantém. Opções na prévia: vagas seguem a regra ou ficam zeradas; quem não recebeu no último mês da lista
+fica sem; todos da lista seguem a regra. Lista também quem da planilha não está na base.
+
 **Vagas seguem o padrão da filial**: o 0 / "não recebe" que a planilha da base trouxer para uma vaga é ignorado, e quando
 a regra da filial não dá valor ao item (Não tem / R$ 0, porque o valor vem da planilha de cada colaborador) e pelo menos
 metade dos colaboradores da filial recebe, a vaga recebe o valor típico: **benefícios** = valor mais comum (mesma função
