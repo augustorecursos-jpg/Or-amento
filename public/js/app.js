@@ -3363,7 +3363,7 @@ function lerPlanilha(wb) {
 // Ficam de fora o PPR (salário × target), a cesta natalina e o grupo Demais, que seguem as premissas; férias, 13º e
 // encargos seguem calculados sobre esses valores.
 const RUBS_BASE = RUBRICAS.filter(r => !r.fixa && r.id !== 'ppr' && r.id !== 'cesta_natalina' && r.id !== 'horas_extras' && r.id !== 'promocoes' && (r.natureza === 'remuneracao' || r.natureza === 'beneficios' || r.id === 'rescisao'));
-const APELIDOS_BASE = { adic_turno: ['ADICIONAIS DE TURNO'], adic_noturno: ['ADIC. NOTURNO', 'ADICIONAL NOTURNO', 'ADIC NOTURNO'] };
+const APELIDOS_BASE = { sobreaviso: ['SOBRE AVISO', 'SOBREAVISO', 'HORAS DE SOBREAVISO', 'HORAS SOBREAVISO'], adic_turno: ['ADICIONAIS DE TURNO'], adic_noturno: ['ADIC. NOTURNO', 'ADICIONAL NOTURNO', 'ADIC NOTURNO'] };
 
 /** Colunas da planilha com o valor de cada item por colaborador: [{ rub, col }]. */
 function colunasValores(cab) {

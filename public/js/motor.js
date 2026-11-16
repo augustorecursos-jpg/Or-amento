@@ -62,6 +62,7 @@
     { id: 'adic_noturno', nome: 'Adicional noturno', grupo: 'pessoal', natureza: 'remuneracao', adicional: true, padrao: P('nao') },
     { id: 'horas_extras', nome: 'Horas extras', grupo: 'pessoal', natureza: 'remuneracao', dica: 'Custo total do ano da filial; vira média mensal por colaborador', padrao: P('rateio', { periodo: 'anual_diluido' }) },
     { id: 'banco_horas', nome: 'Banco de horas', grupo: 'pessoal', natureza: 'remuneracao', dica: 'Pagamento de saldo de banco de horas: total da filial, R$ por colaborador ou % — entra na base de férias, 13º, FGTS e INSS', padrao: P('nao', { periodo: 'anual_diluido' }) },
+    { id: 'sobreaviso', nome: 'Sobreaviso', grupo: 'pessoal', natureza: 'remuneracao', dica: 'Horas de sobreaviso (plantão à distância): total da filial, R$ por colaborador ou % do salário — entra na base de férias, 13º, FGTS e INSS', padrao: P('nao') },
     { id: 'promocoes', nome: 'Promoções e méritos', grupo: 'pessoal', natureza: 'remuneracao', dica: 'Budget de aumentos por promoção e mérito: % sobre o salário a partir de um mês, ou total da filial', padrao: P('nao', { base: 'salario' }) },
 
     // Férias, 13º, FGTS e INSS sobre salário + adicionais (periculosidade, insalubridade…) + horas extras (regra do ADM de pessoal).

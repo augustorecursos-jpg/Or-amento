@@ -316,7 +316,7 @@ encargos, benefícios, despesas gerais), que não mudou; cada linha da Simulaç�
 
 | Grupo | Rubricas |
 |---|---|
-| Pessoal | Salário, Periculosidade, Insalubridade, Penosidade, Adicionais de turno, Adicional noturno, Horas extras, Banco de horas, Promoções e méritos, Rescisão, FGTS, INSS, PPR |
+| Pessoal | Salário, Periculosidade, Insalubridade, Penosidade, Adicionais de turno, Adicional noturno, Horas extras, Banco de horas, Sobreaviso, Promoções e méritos, Rescisão, FGTS, INSS, PPR |
 | Provisões trabalhistas | Férias (1/3), 13º salário, FGTS férias, FGTS 13º, INSS férias, INSS 13º |
 | Benefícios | VA/VR, VA natal / 13º VR, Vale mobilidade (antigo vale-transporte), Auxílio-creche, Auxílio educacional, Material escolar, Auxílio óculos, Oftalmo, Assistência médica, Coparticipação convênio médico, Assistência odontológica, Farmácia, Seguro de vida, Previdência privada, Auxílio dependente portadores, Auxílios matrimônio e nascituro, Refeitório, Fretado, Fretado (overall), Cesta natalina e as despesas gerais: Saúde ocupacional, Endomarketing, Treinamento, Viagens, Confraternizações, Serviços / Terceiros, Outras despesas |
 
