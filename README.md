@@ -232,6 +232,9 @@ regra). Para a regra valer para todos — ex.: VA reajustado na premissa — mar
 para os N com valor da planilha da base" (também no quadro e na calculadora). Ajustes feitos à mão no colaborador
 continuam valendo.
 
+**Todas · Ocupadas · Vagas novas** (Relatório contábil / EPM): escolhe as cadeiras da prévia, do HC e dos arquivos
+(contábil, EPM e EPM por colaborador). Outros lançamentos e provisões da filial entram só em *Todas*.
+
 **Terceiro no relatório contábil**: nas contas de **Treinamento** e **Serviços / Terceiros**, a regra da filial (Premissas)
 tem o campo *Terceiro* com o nome do fornecedor, que sai na coluna Terceiro; os **Outros lançamentos** também têm o campo
 (formulário e planilha). Nessas contas (e em lançamentos do pacote TERCEIROS) o nome é obrigatório: lançamento sem terceiro usa a **descrição**;

@@ -29,7 +29,7 @@ const E = {
   calc: { rub: 'promocoes', modo: 'regra', tipo: '', valor: '', periodo: '', inicio: '', inicio2: null, alvo: '', pct: '', substituir: false, incluirSem: false },
   solic: [],
   solicFiltro: 'pendentes',
-  contabil: { cfg: null, zeradas: false, porFilial: true, formato: 'contabil', hc: true, porColab: false },
+  contabil: { cfg: null, zeradas: false, porFilial: true, formato: 'contabil', hc: true, porColab: false, cadeiras: '' },
 };
 
 const $ = (sel, raiz = document) => raiz.querySelector(sel);
@@ -4748,6 +4748,11 @@ function ehRateio(c, rid) {
 
 /** Treinamento/terceiros sem nome do terceiro na última montagem do relatório: filial · item (para o aviso). */
 const faltaTerceiro = new Map();
+/** Relatório contábil/EPM: todas as cadeiras, só as ocupadas (colaboradores) ou só as vagas novas.
+ * Outros lançamentos e provisões da filial não são de pessoas: entram só em "todas". */
+const cadeiraNoRelatorio = c => (E.contabil.cadeiras === 'ocupadas' ? !c.vaga && !c.avulso : E.contabil.cadeiras === 'vagas' ? Boolean(c.vaga) && !c.avulso : true);
+const ROTULO_CADEIRAS = { '': 'Todas', ocupadas: 'Ocupadas', vagas: 'Vagas novas' };
+
 function linhasContabeis(cfg, epm = false) {
   _rateio.clear();
   if (!epm) faltaTerceiro.clear();
@@ -4756,7 +4761,7 @@ function linhasContabeis(cfg, epm = false) {
   const porChave = new Map();
   const hcPor = new Map(); // HC (colaboradores + vagas) de cada filial/CC — ou empresa/CC no EPM — para a coluna HC
   E.res.colaboradores.forEach((c, i) => {
-    if (!noFiltro(c)) return;
+    if (!noFiltro(c) || !cadeiraNoRelatorio(c)) return;
     const ccColab = ccContabil(cfg, c.cc_cod).cc;
     const empresa = epm ? empresaEpm(cfg, c.filial) : '';
     // Com "regional e filial", cada filial tem as suas linhas (para conferência); sem, soma como a contabilidade recebe.
@@ -4825,7 +4830,7 @@ async function renderContabil() {
   const ano = String(E.dados.config.ano);
   const meses = MESES.map(m => `${m}/${ano.slice(-2)}`);
   const linhas = linhasContabeis(cfg);
-  const colabs = E.dados.colaboradores.filter(noFiltro);
+  const colabs = E.dados.colaboradores.filter(c => noFiltro(c) && cadeiraNoRelatorio(c));
   const semTerceiro = [...faltaTerceiro.values()].filter(x => linhas.some(l => l.semTerceiro && l.filial === x.filial && l.meses.some(v => Math.abs(v) >= 0.005)) || !E.contabil.porFilial);
   const ccsBase = [...new Map(E.dados.colaboradores.map(c => [String(c.cc_cod || ''), c.cc_nome || ''])).entries()].sort((a, b) => a[0].localeCompare(b[0], 'pt-BR', { numeric: true }));
   const semCc = ccsBase.filter(([cod]) => ccContabil(cfg, cod).como === 'sem');
@@ -4903,8 +4908,9 @@ async function renderContabil() {
     </section>
 
     <section class="cartao" style="margin-top:1.2rem">
-      <div class="ferramentas" style="margin-bottom:.8rem"><h3 style="margin:0">Prévia · ${esc(escopo)} <small>· ${linhas.length} linha(s) · ${colabs.length} colaborador(es)</small></h3>
+      <div class="ferramentas" style="margin-bottom:.8rem"><h3 style="margin:0">Prévia · ${esc(escopo)}${E.contabil.cadeiras ? ` · ${ROTULO_CADEIRAS[E.contabil.cadeiras]}` : ''} <small>· ${linhas.length} linha(s) · ${colabs.length} colaborador(es)</small></h3>
         <div class="segmentos" id="ct-formato"><button data-f="contabil" class="${E.contabil.formato !== 'epm' ? 'ativo' : ''}">Contabilidade</button><button data-f="epm" class="${E.contabil.formato === 'epm' ? 'ativo' : ''}">EPM</button></div>
+        <div class="segmentos" id="ct-cadeiras" title="Todas as cadeiras, só as ocupadas (colaboradores) ou só as vagas novas. Outros lançamentos entram só em Todas.">${Object.entries(ROTULO_CADEIRAS).map(([k, v]) => `<button data-c="${k}" class="${(E.contabil.cadeiras || '') === k ? 'ativo' : ''}">${v}</button>`).join('')}</div>
         <span class="direita" style="display:flex;gap:1rem;flex-wrap:wrap"><label class="check" title="Desmarque para gerar no formato original da contabilidade (somado por centro de custo e conta)"><input type="checkbox" id="ct-filial" ${E.contabil.porFilial ? 'checked' : ''}> colunas de regional e filial</label><label class="check"><input type="checkbox" id="ct-zeradas" ${E.contabil.zeradas ? 'checked' : ''}> incluir linhas zeradas</label><label class="check" title="Coluna no fim com o HC (colaboradores + vagas) do centro de custo da linha"><input type="checkbox" id="ct-hc" ${E.contabil.hc ? 'checked' : ''}> coluna de HC</label>${E.contabil.formato === 'epm' && !soTotais() ? `<label class="check" title="Uma linha por colaborador dentro de cada centro de custo, com matrícula e nome (vagas e outros lançamentos também aparecem)"><input type="checkbox" id="ct-colab" ${E.contabil.porColab ? 'checked' : ''}> por colaborador</label>` : ''}</span></div>
       ${(() => { const hc = MESES.map((_, m) => colabs.filter(c => m + 1 >= (Number(c.mes_inicio) || 1) && m + 1 <= (Number(c.mes_fim) || 12)).length); return `<p class="subtitulo" style="margin:0 0 .6rem">👥 <b>HC total</b> (colaboradores + vagas ativos no mês): ${MESES.map((m, i) => `${m} <b>${num0.format(hc[i])}</b>`).join(' · ')}</p>`; })()}
       ${E.contabil.formato !== 'epm' && semTerceiro.length ? `<p class="aviso-ajuste" style="margin:0 0 .6rem">⚠️ <b>Treinamento / terceiros sem o nome do terceiro</b> (saem como ${esc(cfg.terceiro)}, em laranja): ${esc(semTerceiro.map(x => `${x.item} · ${x.filial}`).join(' — '))}. Preencha o campo <b>Terceiro</b> na regra do item (Premissas) ou no lançamento.</p>` : ''}
@@ -4963,6 +4969,7 @@ async function renderContabil() {
   $('#ct-baixar', el).addEventListener('click', () => baixarContabil(cfg));
   $('#ct-baixar-epm', el).addEventListener('click', () => baixarEpm(cfg));
   $$('#ct-formato button', el).forEach(b => b.addEventListener('click', () => { E.contabil.formato = b.dataset.f; renderContabil(); }));
+  $$('#ct-cadeiras button', el).forEach(b => b.addEventListener('click', () => { E.contabil.cadeiras = b.dataset.c; renderContabil(); }));
   $('#ct-epm', el).addEventListener('change', e => e.target.files[0] && importarCodigosEpm(e.target.files[0]));
   $('#ct-epm-padrao', el).addEventListener('change', e => salvar({ epm_padrao: e.target.value.trim() }));
   $('#ct-epm-unico', el).addEventListener('change', e => salvar({ epm_unico: e.target.checked }));
@@ -5067,7 +5074,7 @@ function abaContasRateadas() {
   const r2 = v => Math.round(v * 100) / 100;
   const tot = new Map();
   E.res.colaboradores.forEach((c, i) => {
-    if (!noFiltro(c) || c.avulso) return;
+    if (!noFiltro(c) || c.avulso || !cadeiraNoRelatorio(c)) return;
     RUBRICAS.forEach((r, k) => {
       if (!ehRateio(c, r.id)) return;
       let t = 0;
@@ -5115,7 +5122,7 @@ function baixarEpm(cfg) {
   XLSX.utils.book_append_sheet(wb, ws, 'EPM');
   if (pc) XLSX.utils.book_append_sheet(wb, abaContasRateadas(), 'Contas rateadas');
   const nome = [ano, E.filtro.regional, E.filtro.uf, E.filtro.filial].filter(Boolean).join('-').replace(/[^\w-]+/g, '_');
-  XLSX.writeFile(wb, `Orcamento-EPM-${pc ? 'por-colaborador-' : ''}${nome}.xlsx`);
+  XLSX.writeFile(wb, `Orcamento-EPM-${pc ? 'por-colaborador-' : ''}${E.contabil.cadeiras ? `${E.contabil.cadeiras === 'vagas' ? 'vagas-novas' : 'ocupadas'}-` : ''}${nome}.xlsx`);
 }
 
 async function importarListasContabeis(arquivo) {
@@ -5163,7 +5170,7 @@ function baixarContabil(cfg) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Pessoal');
   const nome = [ano, E.filtro.regional, E.filtro.uf, E.filtro.filial].filter(Boolean).join('-').replace(/[^\w-]+/g, '_');
-  XLSX.writeFile(wb, `Orcamento-Contabil-${nome}.xlsx`);
+  XLSX.writeFile(wb, `Orcamento-Contabil-${E.contabil.cadeiras ? `${E.contabil.cadeiras === 'vagas' ? 'vagas-novas' : 'ocupadas'}-` : ''}${nome}.xlsx`);
 }
 
 // ---------- Outros lançamentos (custos fora dos colaboradores) ----------
