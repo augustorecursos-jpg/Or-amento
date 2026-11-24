@@ -4204,6 +4204,8 @@ function editarColaborador(id, padrao = {}) {
       <label class="rotulo">${c.vaga ? 'Mês de admissão' : 'Mês de início'}<select class="campo" name="mes_inicio">${opcoesMes(c.mes_inicio)}</select></label>
       <label class="rotulo">Mês de saída <small>(desligamento previsto)</small><select class="campo" name="mes_fim">${opcoesMes(c.mes_fim)}</select></label>
       <label class="check inteiro"><input type="checkbox" name="vaga" ${c.vaga ? 'checked' : ''}> É uma vaga prevista (ainda não preenchida)</label>
+      ${id ? '' : `<label class="rotulo inteiro" id="qtd-vagas" ${c.vaga ? '' : 'hidden'}>Quantidade de vagas iguais <small>(mesma filial, função, salário e mês — cada uma vira uma cadeira, numerada (1/6), (2/6)…)</small>
+        <input class="campo" name="quantidade" type="number" min="1" max="100" step="1" value="1" style="max-width:120px"></label>`}
       <div class="inteiro proprias">
         <h4>📈 Promoção projetada <small>· novo salário e nível a partir de um mês (o dissídio continua entrando por cima; a PPR usa o salário e o nível novos)</small></h4>
         <div class="form-grade">
@@ -4222,11 +4224,14 @@ function editarColaborador(id, padrao = {}) {
     rodape: '<button class="btn btn-claro" data-fechar>Cancelar</button><button class="btn btn-laranja" id="salvar-colab">Salvar</button>',
   });
   montarProprias(d, c);
+  $('#form-colab', d).vaga.addEventListener('change', e => { const q = $('#qtd-vagas', d); if (q) q.hidden = !e.target.checked; });
   $('#salvar-colab', d).addEventListener('click', async () => {
     const f = $('#form-colab', d);
     if (!f.reportValidity()) return;
     const body = Object.fromEntries(new FormData(f));
     body.vaga = f.vaga.checked;
+    const qtd = body.vaga && !id ? Math.min(100, Math.max(1, Math.floor(Number(body.quantidade) || 1))) : 1;
+    body.quantidade = qtd;
     body.excecoes = lerProprias(d);
     if (body.excecoes === null) return;
     if (Number(body.mes_fim) < Number(body.mes_inicio)) return toast('O mês de saída deve ser depois do início.', 'erro');
@@ -4237,7 +4242,7 @@ function editarColaborador(id, padrao = {}) {
       d.close();
       await carregar();
       renderAba();
-      toast('Salvo.');
+      toast(qtd > 1 ? `${qtd} vagas incluídas.` : 'Salvo.');
     } catch (e) { toast(e.message, 'erro'); }
   });
 }

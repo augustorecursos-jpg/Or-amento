@@ -295,6 +295,9 @@ de ajuste. O servidor não envia nome, matrícula e gestor a esse perfil: viram 
 que continuam casando a base com o histórico, por isso os totais são os mesmos do administrador. O cálculo continua no
 navegador, então os salários individuais (sem nome) ainda chegam ao computador do usuário.
 
+**Várias vagas iguais de uma vez**: ao incluir uma vaga nova, o campo *Quantidade de vagas iguais* cria N cadeiras com os
+mesmos dados (filial, função, salário, mês, condições próprias), numeradas "(1/6)", "(2/6)"…
+
 **Quem recebe por lista** (Premissas → item → 👥 Quem recebe → ⬆ Importar lista): Excel com a matrícula (CHAPA) de quem
 recebe o item no escopo. Fora da lista → não recebe; na lista e zerado → segue a regra (ex.: penosidade 7,5%); na lista
 e com valor → mantém. Opções na prévia: vagas seguem a regra ou ficam zeradas; quem não recebeu no último mês da lista

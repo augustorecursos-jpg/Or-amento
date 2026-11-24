@@ -575,10 +575,21 @@ app.post('/api/colaboradores/importar', exigirAdmin, (req, res) => {
 app.post('/api/colaboradores', exigirAdmin, (req, res) => {
   const c = lerColaborador(req.body || {});
   if (!c.nome || !c.regional || !c.filial) return res.status(400).json({ erro: 'Informe nome, regional e filial.' });
-  const r = db.prepare(`INSERT INTO colaboradores (${CAMPOS_COLAB.join(',')}) VALUES (${CAMPOS_COLAB.map(() => '?').join(',')})`).run(...CAMPOS_COLAB.map(k => c[k]));
+  // Vagas iguais de uma vez (mesma filial, função, salário, mês…): numeradas "(1/6)", "(2/6)"…
+  const qtd = c.vaga ? Math.min(100, Math.max(1, Math.floor(Number(req.body?.quantidade) || 1))) : 1;
+  const ins = db.prepare(`INSERT INTO colaboradores (${CAMPOS_COLAB.join(',')}) VALUES (${CAMPOS_COLAB.map(() => '?').join(',')})`);
+  const ids = [];
+  db.exec('BEGIN');
+  try {
+    for (let i = 1; i <= qtd; i++) {
+      const linha = qtd > 1 ? { ...c, nome: `${c.nome} (${i}/${qtd})` } : c;
+      ids.push(Number(ins.run(...CAMPOS_COLAB.map(k => linha[k])).lastInsertRowid));
+    }
+    db.exec('COMMIT');
+  } catch (e) { db.exec('ROLLBACK'); throw e; }
   sincronizarFiliais();
-  registrar('Administrador', c.vaga ? 'Incluiu vaga' : 'Incluiu colaborador', `${c.nome} · ${c.filial}`);
-  res.json({ ok: true, id: Number(r.lastInsertRowid) });
+  registrar('Administrador', c.vaga ? (qtd > 1 ? `Incluiu ${qtd} vagas` : 'Incluiu vaga') : 'Incluiu colaborador', `${c.nome} · ${c.filial}`);
+  res.json({ ok: true, id: ids[0], ids });
 });
 
 // Atualiza só alguns dados (sexo, gestor, centro de custo) de vários colaboradores, sem mexer no resto.
