@@ -234,8 +234,9 @@ continuam valendo.
 
 **Terceiro no relatório contábil**: nas contas de **Treinamento** e **Serviços / Terceiros**, a regra da filial (Premissas)
 tem o campo *Terceiro* com o nome do fornecedor, que sai na coluna Terceiro; os **Outros lançamentos** também têm o campo
-(formulário e planilha). Sem nome, sai o terceiro padrão (N/A Custom1). Mesma conta e CC com terceiros diferentes = uma
-linha por terceiro.
+(formulário e planilha). Nessas contas (e em lançamentos do pacote TERCEIROS) o nome é obrigatório: lançamento sem terceiro usa a **descrição**;
+regra sem nome sai como N/A Custom1 **em laranja**, com um aviso listando item e filial para preencher. Mesma conta e CC
+com terceiros diferentes = uma linha por terceiro.
 
 **HC no relatório contábil e no EPM**: a prévia mostra o HC total de cada mês e o arquivo traz uma **coluna HC no fim**,
 com o HC (colaboradores + vagas) do centro de custo de cada linha — custo levado para outro CC (ex.: fretado no 25506)

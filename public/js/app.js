@@ -4720,11 +4720,15 @@ function ccContabil(cfg, cod) {
 /** Linhas do relatório: Pacote · Centro de custo contábil · Conta contábil · Terceiro · 12 meses. */
 /** Contas que levam o nome do terceiro no relatório contábil. */
 const RUBS_TERCEIRO = new Set(['treinamento', 'servicos']);
-function terceiroDaLinha(cfg, c, rid) {
+/** A linha é de treinamento ou de serviços/terceiros (item ou pacote TERCEIROS)? Nessas o nome do terceiro é obrigatório. */
+const pedeTerceiro = (rid, pacote) => RUBS_TERCEIRO.has(rid) || /TERCEIR/i.test(pacote || '');
+/** Nome do terceiro: o do lançamento (ou a descrição dele) → o da regra do item → o padrão. '' = falta preencher. */
+function terceiroDaLinha(cfg, c, rid, pacote) {
   const av = c.avulso;
   if (av?.terceiro) return av.terceiro;
-  if (av || !RUBS_TERCEIRO.has(rid)) return cfg.terceiro;
-  return Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rid).terceiro || cfg.terceiro;
+  if (!pedeTerceiro(rid, pacote)) return cfg.terceiro;
+  if (av) return av.provisao || av.realizado ? '' : String(c.nome || '').trim();
+  return Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rid).terceiro || '';
 }
 
 /** O valor da conta para o colaborador vem do total da filial dividido entre as pessoas (e não de um valor dele)? */
@@ -4737,8 +4741,11 @@ function ehRateio(c, rid) {
   return _rateio.get(k);
 }
 
+/** Treinamento/terceiros sem nome do terceiro na última montagem do relatório: filial · item (para o aviso). */
+const faltaTerceiro = new Map();
 function linhasContabeis(cfg, epm = false) {
   _rateio.clear();
+  if (!epm) faltaTerceiro.clear();
   // EPM por colaborador: uma linha por empresa · CC · colaborador · conta (não para o perfil financeiro)
   const porColab = epm && E.contabil.porColab && !soTotais();
   const porChave = new Map();
@@ -4768,10 +4775,12 @@ function linhasContabeis(cfg, epm = false) {
       const ccEpm = epm ? `CC_${numCc}` : '';
       const contaEpm = epm ? `DRE_${codigoDe(conta)}` : '';
       // Terceiro: nome do fornecedor nas contas de treinamento e serviços/terceiros (e em lançamento com terceiro); senão o padrão
-      const terceiro = epm ? '' : terceiroDaLinha(cfg, c, r.id);
+      const terceiroNome = epm ? '' : terceiroDaLinha(cfg, c, r.id, pacote);
+      const terceiro = terceiroNome || (epm ? '' : cfg.terceiro);
+      if (!epm && !terceiroNome) faltaTerceiro.set(`${c.filial}\u0000${r.id}`, { filial: c.filial, item: r.nome });
       const chave = epm ? `${empresa}\u0000${ccEpm}\u0000${contaEpm}${porColab ? `\u0000${c.id}` : ''}` : `${regional}\u0000${filial}\u0000${pacote}\u0000${cc}\u0000${conta}\u0000${terceiro}`;
       if (!porChave.has(chave)) {
-        porChave.set(chave, { regional, filial, pacote, cc, conta, empresa, ccEpm, contaEpm, terceiro, meses: new Float64Array(12),
+        porChave.set(chave, { regional, filial, pacote, cc, conta, empresa, ccEpm, contaEpm, terceiro, semTerceiro: !epm && !terceiroNome, meses: new Float64Array(12),
           ...(porColab ? { matricula: c.avulso ? '' : String(c.matricula || ''), colaborador: c.avulso ? `${c.nome} (lançamento)` : c.vaga ? `${c.nome} (vaga)` : c.nome, pessoa: !c.avulso } : {}) });
       }
       const l = porChave.get(chave);
@@ -4812,6 +4821,7 @@ async function renderContabil() {
   const meses = MESES.map(m => `${m}/${ano.slice(-2)}`);
   const linhas = linhasContabeis(cfg);
   const colabs = E.dados.colaboradores.filter(noFiltro);
+  const semTerceiro = [...faltaTerceiro.values()].filter(x => linhas.some(l => l.semTerceiro && l.filial === x.filial && l.meses.some(v => Math.abs(v) >= 0.005)) || !E.contabil.porFilial);
   const ccsBase = [...new Map(E.dados.colaboradores.map(c => [String(c.cc_cod || ''), c.cc_nome || ''])).entries()].sort((a, b) => a[0].localeCompare(b[0], 'pt-BR', { numeric: true }));
   const semCc = ccsBase.filter(([cod]) => ccContabil(cfg, cod).como === 'sem');
   const opcoes = (lista, sel, vazio) => `<option value="">${vazio}</option>${[...new Set([...lista, sel].filter(Boolean))].map(x => `<option ${x === sel ? 'selected' : ''}>${esc(x)}</option>`).join('')}`;
@@ -4892,6 +4902,7 @@ async function renderContabil() {
         <div class="segmentos" id="ct-formato"><button data-f="contabil" class="${E.contabil.formato !== 'epm' ? 'ativo' : ''}">Contabilidade</button><button data-f="epm" class="${E.contabil.formato === 'epm' ? 'ativo' : ''}">EPM</button></div>
         <span class="direita" style="display:flex;gap:1rem;flex-wrap:wrap"><label class="check" title="Desmarque para gerar no formato original da contabilidade (somado por centro de custo e conta)"><input type="checkbox" id="ct-filial" ${E.contabil.porFilial ? 'checked' : ''}> colunas de regional e filial</label><label class="check"><input type="checkbox" id="ct-zeradas" ${E.contabil.zeradas ? 'checked' : ''}> incluir linhas zeradas</label><label class="check" title="Coluna no fim com o HC (colaboradores + vagas) do centro de custo da linha"><input type="checkbox" id="ct-hc" ${E.contabil.hc ? 'checked' : ''}> coluna de HC</label>${E.contabil.formato === 'epm' && !soTotais() ? `<label class="check" title="Uma linha por colaborador dentro de cada centro de custo, com matrícula e nome (vagas e outros lançamentos também aparecem)"><input type="checkbox" id="ct-colab" ${E.contabil.porColab ? 'checked' : ''}> por colaborador</label>` : ''}</span></div>
       ${(() => { const hc = MESES.map((_, m) => colabs.filter(c => m + 1 >= (Number(c.mes_inicio) || 1) && m + 1 <= (Number(c.mes_fim) || 12)).length); return `<p class="subtitulo" style="margin:0 0 .6rem">👥 <b>HC total</b> (colaboradores + vagas ativos no mês): ${MESES.map((m, i) => `${m} <b>${num0.format(hc[i])}</b>`).join(' · ')}</p>`; })()}
+      ${E.contabil.formato !== 'epm' && semTerceiro.length ? `<p class="aviso-ajuste" style="margin:0 0 .6rem">⚠️ <b>Treinamento / terceiros sem o nome do terceiro</b> (saem como ${esc(cfg.terceiro)}, em laranja): ${esc(semTerceiro.map(x => `${x.item} · ${x.filial}`).join(' — '))}. Preencha o campo <b>Terceiro</b> na regra do item (Premissas) ou no lançamento.</p>` : ''}
       ${E.contabil.formato === 'epm' ? (() => {
         const epm = linhasContabeis(cfg, true);
         const fy = `FY${ano.slice(-2)}`;
@@ -4907,7 +4918,7 @@ async function renderContabil() {
           ${epm.length > 400 ? `<p class="subtitulo" style="margin:.6rem 0 0">Mostrando 400 de ${epm.length} linhas — o Excel traz todas.</p>` : ''}`;
       })() : `
       <div class="tabela-wrap alta"><table class="tabela tabela-contabil"><thead><tr>${E.contabil.porFilial ? '<th>Regional</th><th>Filial</th>' : ''}<th>Pacote</th><th>Centro de Custo</th><th>Conta Contábil</th><th>Terceiro</th>${meses.map(m => `<th class="n">${m}</th>`).join('')}${E.contabil.hc ? '<th class="n col-hc" title="Colaboradores + vagas do centro de custo">HC</th>' : ''}</tr></thead>
-      <tbody>${linhas.slice(0, 400).map(l => `<tr>${E.contabil.porFilial ? `<td>${esc(l.regional)}</td><td>${esc(l.filial)}</td>` : ''}<td>${esc(l.pacote)}</td><td>${esc(l.cc)}</td><td>${esc(l.conta)}</td><td>${esc(l.terceiro || cfg.terceiro)}</td>${[...l.meses].map(v => `<td class="n">${Math.round(v) ? num0.format(Math.round(v)) : '-'}</td>`).join('')}${E.contabil.hc ? `<td class="n col-hc">${l.hc || '-'}</td>` : ''}</tr>`).join('')
+      <tbody>${linhas.slice(0, 400).map(l => `<tr>${E.contabil.porFilial ? `<td>${esc(l.regional)}</td><td>${esc(l.filial)}</td>` : ''}<td>${esc(l.pacote)}</td><td>${esc(l.cc)}</td><td>${esc(l.conta)}</td><td class="${l.semTerceiro && l.meses.some(v => Math.abs(v) >= 0.005) ? 'sem-terceiro' : ''}">${esc(l.terceiro || cfg.terceiro)}</td>${[...l.meses].map(v => `<td class="n">${Math.round(v) ? num0.format(Math.round(v)) : '-'}</td>`).join('')}${E.contabil.hc ? `<td class="n col-hc">${l.hc || '-'}</td>` : ''}</tr>`).join('')
         || '<tr><td colspan="18" class="vazio">Nada para mostrar com esses filtros.</td></tr>'}</tbody></table></div>
       ${linhas.length > 400 ? `<p class="subtitulo" style="margin:.6rem 0 0">Mostrando 400 de ${linhas.length} linhas — o Excel traz todas.</p>` : ''}`}
     </section>`;
