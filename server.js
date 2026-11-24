@@ -167,6 +167,7 @@ function limparPremissa(p) {
       .filter(([k, v]) => texto(k) && v !== '' && v != null).slice(0, 200).map(([k, v]) => [texto(k, 120), numero(v)])),
     // Ao marcar "Não tem", guarda como era cobrado, para voltar igual se marcar "Sim" de novo.
     ultimo_metodo: Motor.METODOS[p.ultimo_metodo] && p.ultimo_metodo !== 'nao' ? p.ultimo_metodo : null,
+    terceiro: texto(p.terceiro, 120), // nome do terceiro no relatório contábil (treinamento e serviços/terceiros)
   };
 }
 
@@ -355,7 +356,7 @@ app.delete('/api/ano-anterior/contas', exigirAdmin, (req, res) => {
 // ----- outros lançamentos (custos fora dos colaboradores) -----
 
 const lerLancamentoDb = l => ({ ...l, meses: (() => { try { return JSON.parse(l.meses); } catch { return []; } })() });
-const CAMPOS_LANC = ['descricao', 'regional', 'filial', 'cc_cod', 'cc_nome', 'cc_contabil', 'rubrica', 'conta', 'pacote', 'meses', 'dividir'];
+const CAMPOS_LANC = ['descricao', 'regional', 'filial', 'cc_cod', 'cc_nome', 'cc_contabil', 'rubrica', 'conta', 'pacote', 'meses', 'dividir', 'terceiro'];
 
 /**
  * Lançamentos sem filial com dividir = 'hc' (ex.: Gupy para o Brasil todo) viram uma linha por filial, com o valor de cada
@@ -395,6 +396,7 @@ function lerLancamento(b) {
     rubrica: RUBRICAS_VALIDAS.has(b.rubrica) ? b.rubrica : 'outras',
     conta: texto(b.conta, 160),
     pacote: texto(b.pacote, 80),
+    terceiro: texto(b.terceiro, 120),
     meses: JSON.stringify(Array.from({ length: 12 }, (_, i) => numero(Array.isArray(b.meses) ? b.meses[i] : 0))),
     // 'hc' = sem filial, dividido entre as filiais (da regional ou de todas) pelo headcount de cada mês
     dividir: /^(hc|headcount|dividir|sim)$/i.test(texto(b.dividir)) && !texto(b.filial) ? 'hc' : '',

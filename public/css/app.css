@@ -788,3 +788,6 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 
 /* Importar lista de quem recebe */
 .lista-quem-opcoes { display: grid; gap: .3rem; margin: .5rem 0; font-size: .86rem; }
+
+/* Nome do terceiro na regra (treinamento, serviços/terceiros) */
+.campo-terceiro { display: block; margin-top: .35rem; width: 100%; max-width: 260px; font-size: .8rem; padding: .35rem .55rem; }

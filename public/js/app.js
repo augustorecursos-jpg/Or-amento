@@ -52,7 +52,7 @@ function lancamentosComoLinhas() {
     id: -(k + 1), matricula: '', nome: l.descricao, regional: l.regional === '*' ? 'TODAS AS REGIONAIS' : l.regional,
     filial: l.filial || (l.regional === '*' ? '(empresa · Brasil)' : `(regional ${l.regional})`), situacao: 'Outro lançamento', funcao: 'Outro lançamento',
     cargo: '', cc_cod: l.cc_cod, cc_nome: l.cc_nome, salario: 0, mes_inicio: 1, mes_fim: 12, vaga: false, excecoes: {}, sexo: '', gestor: '',
-    avulso: { rubrica: l.rubrica, meses: l.meses, conta: l.conta, pacote: l.pacote, cc_contabil: l.cc_contabil, id: l.id },
+    avulso: { rubrica: l.rubrica, meses: l.meses, conta: l.conta, pacote: l.pacote, cc_contabil: l.cc_contabil, terceiro: l.terceiro || '', id: l.id },
   }));
 }
 
@@ -2237,6 +2237,7 @@ function linhaPremHtml(rub, previa) {
     ? `<button class="btn-detalhe btn-niveis" data-niveis title="Target de salários por nível do cargo">📋 Tabela por nível · ${nNiveis ? `${nNiveis} nível(is)` : 'preencher'}</button>`
     : `<span class="valor-un"><input class="campo" type="number" step="any" data-campo="valor" value="${p.valor ?? 0}"><small>${unidadeValor(tipo, p.periodo).replace('R$ total', tipo === 'rateio' && p.dividir === 'escopo' ? `R$ total ${E.prem.escopo === '*' ? 'da empresa' : 'da regional'}` : 'R$ total')}</small></span>${notaReajuste(rub, tipo, p)}`;
   const desab = tem ? '' : ' desab';
+  const terceiroHtml = RUBS_TERCEIRO.has(rub.id) ? `<input class="campo campo-terceiro" data-terceiro value="${esc(p.terceiro || '')}" placeholder="Terceiro (nome no relatório contábil)" title="Nome do terceiro/fornecedor que sai na coluna Terceiro do relatório contábil. Vazio = ${esc(E.contabil?.cfg?.terceiro || 'N/A Custom1')}">` : '';
   // Quem tem valor da planilha da base para este item: por padrão fica com o valor dele; marcando, a regra vale para todos.
   const daBase = tem && tipo !== 'rateio' ? E.dados.colaboradores.filter(colabsDoEscopo(escopo)).filter(c => c.excecoes?.[rub.id]?.origem === 'base').length : 0;
   const valeTodos = daBase ? `<label class="vale-todos${p.vale_todos ? ' ligado' : ''}" title="Estes colaboradores têm o valor deste item na planilha da base, que vale no lugar da regra"><input type="checkbox" data-vale-todos ${p.vale_todos ? 'checked' : ''}> Usar esta regra também para os <b>${num0.format(daBase)}</b> com valor da planilha da base</label>` : '';
@@ -2244,7 +2245,7 @@ function linhaPremHtml(rub, previa) {
     <td class="rub fixa">${esc(rub.nome)}<small>${propria ? (escopo === '*' ? 'regra geral' : escopo.startsWith('R:') ? 'regra da regional' : 'regra desta filial') : `herdada · ${esc(origem)}`}</small></td>
     <td><label class="chave" title="A filial tem este item?"><input type="checkbox" data-tem ${tem ? 'checked' : ''}><span></span><b>${tem ? 'Sim' : 'Não'}</b></label></td>
     <td class="${desab}"><select class="campo" data-campo="metodo">${Object.entries(tipos).map(([k, v]) => `<option value="${k}" ${k === tipo ? 'selected' : ''}>${v}</option>`).join('')}</select></td>
-    <td class="${desab}">${valorHtml}${valeTodos}</td>
+    <td class="${desab}">${valorHtml}${valeTodos}${terceiroHtml}</td>
     <td class="${desab}"><button class="btn-detalhe" data-detalhes title="Base, periodicidade, rateio e teto">⚙ ${esc(resumoDetalhes(regraDoTipo(tipo, p)))}</button></td>
     <td><button class="btn-detalhe" data-quem title="Quem recebe esta rubrica e valor personalizado por colaborador">${personalizados(rub.id) ? `<b class="qtd-pessoas">${personalizados(rub.id)} personalizado(s)</b> · ` : ''}👥 ${[p.publico === 'F' ? '♀ Mulheres' : p.publico === 'M' ? '♂ Homens' : '', p.quem?.length ? `${p.quem.length} grupo(s)` : ''].filter(Boolean).join(' · ') || 'Todos'}${Object.keys(p.por_funcao || {}).length ? ' · valor por função' : ''}${p.periodo === 'por_mes' && p.publico_meses?.some(Boolean) ? ' · público por mês' : ''}</button></td>
     <td class="n" data-anual>${anual ? brl0.format(anual) : '–'}</td>
@@ -2285,6 +2286,7 @@ function desenharTabelaPrem() {
       E.prem.edits[rub] = { ...atual(), valor: Number(e.target.value) || 0 };
       atualizarPrevia();
     });
+    tr.querySelector('[data-terceiro]')?.addEventListener('change', e => { E.prem.edits[rub] = { ...atual(), terceiro: e.target.value.trim() }; atualizarPrevia(); });
     tr.querySelector('[data-detalhes]').addEventListener('click', () => editarDetalhes(rub));
     tr.querySelector('[data-quem]').addEventListener('click', () => escolherQuem(rub));
     tr.querySelector('[data-reset]')?.addEventListener('click', () => { E.prem.edits[rub] = null; desenharTabelaPrem(); });
@@ -4716,6 +4718,15 @@ function ccContabil(cfg, cod) {
 }
 
 /** Linhas do relatório: Pacote · Centro de custo contábil · Conta contábil · Terceiro · 12 meses. */
+/** Contas que levam o nome do terceiro no relatório contábil. */
+const RUBS_TERCEIRO = new Set(['treinamento', 'servicos']);
+function terceiroDaLinha(cfg, c, rid) {
+  const av = c.avulso;
+  if (av?.terceiro) return av.terceiro;
+  if (av || !RUBS_TERCEIRO.has(rid)) return cfg.terceiro;
+  return Motor.premissaDe(E.dados.premissas, c.filial, c.regional, rid).terceiro || cfg.terceiro;
+}
+
 /** O valor da conta para o colaborador vem do total da filial dividido entre as pessoas (e não de um valor dele)? */
 const _rateio = new Map();
 function ehRateio(c, rid) {
@@ -4756,9 +4767,11 @@ function linhasContabeis(cfg, epm = false) {
       const numCc = /^\d+$/.test(codigoDe(cc)) ? codigoDe(cc) : /^\d+$/.test(String(c.cc_cod || '').trim()) ? String(c.cc_cod).trim() : 'NA';
       const ccEpm = epm ? `CC_${numCc}` : '';
       const contaEpm = epm ? `DRE_${codigoDe(conta)}` : '';
-      const chave = epm ? `${empresa}\u0000${ccEpm}\u0000${contaEpm}${porColab ? `\u0000${c.id}` : ''}` : `${regional}\u0000${filial}\u0000${pacote}\u0000${cc}\u0000${conta}`;
+      // Terceiro: nome do fornecedor nas contas de treinamento e serviços/terceiros (e em lançamento com terceiro); senão o padrão
+      const terceiro = epm ? '' : terceiroDaLinha(cfg, c, r.id);
+      const chave = epm ? `${empresa}\u0000${ccEpm}\u0000${contaEpm}${porColab ? `\u0000${c.id}` : ''}` : `${regional}\u0000${filial}\u0000${pacote}\u0000${cc}\u0000${conta}\u0000${terceiro}`;
       if (!porChave.has(chave)) {
-        porChave.set(chave, { regional, filial, pacote, cc, conta, empresa, ccEpm, contaEpm, meses: new Float64Array(12),
+        porChave.set(chave, { regional, filial, pacote, cc, conta, empresa, ccEpm, contaEpm, terceiro, meses: new Float64Array(12),
           ...(porColab ? { matricula: c.avulso ? '' : String(c.matricula || ''), colaborador: c.avulso ? `${c.nome} (lançamento)` : c.vaga ? `${c.nome} (vaga)` : c.nome, pessoa: !c.avulso } : {}) });
       }
       const l = porChave.get(chave);
@@ -4894,7 +4907,7 @@ async function renderContabil() {
           ${epm.length > 400 ? `<p class="subtitulo" style="margin:.6rem 0 0">Mostrando 400 de ${epm.length} linhas — o Excel traz todas.</p>` : ''}`;
       })() : `
       <div class="tabela-wrap alta"><table class="tabela tabela-contabil"><thead><tr>${E.contabil.porFilial ? '<th>Regional</th><th>Filial</th>' : ''}<th>Pacote</th><th>Centro de Custo</th><th>Conta Contábil</th><th>Terceiro</th>${meses.map(m => `<th class="n">${m}</th>`).join('')}${E.contabil.hc ? '<th class="n col-hc" title="Colaboradores + vagas do centro de custo">HC</th>' : ''}</tr></thead>
-      <tbody>${linhas.slice(0, 400).map(l => `<tr>${E.contabil.porFilial ? `<td>${esc(l.regional)}</td><td>${esc(l.filial)}</td>` : ''}<td>${esc(l.pacote)}</td><td>${esc(l.cc)}</td><td>${esc(l.conta)}</td><td>${esc(cfg.terceiro)}</td>${[...l.meses].map(v => `<td class="n">${Math.round(v) ? num0.format(Math.round(v)) : '-'}</td>`).join('')}${E.contabil.hc ? `<td class="n col-hc">${l.hc || '-'}</td>` : ''}</tr>`).join('')
+      <tbody>${linhas.slice(0, 400).map(l => `<tr>${E.contabil.porFilial ? `<td>${esc(l.regional)}</td><td>${esc(l.filial)}</td>` : ''}<td>${esc(l.pacote)}</td><td>${esc(l.cc)}</td><td>${esc(l.conta)}</td><td>${esc(l.terceiro || cfg.terceiro)}</td>${[...l.meses].map(v => `<td class="n">${Math.round(v) ? num0.format(Math.round(v)) : '-'}</td>`).join('')}${E.contabil.hc ? `<td class="n col-hc">${l.hc || '-'}</td>` : ''}</tr>`).join('')
         || '<tr><td colspan="18" class="vazio">Nada para mostrar com esses filtros.</td></tr>'}</tbody></table></div>
       ${linhas.length > 400 ? `<p class="subtitulo" style="margin:.6rem 0 0">Mostrando 400 de ${linhas.length} linhas — o Excel traz todas.</p>` : ''}`}
     </section>`;
@@ -5122,7 +5135,7 @@ function baixarContabil(cfg) {
   const ini = pf ? 6 : 4; // primeira coluna de mês
   const comHc = E.contabil.hc;
   const aoa = [[...(pf ? ['Regional', 'Filial'] : []), 'Pacote', 'Centro de Custo', 'Conta Contábil', 'Terceiro', ...meses, ...(comHc ? ['HC'] : [])],
-    ...linhas.map(l => [...(pf ? [l.regional, l.filial] : []), l.pacote, l.cc, l.conta, cfg.terceiro, ...[...l.meses].map(v => Math.round(v * 100) / 100), ...(comHc ? [l.hc || 0] : [])])];
+    ...linhas.map(l => [...(pf ? [l.regional, l.filial] : []), l.pacote, l.cc, l.conta, l.terceiro || cfg.terceiro, ...[...l.meses].map(v => Math.round(v * 100) / 100), ...(comHc ? [l.hc || 0] : [])])];
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   // Formato da contabilidade: milhar sem centavos e "-" no zero
   for (let r = 1; r < aoa.length; r++) for (let c = ini; c < ini + 12; c++) {
@@ -5225,6 +5238,7 @@ function editarLancamento(l) {
         ${GRUPOS.map(g => `<optgroup label="${g.nome}">${RUBS_LANC.filter(r => r.grupo === g.id && !r.soLancamento).map(r => `<option value="${r.id}" ${r.id === a.rubrica ? 'selected' : ''}>${esc(r.nome)}</option>`).join('')}</optgroup>`).join('')}</select></label>
       <label class="rotulo">Conta contábil<input class="campo" name="conta" list="lanc-contas" value="${esc(a.conta)}">
         <datalist id="lanc-contas">${(cfg.contas.length ? cfg.contas : Object.values(CONTA_SUGERIDA)).map(c => `<option value="${esc(c)}">`).join('')}</datalist><small id="lanc-conta-dica"></small></label>
+      <label class="rotulo">Terceiro<input class="campo" name="terceiro" value="${esc(a.terceiro || '')}" placeholder="${esc(cfg.terceiro)}"><small>Nome do terceiro/fornecedor no relatório contábil. Vazio = o da regra do item ou ${esc(cfg.terceiro)}.</small></label>
       <label class="rotulo">Pacote<select class="campo" name="pacote"><option value="">— o do item —</option>${cfg.pacotes.map(p => `<option ${p === a.pacote ? 'selected' : ''}>${esc(p)}</option>`).join('')}</select></label>
       <div class="inteiro meses-box">
         <b>Valor de cada mês (R$)</b>
@@ -5267,7 +5281,7 @@ function editarLancamento(l) {
   $('#lanc-salvar', d).addEventListener('click', async () => {
     const body = {
       descricao: f.descricao.value.trim(), regional: f.regional.value, filial: f.filial.value, ...lerCcLanc(f.cc.value, cfg),
-      rubrica: f.rubrica.value, conta: f.conta.value.trim(), pacote: f.pacote.value, meses: campos.map(i => Number(i.value) || 0),
+      rubrica: f.rubrica.value, conta: f.conta.value.trim(), pacote: f.pacote.value, terceiro: f.terceiro.value.trim(), meses: campos.map(i => Number(i.value) || 0),
       dividir: f.filial.value ? '' : f.dividir.value,
     };
     if (!body.descricao) return toast('Informe a descrição.', 'erro');
@@ -5280,16 +5294,16 @@ function editarLancamento(l) {
   });
 }
 
-const COL_LANC = ['Descrição', 'Regional', 'Filial', 'Distribuição', 'Cód. C. Custo', 'Centro de custo', 'CC contábil', 'Item', 'Conta contábil', 'Pacote', ...MESES, 'Total ano'];
+const COL_LANC = ['Descrição', 'Regional', 'Filial', 'Distribuição', 'Cód. C. Custo', 'Centro de custo', 'CC contábil', 'Item', 'Conta contábil', 'Pacote', 'Terceiro', ...MESES, 'Total ano'];
 
 function baixarLancamentos(cfg, lista) {
   if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo.', 'erro');
-  const linhas = lista.length ? lista.map(l => [l.descricao, l.regional === '*' ? 'TODAS' : l.regional, l.filial, l.dividir === 'hc' ? 'HC' : '', l.cc_cod, l.cc_nome, l.cc_contabil, nomeItemLanc(l.rubrica), l.conta, l.pacote, ...MESES.map((_, m) => Number(l.meses?.[m]) || 0), somaMeses(l)])
-    : [['Consultoria de cargos e salários', regionais()[0] || 'SUDESTE', '', '', '17093', 'RECURSOS HUMANOS', '', 'Outra conta', cfg.contas[0] || '', '', 0, 0, 15000, 0, 0, 0, 0, 0, 15000, 0, 0, 0, 30000],
-       ['Gupy (licença)', 'TODAS', '', 'HC', '17093', 'RECURSOS HUMANOS', '', 'Outra conta', cfg.contas[0] || '', '', ...Array(12).fill(2500), 30000],
-       ['Rescisão prevista', regionais()[0] || 'SUDESTE', filiaisDa(regionais()[0])[0] || '', '', '17150', 'OPERAÇÃO', '', 'Rescisão', '', '', 0, 0, 0, 0, 0, 0, 25000, 0, 0, 0, 0, 0, 25000]];
+  const linhas = lista.length ? lista.map(l => [l.descricao, l.regional === '*' ? 'TODAS' : l.regional, l.filial, l.dividir === 'hc' ? 'HC' : '', l.cc_cod, l.cc_nome, l.cc_contabil, nomeItemLanc(l.rubrica), l.conta, l.pacote, l.terceiro || '', ...MESES.map((_, m) => Number(l.meses?.[m]) || 0), somaMeses(l)])
+    : [['Consultoria de cargos e salários', regionais()[0] || 'SUDESTE', '', '', '17093', 'RECURSOS HUMANOS', '', 'Outra conta', cfg.contas[0] || '', '', 'Consultoria X', 0, 0, 15000, 0, 0, 0, 0, 0, 15000, 0, 0, 0, 30000],
+       ['Gupy (licença)', 'TODAS', '', 'HC', '17093', 'RECURSOS HUMANOS', '', 'Outra conta', cfg.contas[0] || '', '', 'Gupy', ...Array(12).fill(2500), 30000],
+       ['Rescisão prevista', regionais()[0] || 'SUDESTE', filiaisDa(regionais()[0])[0] || '', '', '17150', 'OPERAÇÃO', '', 'Rescisão', '', '', '', 0, 0, 0, 0, 0, 0, 25000, 0, 0, 0, 0, 0, 25000]];
   const ws = XLSX.utils.aoa_to_sheet([COL_LANC, ...linhas]);
-  ws['!cols'] = [34, 16, 22, 13, 12, 24, 30, 20, 40, 16, ...MESES.map(() => 11), 12].map(wch => ({ wch }));
+  ws['!cols'] = [34, 16, 22, 13, 12, 24, 30, 20, 40, 16, 24, ...MESES.map(() => 11), 12].map(wch => ({ wch }));
   const ajuda = XLSX.utils.aoa_to_sheet([
     ['Coluna', 'O que colocar'],
     ['Descrição', 'Obrigatória. Ex.: Consultoria X, Gupy, Rescisão prevista'],
@@ -5301,6 +5315,7 @@ function baixarLancamentos(cfg, lista) {
     ['Item', `Um item da ferramenta (ex.: Rescisão, Treinamento, Viagens) ou "Outra conta". Itens: ${RUBS_LANC.filter(r => !r.soLancamento).map(r => r.nome).join(', ')}`],
     ['Conta contábil', 'Obrigatória em "Outra conta" (ex.: a conta de consultorias). Vazia nos demais = conta do item'],
     ['Pacote', `Opcional: ${cfg.pacotes.join(', ')}. Vazio = o do item`],
+    ['Terceiro', `Opcional: nome do terceiro/fornecedor na coluna Terceiro do relatório contábil (ex.: Gupy, Consultoria X). Vazio = ${cfg.terceiro}`],
     ['Jan … Dez', 'Valor de cada mês em R$'],
   ]);
   ajuda['!cols'] = [{ wch: 30 }, { wch: 110 }];
@@ -5325,7 +5340,7 @@ async function importarLancamentos(arquivo) {
     const linhas = l.slice(h + 1).filter(r => r && txt(r[col('Descrição')])).map(r => ({
       descricao: txt(r[col('Descrição')]), regional: txt(r[col('Regional')]), filial: txt(r[col('Filial')]), dividir: col('Distribuição') >= 0 ? txt(r[col('Distribuição')]) : '',
       cc_cod: txt(r[col('Cód. C. Custo')]), cc_nome: txt(r[col('Centro de custo')]), cc_contabil: txt(r[col('CC contábil')]),
-      rubrica: porNome.get(chaveNome(r[col('Item')])) || 'outras', conta: txt(r[col('Conta contábil')]), pacote: txt(r[col('Pacote')]),
+      rubrica: porNome.get(chaveNome(r[col('Item')])) || 'outras', conta: txt(r[col('Conta contábil')]), pacote: txt(r[col('Pacote')]), terceiro: col('Terceiro') >= 0 ? txt(r[col('Terceiro')]) : '',
       meses: MESES.map(m => num(r[col(m)])),
     }));
     if (!linhas.length) return toast('Nenhuma linha preenchida no arquivo.', 'erro');

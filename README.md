@@ -232,6 +232,11 @@ regra). Para a regra valer para todos — ex.: VA reajustado na premissa — mar
 para os N com valor da planilha da base" (também no quadro e na calculadora). Ajustes feitos à mão no colaborador
 continuam valendo.
 
+**Terceiro no relatório contábil**: nas contas de **Treinamento** e **Serviços / Terceiros**, a regra da filial (Premissas)
+tem o campo *Terceiro* com o nome do fornecedor, que sai na coluna Terceiro; os **Outros lançamentos** também têm o campo
+(formulário e planilha). Sem nome, sai o terceiro padrão (N/A Custom1). Mesma conta e CC com terceiros diferentes = uma
+linha por terceiro.
+
 **HC no relatório contábil e no EPM**: a prévia mostra o HC total de cada mês e o arquivo traz uma **coluna HC no fim**,
 com o HC (colaboradores + vagas) do centro de custo de cada linha — custo levado para outro CC (ex.: fretado no 25506)
 fica com HC vazio. A caixinha "coluna de HC" liga/desliga.

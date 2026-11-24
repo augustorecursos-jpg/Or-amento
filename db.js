@@ -158,6 +158,7 @@ if (!colunas.includes('promo_salario')) db.exec('ALTER TABLE colaboradores ADD C
 if (!colunas.includes('promo_cargo')) db.exec("ALTER TABLE colaboradores ADD COLUMN promo_cargo TEXT NOT NULL DEFAULT ''"); // novo nível do cargo na promoção
 const colLanc = db.prepare('PRAGMA table_info(lancamentos)').all().map(c => c.name);
 if (!colLanc.includes('dividir')) db.exec("ALTER TABLE lancamentos ADD COLUMN dividir TEXT NOT NULL DEFAULT ''");
+if (!colLanc.includes('terceiro')) db.exec("ALTER TABLE lancamentos ADD COLUMN terceiro TEXT NOT NULL DEFAULT ''"); // nome do terceiro no relatório contábil
 const colFiliais = db.prepare('PRAGMA table_info(filiais)').all().map(c => c.name);
 if (!colFiliais.includes('uf')) db.exec('ALTER TABLE filiais ADD COLUMN uf TEXT');
 // Filial cadastrada à mão (ainda sem colaboradores nem vagas): aparece na ferramenta mesmo vazia.
