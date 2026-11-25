@@ -232,6 +232,9 @@ regra). Para a regra valer para todos — ex.: VA reajustado na premissa — mar
 para os N com valor da planilha da base" (também no quadro e na calculadora). Ajustes feitos à mão no colaborador
 continuam valendo.
 
+**Todas · Ocupadas · Vagas (desocupadas)** na Simulação: vale para rubricas, filiais, CCs, colaboradores e para as abas do
+ano no Excel exportado (o comparativo com o ano anterior continua com tudo). Outros lançamentos entram só em *Todas*.
+
 **Todas · Ocupadas · Vagas novas** (Relatório contábil / EPM): escolhe as cadeiras da prévia, do HC e dos arquivos
 (contábil, EPM e EPM por colaborador). Outros lançamentos e provisões da filial entram só em *Todas*.
 

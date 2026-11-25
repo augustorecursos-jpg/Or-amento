@@ -19,7 +19,7 @@ const E = {
   rascunho: {},       // filial → { dissidio_ant_pct/_mes, dissidio_pct/_mes, reaj_benef_ant_pct/_mes, reaj_benef_pct/_mes }
   filtro: filtroMulti({ regional: [], uf: [], filial: [], cc: [], conta: [] }), // filtros do topo: cada um aceita vários itens
   aba: 'painel',
-  sim: { visao: 'rubricas', mil: false, fechados: new Set(), busca: '', abertos: new Set(), abertosAg: new Set() },
+  sim: { visao: 'rubricas', mil: false, fechados: new Set(), busca: '', abertos: new Set(), abertosAg: new Set(), cadeiras: '' },
   prem: { escopo: '*', uf: '', edits: {}, filial: {}, propagar: {}, busca: '', visao: 'filial', ocultarVazios: true, quadroReg: '' },
   base: { busca: '', soVagas: false, soProprias: false, fila: [] },
   conf: { filial: '', modo: 'mes', sel: new Set() },
@@ -1487,11 +1487,15 @@ const chaveCmp = c => (c.matricula ? `${c.matricula}|${String(c.nome).trim().toU
 /** Perfil financeiro: só totais, nada por colaborador. */
 const soTotais = () => Boolean(E.eu?.financeiro);
 
+/** Simulação: todas as cadeiras, só as ocupadas ou só as vagas (desocupadas). Lançamentos entram só em "todas". */
+const cadeiraNaSim = c => (E.sim.cadeiras === 'ocupadas' ? !c.vaga && !c.avulso : E.sim.cadeiras === 'vagas' ? Boolean(c.vaga) && !c.avulso : true);
+const filtroSim = c => noFiltro(c) && cadeiraNaSim(c);
+
 function linhasSimulacao(res = E.res) {
   const v = E.sim.visao;
   const ant = res === E.resAnt;
   if (v === 'rubricas') {
-    const ag = totalDe(res);
+    const ag = totalDe(res, filtroSim);
     const linhas = [];
     for (const g of GRUPOS) {
       const filhos = RUBRICAS.map((r, i) => ({ r, i })).filter(x => x.r.grupo === g.id)
@@ -1510,7 +1514,7 @@ function linhasSimulacao(res = E.res) {
     colaboradores: c => c.id,
   }[v];
   const busca = E.sim.busca.toLowerCase();
-  const filtro = c => noFiltro(c) && (!busca || `${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome}`.toLowerCase().includes(busca));
+  const filtro = c => filtroSim(c) && (!busca || `${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome}`.toLowerCase().includes(busca));
   const mapa = Motor.agregar(res, chave, filtro);
   const porId = new Map(res.colaboradores.map(c => [c.id, c]));
   // No ano anterior, a pessoa aberta na tela (id do orçamento) abre também a linha dela do histórico
@@ -1785,6 +1789,7 @@ function renderSimulacao() {
           ${E.sim.visao !== 'rubricas' ? `<input class="campo" id="sim-busca" placeholder="${E.sim.visao === 'colaboradores' ? 'Buscar nome, matrícula, função…' : 'Buscar…'}" value="${esc(E.sim.busca)}">` : ''}
           ${E.sim.visao === 'colaboradores' ? `<button class="btn btn-claro btn-sm" id="sim-abrir-todos">${E.sim.abertos.size ? 'Fechar detalhes' : 'Abrir detalhe de todos'}</button>` : ''}
           ${E.sim.visao === 'filiais' || E.sim.visao === 'cc' ? `<button class="btn btn-claro btn-sm" id="sim-abrir-ag">${[...E.sim.abertosAg].some(k => k.startsWith(E.sim.visao + '|')) ? 'Fechar contas' : 'Abrir contas de todos'}</button>` : ''}
+          <div class="segmentos" id="sim-cad" title="Todas as cadeiras, só as ocupadas (colaboradores) ou só as vagas ainda não preenchidas. Outros lançamentos entram só em Todas.">${[['', 'Todas'], ['ocupadas', 'Ocupadas'], ['vagas', 'Vagas (desocupadas)']].map(([k, r]) => `<button data-k="${k}" class="${(E.sim.cadeiras || '') === k ? 'ativo' : ''}">${r}</button>`).join('')}</div>
           <div class="direita">
             ${E.resAnt ? `<div class="segmentos" id="sim-comp" title="Compare com o realizado de ${anoAnt()}"><button data-c="0" class="${E.comparar ? '' : 'ativo'}">Só ${esc(E.dados.config.ano)}</button><button data-c="1" class="${E.comparar ? 'ativo' : ''}">${anoAnt()} × ${esc(E.dados.config.ano)}</button></div>` : ''}
             ${E.comparar && E.resAnt ? `<label class="check" title="Mostra nos meses só a diferença"><input type="checkbox" id="sim-sodelta" ${E.sim.soDelta ? 'checked' : ''}> Só Δ</label>` : ''}
@@ -1798,6 +1803,7 @@ function renderSimulacao() {
     </div>`;
   ligarFaixa($('#sim-faixa', el));
   $$('#sim-visao button', el).forEach(b => b.addEventListener('click', () => { E.sim.visao = b.dataset.v; renderSimulacao(); }));
+  $$('#sim-cad button', el).forEach(b => b.addEventListener('click', () => { E.sim.cadeiras = b.dataset.k; renderSimulacao(); }));
   $$('#sim-unid button', el).forEach(b => b.addEventListener('click', () => { E.sim.mil = b.dataset.u === '1'; renderSimulacao(); }));
   $$('#sim-comp button', el).forEach(b => b.addEventListener('click', () => { E.comparar = b.dataset.c === '1'; renderSimulacao(); }));
   $('#sim-sodelta', el)?.addEventListener('change', e => { E.sim.soDelta = e.target.checked; atualizarTabelaSim(); });
@@ -1808,7 +1814,7 @@ function renderSimulacao() {
     if (E.sim.abertos.size) E.sim.abertos.clear();
     else {
       const busca = E.sim.busca.toLowerCase();
-      const lista = E.dados.colaboradores.filter(c => noFiltro(c) && (!busca || `${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome}`.toLowerCase().includes(busca)));
+      const lista = E.dados.colaboradores.filter(c => filtroSim(c) && (!busca || `${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome}`.toLowerCase().includes(busca)));
       if (lista.length > 150) return toast(`São ${lista.length} colaboradores. Filtre por filial ou busque um nome para abrir o detalhe de todos (máx. 150).`, 'erro');
       lista.forEach(c => E.sim.abertos.add(c.id));
     }
@@ -1900,7 +1906,7 @@ function exportarExcel() {
   if (!window.XLSX) return toast('Carregando o gerador de Excel… tente de novo em instantes.', 'erro');
   const wb = XLSX.utils.book_new();
   const r2 = v => Math.round(v * 100) / 100;
-  const ag = totalDe(E.res);
+  const ag = totalDe(E.res, filtroSim);
 
   const resumo = [['Grupo', 'Rubrica', ...MESES, 'Total ano']];
   RUBRICAS.forEach((r, i) => {
@@ -1912,7 +1918,7 @@ function exportarExcel() {
 
   const porChave = (chave, titulo) => {
     const linhas = [[titulo, 'HC máx.', ...MESES, 'Total ano']];
-    for (const [k, a] of Motor.agregar(E.res, chave, noFiltro)) linhas.push([k, Math.max(...a.hc), ...[...a.meses].map(r2), r2(a.total)]);
+    for (const [k, a] of Motor.agregar(E.res, chave, filtroSim)) linhas.push([k, Math.max(...a.hc), ...[...a.meses].map(r2), r2(a.total)]);
     return XLSX.utils.aoa_to_sheet(linhas);
   };
   XLSX.utils.book_append_sheet(wb, porChave(c => `${c.regional} · ${c.filial}`, 'Regional · Filial'), 'Por filial');
@@ -1920,7 +1926,7 @@ function exportarExcel() {
   // Contas por grupo em cada filial e centro de custo (uma linha por conta lançada)
   const contas = [['Regional', 'Filial', 'Cód. C. Custo', 'Centro de custo', 'Grupo', 'Conta', ...MESES, 'Total ano']];
   const sep = '\u0000';
-  for (const [k, a] of Motor.agregar(E.res, c => [c.regional, c.filial, c.cc_cod || '', c.cc_nome || ''].join(sep), noFiltro)) {
+  for (const [k, a] of Motor.agregar(E.res, c => [c.regional, c.filial, c.cc_cod || '', c.cc_nome || ''].join(sep), filtroSim)) {
     const [regional, filial, cod, nome] = k.split(sep);
     RUBRICAS.forEach((r, i) => {
       const meses = [...a.porRubrica.slice(i * 12, i * 12 + 12)].map(r2);
@@ -1937,7 +1943,7 @@ function exportarExcel() {
   const cab = ['Matrícula', 'Funcionário', 'Regional', 'UF', 'Filial', 'Situação', 'Função', 'Cargo', 'Cód. C. Custo', 'Centro de custo', 'Salário base', `Dissídio ${anoAnt()} %`, `Data-base dissídio ${anoAnt()}`, `Dissídio ${E.dados.config.ano} %`, `Mês dissídio ${E.dados.config.ano}`, 'Mês início', 'Mês fim', ...RUBRICAS.map(r => `${r.nome} (ano)`), 'Total ano'];
   const linhas = [cab];
   E.res.colaboradores.forEach((c, i) => {
-    if (!noFiltro(c)) return;
+    if (!filtroSim(c)) return;
     const vals = RUBRICAS.map((_, r) => { let s = 0; for (let m = 0; m < 12; m++) s += E.res.valor(i, r, m); return r2(s); });
     linhas.push([c.matricula, c.nome, c.regional, ufDe(c.filial), c.filial, c.situacao, c.funcao, c.cargo, c.cc_cod, c.cc_nome, c.salario,
       fil[c.filial]?.dissidio_ant_pct ?? 0, fil[c.filial]?.dissidio_ant_mes ?? '', fil[c.filial]?.dissidio_pct ?? 0, fil[c.filial]?.dissidio_mes ?? '', c.mes_inicio, c.mes_fim, ...vals, r2(vals.reduce((a, b) => a + b, 0))]);
