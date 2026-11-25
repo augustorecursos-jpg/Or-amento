@@ -792,3 +792,8 @@ body.apresentacao .cartao, body.apresentacao .kpi2, body.apresentacao .card-esco
 /* Nome do terceiro na regra (treinamento, serviços/terceiros) */
 .campo-terceiro { display: block; margin-top: .35rem; width: 100%; max-width: 260px; font-size: .8rem; padding: .35rem .55rem; }
 .tabela-contabil td.sem-terceiro { color: #b54d12; font-weight: 700; background: #fff4ea; }
+
+/* Simulação: faixa de cadeiras e HC */
+.sim-hc { display: flex; flex-wrap: wrap; gap: .5rem; margin: 0 0 .7rem; }
+.sim-hc-item { background: #fff; border: 1px solid var(--linha); border-radius: 999px; padding: .35rem .8rem; font-size: .82rem; color: var(--texto-suave); }
+.sim-hc-item b { color: var(--marinho); font-size: .92rem; margin-left: .15rem; }

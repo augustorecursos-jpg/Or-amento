@@ -1797,6 +1797,7 @@ function renderSimulacao() {
             <button class="btn btn-marinho btn-sm" id="sim-excel">⬇ Exportar Excel</button>
           </div>
         </div>
+        <div class="sim-hc" id="sim-hc">${resumoHcSim()}</div>
         <div class="tabela-wrap alta" id="sim-tabela">${tabelaSimulacaoHtml()}</div>
       </div>
       ${admin ? `<aside class="cartao simulador" id="simulador">${simuladorHtml()}</aside>` : ''}
@@ -1849,7 +1850,24 @@ function ligarTabelaSim() {
   }));
 }
 
+/** Faixa com cadeiras e HC no recorte da Simulação (filtros do topo + Todas/Ocupadas/Vagas + busca). */
+function resumoHcSim() {
+  const busca = E.sim.visao === 'colaboradores' ? E.sim.busca.toLowerCase() : '';
+  const lista = E.dados.colaboradores.filter(c => filtroSim(c) && (!busca || `${c.nome} ${c.matricula} ${c.funcao} ${c.cc_nome}`.toLowerCase().includes(busca)));
+  const n = numerosHc(lista);
+  const item = (ic, rot, v, dica) => `<span class="sim-hc-item" title="${esc(dica)}">${ic} ${rot} <b>${v}</b></span>`;
+  return [
+    item('🪑', 'Cadeiras', num0.format(n.cadeiras), 'Colaboradores + vagas no recorte (cada registro da base é uma cadeira)'),
+    E.sim.cadeiras !== 'vagas' ? item('👤', 'Ocupadas', num0.format(n.ocupadas), 'Colaboradores (não são vagas)') : '',
+    E.sim.cadeiras !== 'ocupadas' ? item('🧑‍💼', 'Vagas', num0.format(n.vagas), 'Vagas previstas, ainda não preenchidas') : '',
+    item('📅', 'HC jan → dez', `${num0.format(n.jan)} → ${num0.format(n.dez)}`, 'Pessoas ativas no mês: em janeiro e em dezembro (vagas a partir do mês de admissão; desligamentos até o mês de saída)'),
+    n.deslig ? item('🚪', 'Desligamentos previstos', num0.format(n.deslig), 'Saídas antes de dezembro') : '',
+  ].join('');
+}
+
 function atualizarTabelaSim() {
+  const hc = $('#sim-hc');
+  if (hc) hc.innerHTML = resumoHcSim();
   $('#sim-tabela').innerHTML = tabelaSimulacaoHtml();
   ligarTabelaSim();
 }
@@ -4134,6 +4152,8 @@ function desenharSituacaoBase() {
   });
   const repetidas = [...contMat.values()].filter(n => n > 1);
   const sobra = repetidas.reduce((s, n) => s + n - 1, 0);
+  // "Vaga" no nome ou na situação, mas cadastrado como ocupado: não entra na contagem de vagas
+  const vagaNoTexto = todos.filter(c => !c.vaga && (/vaga/i.test(c.situacao || '') || /vaga/i.test(c.nome || '')));
   el.innerHTML = `
     <div class="ferramentas" style="margin:0">
       <h3 style="margin:0">Base atual: ${num0.format(todos.length)} registro(s)</h3>
@@ -4143,7 +4163,20 @@ function desenharSituacaoBase() {
         <button class="btn btn-perigo btn-sm" id="apagar-base" ${todos.length ? '' : 'disabled'}>🗑 Apagar toda a base</button></span>
     </div>
     ${sobra ? `<div class="alerta-dup">⚠ <b>${num0.format(repetidas.length)} colaborador(es) aparecem mais de uma vez</b> (mesma matrícula, nome e filial) (${num0.format(sobra)} registro(s) a mais) — provavelmente de uma importação somada à anterior.
-      <button class="btn btn-laranja btn-sm" id="remover-dup">Revisar duplicados</button><small>Você escolhe qual registro fica; os outros vão para a lixeira.</small></div>` : ''}`;
+      <button class="btn btn-laranja btn-sm" id="remover-dup">Revisar duplicados</button><small>Você escolhe qual registro fica; os outros vão para a lixeira.</small></div>` : ''}
+    <div class="chips" style="margin-top:.6rem"><span class="chip">🪑 ${num0.format(todos.length)} cadeiras</span><span class="chip">👤 ${num0.format(todos.filter(c => !c.vaga).length)} ocupadas</span><span class="chip">🧑‍💼 ${num0.format(todos.filter(c => c.vaga).length)} vagas</span></div>
+    ${vagaNoTexto.length ? `<div class="alerta-dup">⚠ <b>${num0.format(vagaNoTexto.length)} registro(s) com "vaga" no nome ou na situação estão cadastrados como ocupados</b> — não contam como vaga no painel.
+      <button class="btn btn-laranja btn-sm" id="marcar-vagas">Marcar todos como vaga</button>
+      <details style="margin-top:.4rem"><summary>Ver quais são</summary><ul style="margin:.4rem 0 0;padding-left:1.2rem;font-size:.85rem">${vagaNoTexto.map(c => `<li>${esc(c.nome)} · ${esc(c.filial)} · situação: ${esc(c.situacao || '—')}</li>`).join('')}</ul></details></div>` : ''}`;
+  $('#marcar-vagas', el)?.addEventListener('click', async () => {
+    if (!confirm(`Marcar ${vagaNoTexto.length} registro(s) como vaga prevista? Eles passam a contar como vaga (e não como ocupados).`)) return;
+    try {
+      for (const c of vagaNoTexto) await api(`/api/colaboradores/${c.id}`, { method: 'PUT', body: { vaga: true } });
+      await carregar();
+      renderBase();
+      toast(`${vagaNoTexto.length} registro(s) marcado(s) como vaga.`);
+    } catch (e) { toast(e.message, 'erro'); }
+  });
   $('#remover-dup', el)?.addEventListener('click', revisarDuplicados);
   $('#abrir-lixeira', el)?.addEventListener('click', () => abrirLixeira().catch(e => toast(e.message, 'erro')));
   $('#apagar-base', el)?.addEventListener('click', async () => {
