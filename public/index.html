@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Orçamento de Pessoal · Âmbar</title>
+  <title>Orçamento de Pessoal · Âmbar Energia</title>
   <link rel="icon" href="img/icone-orcamento.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,35 +11,90 @@
   <link rel="stylesheet" href="css/base.css">
   <link rel="stylesheet" href="css/login.css">
 </head>
-<body>
-  <main class="login">
-    <section class="login-arte" aria-hidden="true">
-      <div class="pontilhado"></div>
-      <small>ORÇAMENTO DE PESSOAL</small>
-      <h2>Planeje, simule e valide o custo de pessoal de cada regional.</h2>
-      <ul>
-        <li><b>Premissas por filial</b> · periculosidade, horas extras, convênios e benefícios</li>
-        <li><b>Dissídio mês a mês</b> · veja o impacto no mês e no ano</li>
-        <li><b>Conferência dos coordenadores</b> · pedidos de ajuste direto para o admin</li>
-      </ul>
+<body class="entrada">
+  <header class="topo">
+    <a class="logo" href="index.html" aria-label="Âmbar Energia"><b>Âmbar</b><small>ENERGIA</small></a>
+    <span class="marcas-sep" aria-hidden="true"></span>
+    <div class="marcas" aria-label="Empresas do grupo">
+      <img src="img/marcas/green-cargo.png" alt="Green Cargo" width="170" height="59">
+      <img src="img/marcas/fluxus.png" alt="Fluxus" width="205" height="46">
+      <img src="img/marcas/mgas.png" alt="MGAS" width="163" height="54">
+      <img src="img/marcas/logas.png" alt="Logás" width="206" height="58">
+    </div>
+    <nav class="menu" aria-label="Links">
+      <a href="#como-funciona">Como funciona</a>
+      <a href="guia/guia-do-coordenador.pdf" target="_blank" rel="noopener">Guia do coordenador</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="arte" aria-hidden="true">
+        <svg class="curvas" viewBox="0 0 800 800" preserveAspectRatio="xMidYMid slice">
+          <path d="M-40 620 C 220 520, 420 760, 840 470" fill="none" stroke="#ec6b24" stroke-width="3" opacity=".9"/>
+          <path d="M120 -20 C 260 180, 520 120, 840 260" fill="none" stroke="#ec6b24" stroke-width="2" opacity=".55"/>
+          <path d="M840 520 L 840 800 L 560 800 Z" fill="#ec6b24" opacity=".9"/>
+          <path d="M840 560 L 840 800 L 620 800 Z" fill="#f39a4a" opacity=".6"/>
+          <g fill="none" stroke="#9cc3e4" stroke-width="1.5" opacity=".28">
+            <path d="M650 120 l30 -70 30 70 M660 96 h40 M668 76 h24 M680 50 v-20"/>
+            <path d="M110 760 l26 -60 26 60 M118 740 h36 M125 722 h22"/>
+          </g>
+        </svg>
+        <div class="painel-ilustra">
+          <div class="barra-top"><i></i><i></i><i></i></div>
+          <div class="linha-kpis"><div class="kpi-fake"><b></b><span></span></div><div class="kpi-fake lar"><b></b><span></span></div><div class="kpi-fake"><b></b><span></span></div></div>
+          <div class="graf-fake">
+            <div class="barras"><i style="height:58%"></i><i style="height:60%"></i><i style="height:61%"></i><i style="height:60%"></i><i style="height:68%"></i><i style="height:69%"></i><i style="height:70%"></i><i style="height:72%"></i><i style="height:72%"></i><i style="height:73%"></i><i style="height:74%"></i><i style="height:86%"></i></div>
+            <div class="rosca-fake"><svg viewBox="0 0 120 120" width="110"><circle cx="60" cy="60" r="42" fill="none" stroke="#2f6fa3" stroke-width="18" stroke-dasharray="190 300" transform="rotate(-90 60 60)"/><circle cx="60" cy="60" r="42" fill="none" stroke="#ec6b24" stroke-width="18" stroke-dasharray="32 300" stroke-dashoffset="-192" transform="rotate(-90 60 60)"/><circle cx="60" cy="60" r="42" fill="none" stroke="#8b5fbf" stroke-width="18" stroke-dasharray="40 300" stroke-dashoffset="-226" transform="rotate(-90 60 60)"/></svg></div>
+          </div>
+        </div>
+        <div class="cartao-flut f1"><span class="ic">📈</span><span>Dissídio mês a mês<small>impacto no mês e no ano</small></span></div>
+        <div class="cartao-flut f2"><span class="ic">🏭</span><span>Premissas por usina<small>herdadas da regional</small></span></div>
+        <div class="cartao-flut f3"><span class="ic">📊</span><span>Ano anterior × orçamento<small>o que explica a variação</small></span></div>
+      </div>
+
+      <div class="hero-texto">
+        <span class="sobretitulo" id="sobretitulo">ORÇAMENTO DE PESSOAL</span>
+        <h1>Planejar pessoas <span class="linha">é <em>gerar energia.</em></span></h1>
+        <div class="hero-jornada">
+          <h2>O custo de pessoal de todas as regionais, em um só lugar</h2>
+          <p>Premissas de cada filial, dissídio e reajuste de benefícios, vagas previstas e o comparativo com o realizado do ano anterior.</p>
+          <p>Cada coordenador confere a sua filial, e o time de orçamento consolida tudo para a contabilidade e o EPM.</p>
+        </div>
+
+        <form class="cartao-acesso" id="form-login">
+          <div class="cartao-acesso-topo">
+            <svg viewBox="0 0 400 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 60C120 40 250 0 400 8V0H0Z" fill="#164d74"/><path d="M0 52C130 34 260 2 400 10" fill="none" stroke="#ec6b24" stroke-width="2"/></svg>
+            <h2>Acesse o orçamento</h2>
+            <p>Entre com o usuário e a senha do time de orçamento</p>
+          </div>
+          <div class="cartao-acesso-corpo">
+            <label for="login">Usuário</label>
+            <input id="login" class="campo" autocomplete="username" required placeholder="seu login">
+            <label for="senha">Senha</label>
+            <input id="senha" type="password" class="campo" autocomplete="current-password" required placeholder="••••••••">
+            <p class="erro" id="erro" role="alert" hidden></p>
+            <button class="btn btn-laranja" type="submit">Entrar →</button>
+            <small>O acesso é liberado pelo time de orçamento para coordenadores, gestores e financeiro.</small>
+          </div>
+          <a class="guia-acesso" href="guia/guia-do-coordenador.pdf" target="_blank" rel="noopener">
+            <span class="guia-ic" aria-hidden="true">📘</span>
+            <span><strong>Primeira vez aqui?</strong> Veja o guia do coordenador</span>
+            <span class="guia-seta" aria-hidden="true">→</span>
+          </a>
+        </form>
+      </div>
     </section>
-    <form class="cartao login-cartao" id="form-login">
-      <span class="logo"><b>Âmbar</b><small>ENERGIA</small></span>
-      <h1>Orçamento de Pessoal</h1>
-      <p>Entre com o seu usuário. Coordenadores recebem o acesso do time de orçamento.</p>
-      <label for="login">Usuário</label>
-      <input id="login" class="campo" autocomplete="username" required placeholder="ex.: admin ou seu login">
-      <label for="senha">Senha</label>
-      <input id="senha" type="password" class="campo" autocomplete="current-password" required>
-      <button class="btn btn-laranja" type="submit">Entrar</button>
-      <p class="erro" id="erro" role="alert" hidden></p>
-      <a class="guia-acesso" href="guia/guia-do-coordenador.pdf" target="_blank" rel="noopener">
-        <span class="guia-ic" aria-hidden="true">📘</span>
-        <span><strong>Primeira vez aqui?</strong> Veja o guia do coordenador</span>
-        <span class="guia-seta" aria-hidden="true">→</span>
-      </a>
-    </form>
+
+    <section class="recursos" id="como-funciona">
+      <div class="recurso"><span class="ic">⚙️</span><h3>Premissas por filial</h3><p>Benefícios, adicionais, encargos e regras de cada usina, herdando da regional.</p></div>
+      <div class="recurso"><span class="ic">🧮</span><h3>Simulação mês a mês</h3><p>Dissídio, vagas e reajustes com o impacto no mês e no ano.</p></div>
+      <div class="recurso"><span class="ic">📊</span><h3>Ano anterior × orçamento</h3><p>Comparativo com o realizado, motivos da variação e apresentação para a diretoria.</p></div>
+      <div class="recurso"><span class="ic">📑</span><h3>Contábil e EPM</h3><p>Arquivos prontos por centro de custo, conta e colaborador.</p></div>
+    </section>
+    <p class="rodape">Âmbar Energia · Orçamento de Pessoal</p>
   </main>
+
   <script src="js/comum.js"></script>
   <script>
     api('/api/eu').then(() => location.replace('app.html')).catch(() => {});
@@ -53,6 +108,7 @@
         location.replace('app.html');
       } catch (err) {
         erro.textContent = err.message; erro.hidden = false;
+        e.target.classList.remove('tremer'); void e.target.offsetWidth; e.target.classList.add('tremer');
       } finally { btn.disabled = false; }
     });
   </script>
